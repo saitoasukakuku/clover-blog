@@ -1,0 +1,696 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ post.title }} - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<style>
+    :root {
+        --theme-primary: 46, 125, 50;
+        --theme-secondary: 76, 175, 80;
+        --theme-accent: 165, 214, 167;
+        --detail-ink: #1d2b20;
+        --detail-muted: #6c7b70;
+        --detail-line: #e5efe4;
+        --detail-paper: rgba(255, 255, 255, 0.94);
+    }
+
+    .detail-page-wrapper {
+        position: relative;
+        min-height: 100vh;
+        overflow: hidden;
+        background:
+            linear-gradient(180deg, rgba(246, 250, 245, 0.92), rgba(237, 247, 235, 0.98)),
+            linear-gradient(135deg, #eef8ef 0%, #d9efda 50%, #f7fbf6 100%);
+    }
+
+    {% if post.cover %}
+    .detail-page-wrapper::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: url('{{ post.cover.url }}');
+        background-size: cover;
+        background-position: center;
+        filter: blur(18px) saturate(0.95);
+        transform: scale(1.06);
+        opacity: 0.35;
+        z-index: -1;
+    }
+
+    .detail-page-wrapper::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(180deg, rgba(17, 50, 22, 0.08), rgba(246, 250, 245, 0.92) 48%, rgba(246, 250, 245, 0.98));
+        z-index: -1;
+    }
+    {% endif %}
+
+    .post-detail-header {
+        padding: 56px 0 30px;
+    }
+
+    .detail-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+        gap: 28px;
+        align-items: stretch;
+    }
+
+    .hero-copy {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 300px;
+    }
+
+    .category-eyebrow {
+        width: fit-content;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        background: rgba(var(--theme-primary), 0.1);
+        color: #1b5e20;
+        font-size: 0.86rem;
+        font-weight: 700;
+        margin-bottom: 18px;
+    }
+
+    .header-content {
+        color: #142317;
+        font-size: clamp(2rem, 4vw, 3.6rem);
+        font-weight: 800;
+        line-height: 1.16;
+        margin-bottom: 22px;
+        max-width: 860px;
+    }
+
+    .post-meta-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        color: var(--detail-muted);
+        font-size: 0.95rem;
+    }
+
+    .post-meta-info span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border: 1px solid rgba(var(--theme-accent), 0.55);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+    }
+
+    .hero-cover {
+        min-height: 300px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #c8e6c9, #eef7ef);
+        box-shadow: 0 18px 45px rgba(30, 80, 40, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+    }
+
+    .hero-cover img {
+        width: 100%;
+        height: 100%;
+        min-height: 300px;
+        object-fit: cover;
+        display: block;
+    }
+
+    .hero-cover-placeholder {
+        height: 100%;
+        min-height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(var(--theme-primary), 0.58);
+        font-size: 5rem;
+    }
+
+    .article-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 24px;
+        align-items: start;
+    }
+
+    .post-detail-card {
+        background: var(--detail-paper);
+        border-radius: 8px;
+        padding: 34px;
+        box-shadow: 0 12px 34px rgba(31, 83, 40, 0.1);
+        border: 1px solid rgba(var(--theme-accent), 0.5);
+        min-height: 400px;
+    }
+
+    .detail-sidebar {
+        position: sticky;
+        top: 22px;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid rgba(var(--theme-accent), 0.52);
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 10px 26px rgba(31, 83, 40, 0.08);
+    }
+
+    .detail-sidebar h2 {
+        color: #1b5e20;
+        font-size: 1rem;
+        font-weight: 800;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e8f5e9;
+    }
+
+    .detail-stat {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 12px 0;
+        border-bottom: 1px solid #eef5ee;
+        color: var(--detail-muted);
+        font-size: 0.88rem;
+    }
+
+    .detail-stat:last-child {
+        border-bottom: 0;
+    }
+
+    .detail-stat strong {
+        color: var(--detail-ink);
+        text-align: right;
+        font-weight: 700;
+    }
+
+    .action-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding-bottom: 22px;
+        margin-bottom: 28px;
+        border-bottom: 1px solid var(--detail-line);
+    }
+
+    .action-toolbar .btn {
+        font-weight: 600;
+    }
+
+    .post-content {
+        max-width: 760px;
+        margin: 0 auto;
+        font-size: 1.08rem;
+        line-height: 2;
+        color: #243126;
+        word-break: break-word;
+    }
+
+    .post-content p {
+        margin-bottom: 1.4rem;
+    }
+
+    .post-content p:first-child::first-letter {
+        color: #1b5e20;
+        font-size: 2.55rem;
+        font-weight: 800;
+        line-height: 1;
+        margin-right: 4px;
+    }
+
+    .article-end-mark {
+        width: 64px;
+        height: 3px;
+        margin: 38px auto 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, transparent, #4caf50, transparent);
+    }
+
+    /* ========== 编辑模式表单样式 ========== */
+    #editMode .form-label {
+        font-weight: 600;
+        color: rgb(var(--theme-primary));
+        font-size: 0.9rem;
+        margin-bottom: 6px;
+    }
+
+    #editMode .form-control,
+    #editMode .form-select {
+        border: 1.5px solid #e0e0e0;
+        border-radius: 10px;
+        transition: border-color 0.3s, box-shadow 0.3s;
+        font-size: 0.9rem;
+        background: rgba(255, 255, 255, 0.85);
+    }
+
+    #editMode .form-control:focus,
+    #editMode .form-select:focus {
+        border-color: rgb(var(--theme-secondary));
+        box-shadow: 0 0 0 3px rgba(var(--theme-secondary), 0.12);
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    #editMode textarea {
+        resize: vertical;
+        min-height: 260px;
+    }
+
+    .cover-upload-area {
+        border: 2px dashed #d5e8d4;
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: rgba(250, 255, 249, 0.8);
+    }
+
+    .cover-upload-area:hover {
+        border-color: #4caf50;
+        background: rgba(241, 248, 233, 0.9);
+    }
+
+    .cover-upload-area i {
+        font-size: 2rem;
+        color: #a5d6a7;
+        transition: color 0.3s;
+    }
+
+    .cover-upload-area:hover i {
+        color: #4caf50;
+    }
+
+    .cover-upload-area p {
+        font-size: 0.82rem;
+        color: #999;
+        margin: 8px 0 0;
+    }
+
+    .btn-remove-cover {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        text-align: center;
+        line-height: 34px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    /* 让 footer 也跟随主题色 */
+    .site-footer {
+        background: rgba(var(--theme-primary), 0.85) !important;
+        backdrop-filter: blur(8px);
+    }
+
+    /* 操作按钮跟随主题色，加衬底确保清晰 */
+    .btn-outline-success {
+        color: rgb(var(--theme-primary)) !important;
+        border-color: rgb(var(--theme-primary)) !important;
+        background: rgba(255, 255, 255, 0.6) !important;
+        backdrop-filter: blur(4px);
+    }
+
+    .btn-outline-success:hover {
+        background: rgb(var(--theme-primary)) !important;
+        color: #fff !important;
+    }
+
+    .btn-outline-danger {
+        background: rgba(255, 255, 255, 0.6) !important;
+        backdrop-filter: blur(4px);
+    }
+
+    .btn-outline-danger:hover {
+        background: #dc3545 !important;
+        color: #fff !important;
+    }
+
+    /* 返回按钮也跟随主题色 */
+    .btn-outline-secondary {
+        color: rgb(var(--theme-secondary)) !important;
+        border-color: rgb(var(--theme-secondary)) !important;
+        background: rgba(var(--theme-accent), 0.15) !important;
+    }
+
+    .btn-outline-secondary:hover {
+        background: rgb(var(--theme-secondary)) !important;
+        color: #fff !important;
+    }
+
+    @media (max-width: 991.98px) {
+        .detail-hero,
+        .article-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .hero-copy {
+            min-height: auto;
+        }
+
+        .detail-sidebar {
+            position: static;
+            order: -1;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .post-detail-header {
+            padding: 34px 0 22px;
+        }
+
+        .header-content {
+            font-size: 2rem;
+        }
+
+        .post-detail-card {
+            padding: 22px 18px;
+        }
+
+        .action-toolbar {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .action-toolbar > div {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .action-toolbar .btn {
+            width: 100%;
+        }
+
+        .post-content {
+            font-size: 1rem;
+            line-height: 1.9;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="detail-page-wrapper">
+
+    <!-- 文章头部（透明，仅文字） -->
+    <section class="post-detail-header" id="pageHeader">
+        <div class="container">
+            <div class="detail-hero">
+                <div class="hero-copy">
+                    <span class="category-eyebrow"><i class="fas fa-folder-open"></i>{{ post.category_label }}</span>
+                    <h1 class="header-content">{{ post.title }}</h1>
+                    <div class="post-meta-info">
+                        <span><i class="far fa-calendar-alt"></i>发表于 {{ post.created_at|date:"Y-m-d" }}</span>
+                        {% if post.updated_at|date:"Y-m-d" != post.created_at|date:"Y-m-d" %}
+                        <span><i class="fas fa-history"></i>更新于 {{ post.updated_at|date:"Y-m-d" }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="hero-cover">
+                    {% if post.cover %}
+                    <img src="{{ post.cover.url }}" alt="{{ post.title }}封面">
+                    {% else %}
+                    <div class="hero-cover-placeholder"><i class="fas fa-leaf"></i></div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 文章主体 -->
+    <main class="container mb-5">
+        <div class="article-layout">
+            <article class="post-detail-card">
+
+                <!-- ================= 浏览模式 ================= -->
+                <div id="viewMode">
+                    <!-- 操作栏 -->
+                    <div class="action-toolbar position-relative" style="z-index: 20;">
+                        <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm rounded-pill"><i
+                                class="fas fa-arrow-left me-1"></i>返回首页</a>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-success btn-sm rounded-pill"
+                                id="startEditBtn"><i class="fas fa-edit me-1"></i>编辑文章</button>
+                            <a href="{% url 'delete_post' post.id %}"
+                                class="btn btn-outline-danger btn-sm rounded-pill"
+                                onclick="return confirm('确定要永久删除这篇已发布的文章吗？此操作不可恢复。')"><i
+                                    class="fas fa-trash-alt me-1"></i>删除文章</a>
+                        </div>
+                    </div>
+
+                    <!-- 正文内容 -->
+                    <div class="post-content">
+                        {{ post.content|linebreaks }}
+                        <div class="article-end-mark"></div>
+                    </div>
+
+                </div>
+
+                <!-- ================= 编辑模式 ================= -->
+                <form id="editMode" method="post" action="{% url 'edit_post' post.id %}"
+                    enctype="multipart/form-data" style="display: none;">
+                    {% csrf_token %}
+
+                    <h3 class="mb-4 text-success"><i class="fas fa-edit me-2"></i>编辑模式</h3>
+
+                    <!-- 文章标题 -->
+                    <div class="mb-4">
+                        <label for="postTitle" class="form-label"><i class="fas fa-heading me-1"></i>文章标题</label>
+                        <input type="text" class="form-control form-control-lg" id="postTitle" name="title"
+                            value="{{ post.title|default:'' }}" placeholder="输入一个吸引人的标题..." required>
+                    </div>
+
+                    <!-- 文章分类 -->
+                    <div class="mb-4">
+                        <label for="postCategory" class="form-label"><i
+                                class="fas fa-folder me-1"></i>文章分类</label>
+                        <select class="form-select" id="postCategory" name="category">
+                            <option {% if not post.category %}selected{% endif %} disabled>选择分类</option>
+                            {% for value, label in categories %}
+                            <option value="{{ value }}" {% if post.category == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                            <option value="{{ custom_category_value }}" {% if is_custom_category %}selected{% endif %}>自定义</option>
+                        </select>
+                        <input type="text" class="form-control mt-3 {% if not is_custom_category %}d-none{% endif %}"
+                            id="customCategory" name="custom_category" value="{{ custom_category }}"
+                            placeholder="输入自定义分类..." maxlength="50">
+                    </div>
+
+                    <!-- 封面图片 -->
+                    <div class="mb-4">
+                        <label class="form-label"><i class="fas fa-image me-1"></i>更换封面图片</label>
+                        <input type="hidden" name="cropped_cover" id="croppedCover">
+                        <input type="hidden" name="clear_cover" id="clearCover" value="false">
+                        <input type="file" id="coverUpload" accept="image/*" class="d-none">
+
+                        <div style="position: relative;" id="coverPreviewContainer">
+                            <!-- 删除按钮 -->
+                            <button type="button" class="btn btn-danger btn-sm btn-remove-cover" id="removeCoverBtn"
+                                {% if not post.cover %}style="display: none;" {% endif %}><i
+                                    class="fas fa-trash-alt"></i></button>
+
+                            <label for="coverUpload" class="cover-upload-area d-block" id="coverPreviewArea">
+                                {% if post.cover %}
+                                <img src="{{ post.cover.url }}" style="max-width: 100%; border-radius: 8px;">
+                                <div class="mt-2 text-success"><i
+                                        class="fas fa-check-circle me-1"></i>已上传封面，点击图片可重新上传裁剪</div>
+                                {% else %}
+                                <i class="fas fa-cloud-upload-alt d-block"></i>
+                                <p>点击或拖拽上传封面图片<br><small>推荐尺寸 2400×1440，支持 JPG / PNG</small></p>
+                                {% endif %}
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 文章内容 -->
+                    <div class="mb-4">
+                        <label for="postContent" class="form-label"><i
+                                class="fas fa-align-left me-1"></i>文章内容</label>
+                        <textarea class="form-control" id="postContent" name="content" rows="10"
+                            placeholder="写下你的想法...">{{ post.content|default:'' }}</textarea>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="d-flex justify-content-between align-items-center pt-2 mt-4 border-top pt-4">
+                        <button type="button" class="btn btn-outline-secondary rounded-pill" id="cancelEditBtn"><i
+                                class="fas fa-times me-1"></i>取消编辑</button>
+                        <div>
+                            <button type="submit" name="action" value="draft"
+                                class="btn btn-outline-success me-2 rounded-pill"><i
+                                    class="far fa-bookmark me-1"></i>转为草稿</button>
+                            <button type="submit" name="action" value="publish"
+                                class="btn btn-publish rounded-pill"><i class="fas fa-save me-1"></i>保存修改</button>
+                        </div>
+                    </div>
+                </form>
+
+            </article>
+
+            <aside class="detail-sidebar">
+                <h2><i class="fas fa-leaf me-2"></i>文章信息</h2>
+                <div class="detail-stat">
+                    <span>分类</span>
+                    <strong>{{ post.category_label }}</strong>
+                </div>
+                <div class="detail-stat">
+                    <span>发布</span>
+                    <strong>{{ post.created_at|date:"Y-m-d" }}</strong>
+                </div>
+                {% if post.updated_at|date:"Y-m-d" != post.created_at|date:"Y-m-d" %}
+                <div class="detail-stat">
+                    <span>更新</span>
+                    <strong>{{ post.updated_at|date:"Y-m-d" }}</strong>
+                </div>
+                {% endif %}
+                <div class="detail-stat">
+                    <span>状态</span>
+                    <strong>{{ post.get_status_display }}</strong>
+                </div>
+            </aside>
+        </div>
+    </main>
+
+</div>
+
+<!-- 裁剪图片弹窗 -->
+<div class="modal fade" id="cropModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-crop-alt me-2 text-success"></i>裁剪封面图片</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center bg-light">
+                <div class="img-container" style="max-height: 500px;">
+                    <img id="imageToCrop" src="" alt="待裁剪图片" style="max-width: 100%; display: block;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="cropConfirmBtn">确认裁剪</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+    $(document).ready(function () {
+        // === 模式切换逻辑 ===
+        $('#startEditBtn').on('click', function () {
+            $('#viewMode').hide();
+            $('#editMode').fadeIn();
+            $('#pageHeader').animate({ padding: '30px 0', opacity: 0.8 }, 300);
+        });
+
+        $('#cancelEditBtn').on('click', function () {
+            $('#editMode').hide();
+            $('#viewMode').fadeIn();
+            $('#pageHeader').animate({ padding: '56px 0 30px', opacity: 1 }, 300);
+        });
+
+        var $postCategory = $('#postCategory');
+        var $customCategory = $('#customCategory');
+
+        function toggleCustomCategory(shouldFocus) {
+            var isCustom = $postCategory.val() === '{{ custom_category_value }}';
+            $customCategory.toggleClass('d-none', !isCustom)
+                .prop('disabled', !isCustom)
+                .prop('required', isCustom);
+            if (isCustom && shouldFocus) {
+                $customCategory.trigger('focus');
+            }
+        }
+
+        toggleCustomCategory(false);
+        $postCategory.on('change', function () {
+            toggleCustomCategory(true);
+        });
+
+        // === Cropper.js 图片裁剪逻辑 ===
+        var cropper;
+        var image = document.getElementById('imageToCrop');
+        var $modal = $('#cropModal');
+
+        $('#coverUpload').on('change', function (e) {
+            var files = e.target.files;
+            if (files && files.length > 0) {
+                var file = files[0];
+                var url = URL.createObjectURL(file);
+                image.src = url;
+                $modal.modal('show');
+            }
+        });
+
+        $modal.on('shown.bs.modal', function () {
+            cropper = new Cropper(image, {
+                aspectRatio: 600 / 360,
+                viewMode: 2,
+                autoCropArea: 1,
+            });
+        }).on('hidden.bs.modal', function () {
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+            $('#coverUpload').val('');
+        });
+
+        $('#cropConfirmBtn').on('click', function () {
+            if (!cropper) return;
+            var canvas = cropper.getCroppedCanvas({
+                maxWidth: 2400,
+                maxHeight: 1440,
+                imageSmoothingEnabled: true,
+                imageSmoothingQuality: 'high',
+            });
+
+            var base64data = canvas.toDataURL('image/jpeg', 0.95);
+            $('#croppedCover').val(base64data);
+
+            var $area = $('#coverPreviewArea');
+            $area.empty();
+            $area.append('<img src="' + base64data + '" style="max-width: 100%; border-radius: 8px;">');
+            $area.append('<div class="mt-2 text-success"><i class="fas fa-check-circle me-1"></i>裁剪完成，点击图片可重新上传</div>');
+
+            $('#clearCover').val('false');
+            $('#removeCoverBtn').show();
+            $modal.modal('hide');
+        });
+
+        var originalUploadUI = `
+            <i class="fas fa-cloud-upload-alt d-block"></i>
+            <p>点击或拖拽上传封面图片<br><small>推荐尺寸 2400×1440，支持 JPG / PNG</small></p>
+        `;
+
+        $('#removeCoverBtn').on('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            $('#croppedCover').val('');
+            $('#coverUpload').val('');
+            $('#clearCover').val('true');
+
+            $('#coverPreviewArea').html(originalUploadUI);
+            $(this).hide();
+        });
+    });
+</script>
+{% endblock %}

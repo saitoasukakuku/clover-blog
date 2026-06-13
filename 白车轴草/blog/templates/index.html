@@ -1,0 +1,1039 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="{% static 'img/favicon_v4.png' %}" type="image/png">
+    <title>白车轴草</title>
+    <link rel="stylesheet" href="{% static 'plugins/bootstrap-5.3.8-dist/css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* ========== 全局基础 ========== */
+        body {
+            background-color: #f5f7f5;
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            color: #333;
+        }
+
+        /* ========== 导航栏 ========== */
+        .brand-text {
+            color: #2e7d32;
+            font-weight: 700;
+            font-size: 1.4rem;
+            letter-spacing: 2px;
+            font-family: 'Microsoft YaHei', sans-serif;
+            transition: color 0.3s ease;
+        }
+
+        .navbar-brand:hover .brand-text {
+            color: #4caf50;
+        }
+
+        .brand-logo {
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .navbar-brand:hover .brand-logo {
+            transform: rotate(45deg) scale(1.15);
+        }
+
+        .dropdown-item {
+            transition: all 0.3s ease;
+        }
+
+        .dropdown-item:hover {
+            background-color: #f1f8e9;
+            color: #2e7d32;
+            transform: translateX(6px);
+        }
+
+        .user-center-toggle {
+            color: #212529;
+            transition: color 0.3s ease;
+        }
+
+        .user-center-toggle:hover,
+        .nav-item.dropdown .user-center-toggle.show {
+            color: #2e7d32 !important;
+        }
+
+        .nav-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #c8e6c9;
+        }
+
+        .dropdown-menu.show {
+            display: block;
+            animation: menuPopup 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            transform-origin: top right;
+        }
+
+        @keyframes menuPopup {
+            0% {
+                opacity: 0;
+                transform: scale(0.95) translateY(-8px);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        /* ========== Hero 横幅 ========== */
+        .hero-section {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 50%, #a5d6a7 100%);
+            padding: 60px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(46, 125, 50, 0.08) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .hero-section::after {
+            content: '\2618';
+            position: absolute;
+            bottom: 15px;
+            right: 40px;
+            font-size: 4rem;
+            opacity: 0.08;
+        }
+
+        .hero-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #1b5e20;
+            margin-bottom: 10px;
+        }
+
+        .hero-subtitle {
+            font-size: 1.05rem;
+            color: #4a7c59;
+            margin-bottom: 28px;
+        }
+
+        .hero-search {
+            max-width: 600px;
+        }
+
+        .hero-search-bar {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border: 2px solid #a5d6a7;
+            border-radius: 30px;
+            box-shadow: 0 8px 22px rgba(46, 125, 50, 0.12);
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .hero-search .form-control {
+            border: 0;
+            box-shadow: none;
+            height: 56px;
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+
+        .hero-search .search-keyword {
+            background: transparent;
+            border-radius: 30px 0 0 30px;
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: 0 22px;
+        }
+
+        .hero-date-filter {
+            align-items: center;
+            align-self: stretch;
+            background: #f6fff6;
+            border-left: 1px solid #d8edd9;
+            color: #2e7d32;
+            display: flex;
+            gap: 8px;
+            padding: 0 14px;
+            white-space: nowrap;
+        }
+
+        .hero-date-label {
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .hero-search .search-date {
+            background: transparent;
+            border-radius: 0;
+            color: #2f6b33;
+            flex: 0 0 124px;
+            height: 100%;
+            padding: 0;
+            min-width: 124px;
+        }
+
+        .hero-search .form-control:focus {
+            background: #fbfffb;
+            box-shadow: inset 0 0 0 2px rgba(76, 175, 80, 0.18);
+        }
+
+        .hero-search .btn {
+            align-self: stretch;
+            background: #2e7d32;
+            border: 0;
+            border-left: 1px solid #2b7a30;
+            border-radius: 0;
+            color: #fff;
+            flex: 0 0 64px;
+            padding: 0;
+            transition: background 0.3s;
+        }
+
+        .hero-search .btn:hover {
+            background: #1b5e20;
+        }
+
+        @media (max-width: 576px) {
+            .hero-search {
+                max-width: 100%;
+            }
+
+            .hero-search-bar {
+                background: transparent;
+                border: 0;
+                border-radius: 0;
+                box-shadow: none;
+                flex-wrap: wrap;
+                gap: 10px;
+                overflow: visible;
+            }
+
+            .hero-search .search-keyword,
+            .hero-date-filter,
+            .hero-search .btn {
+                background: #fff;
+                border: 2px solid #a5d6a7;
+                border-radius: 25px;
+                flex: 1 1 100%;
+                height: 50px;
+            }
+
+            .hero-date-filter {
+                justify-content: space-between;
+                padding: 0 18px;
+            }
+
+            .hero-search .search-date {
+                flex: 0 0 150px;
+                min-width: 150px;
+            }
+
+            .hero-search .btn {
+                background: #2e7d32;
+                color: #fff;
+            }
+        }
+
+        /* ========== 文章卡片 ========== */
+        .post-card {
+            background: #fff;
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            margin-bottom: 24px;
+        }
+
+        .post-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 28px rgba(46, 125, 50, 0.12);
+        }
+
+        .post-card .card-img-top {
+            height: 180px;
+            object-fit: cover;
+        }
+
+        .post-card .card-body {
+            padding: 20px;
+        }
+
+        .post-card .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #212529;
+            margin-bottom: 8px;
+            transition: color 0.2s;
+        }
+
+        .post-card:hover .card-title {
+            color: #2e7d32;
+        }
+
+        .post-card .card-text {
+            font-size: 0.88rem;
+            color: #6c757d;
+            line-height: 1.6;
+        }
+
+        .post-card .card-footer {
+            background: transparent;
+            border-top: 1px solid #f0f0f0;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .post-meta {
+            font-size: 0.78rem;
+            color: #999;
+        }
+
+        .post-category {
+            background: #eef7ef;
+            color: #558b2f;
+            padding: 3px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .category-filter-bar {
+            background: #f1f8e9;
+            border: 1px solid #c8e6c9;
+            border-radius: 12px;
+            color: #2e7d32;
+            padding: 10px 14px;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .category-cloud-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #e8f5e9;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+        }
+
+        .category-cloud-header h5 {
+            border-bottom: 0;
+            padding-bottom: 0;
+            margin-bottom: 0;
+        }
+
+        .category-expand-btn {
+            border: 0;
+            background: transparent;
+            color: #2e7d32;
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 0;
+        }
+
+        .category-expand-btn:hover {
+            color: #1b5e20;
+        }
+
+        /* ========== 侧栏 ========== */
+        .sidebar-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 22px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            margin-bottom: 24px;
+        }
+
+        .sidebar-card h5 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1b5e20;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e8f5e9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-card h5 i {
+            color: #4caf50;
+        }
+
+        .popular-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 10px 0;
+            border-bottom: 1px solid #f5f5f5;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .popular-item:last-child {
+            border-bottom: none;
+        }
+
+        .popular-item:hover {
+            color: #2e7d32;
+        }
+
+        .popular-item .num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-right: 10px;
+            margin-top: 2px;
+        }
+
+        .popular-item:nth-child(-n+3) .num {
+            background: #2e7d32;
+            color: #fff;
+        }
+
+        .category-cloud .category-pill {
+            display: inline-block;
+            background: #f1f8e9;
+            color: #558b2f;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            margin: 4px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .category-cloud .category-pill:hover,
+        .category-cloud .category-pill.active {
+            background: #2e7d32;
+            color: #fff;
+            transform: scale(1.05);
+        }
+
+        .all-categories-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .all-categories-list .category-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f1f8e9;
+            color: #2e7d32;
+            padding: 7px 12px;
+            border-radius: 20px;
+            font-size: 0.86rem;
+            text-decoration: none;
+        }
+
+        .all-categories-list .category-count {
+            background: #d8edd9;
+            color: #1b5e20;
+            border-radius: 12px;
+            padding: 1px 7px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        .about-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 3px solid #c8e6c9;
+            object-fit: cover;
+        }
+
+        .about-avatar-placeholder {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #f1f8e9;
+            color: #2e7d32;
+            font-size: 1.5rem;
+        }
+
+        .about-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .about-stat-grid div {
+            background: #f7fbf7;
+            border: 1px solid #e4f2e5;
+            border-radius: 10px;
+            padding: 10px 6px;
+        }
+
+        .about-stat-grid strong {
+            display: block;
+            color: #1b5e20;
+            font-size: 1rem;
+            line-height: 1.2;
+        }
+
+        .about-stat-grid span {
+            color: #6c757d;
+            font-size: 0.76rem;
+        }
+
+        /* ========== 分页 ========== */
+        .page-link {
+            color: #2e7d32;
+            border-color: #e0e0e0;
+            border-radius: 8px;
+            margin: 0 3px;
+            transition: all 0.2s;
+        }
+
+        .page-link:hover {
+            background: #e8f5e9;
+            border-color: #a5d6a7;
+            color: #1b5e20;
+        }
+
+        .page-item.active .page-link {
+            background: #2e7d32;
+            border-color: #2e7d32;
+        }
+
+        /* ========== Footer ========== */
+        .site-footer {
+            background: #1b5e20;
+            color: #c8e6c9;
+            padding: 36px 0 20px;
+            margin-top: 50px;
+        }
+
+        .site-footer a {
+            color: #a5d6a7;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .site-footer a:hover {
+            color: #fff;
+        }
+
+        .footer-social a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            color: #c8e6c9;
+            margin: 0 6px;
+            transition: all 0.3s;
+        }
+
+        .footer-social a:hover {
+            background: #4caf50;
+            color: #fff;
+            transform: translateY(-3px);
+        }
+
+        /* ========== 创建文章区块 ========== */
+        .create-post-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 24px 28px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            margin-bottom: 28px;
+            border: 2px dashed #c8e6c9;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .create-post-card:hover {
+            border-color: #4caf50;
+            box-shadow: 0 4px 20px rgba(46, 125, 50, 0.1);
+        }
+
+        .create-post-card .section-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #1b5e20;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .create-post-card .section-title i {
+            color: #4caf50;
+            font-size: 1.1rem;
+        }
+
+        .create-post-card .form-control,
+        .create-post-card .form-select {
+            border: 1.5px solid #e0e0e0;
+            border-radius: 10px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .create-post-card .form-control:focus,
+        .create-post-card .form-select:focus {
+            border-color: #4caf50;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.12);
+        }
+
+        .create-post-card textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .btn-publish {
+            background: linear-gradient(135deg, #2e7d32, #43a047);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 9px 28px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.18);
+        }
+
+        .btn-publish:hover {
+            background: linear-gradient(135deg, #1b5e20, #2e7d32);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(46, 125, 50, 0.25);
+            color: #fff;
+        }
+
+        .btn-draft {
+            background: #f1f8e9;
+            color: #558b2f;
+            border: 1.5px solid #c8e6c9;
+            border-radius: 10px;
+            padding: 9px 24px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .btn-draft:hover {
+            background: #e8f5e9;
+            border-color: #a5d6a7;
+            color: #2e7d32;
+        }
+
+        .cover-upload {
+            border: 2px dashed #d5e8d4;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #fafff9;
+        }
+
+        .cover-upload:hover {
+            border-color: #4caf50;
+            background: #f1f8e9;
+        }
+
+        .cover-upload i {
+            font-size: 1.6rem;
+            color: #a5d6a7;
+            margin-bottom: 6px;
+            transition: color 0.3s;
+        }
+
+        .cover-upload:hover i {
+            color: #4caf50;
+        }
+
+        .cover-upload p {
+            font-size: 0.8rem;
+            color: #999;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="{% url 'index' %}">
+                <img src="{% static 'img/favicon_v4.png' %}" alt="Logo" width="35" height="35"
+                    class="d-inline-block align-text-top me-2 brand-logo">
+                <span class="brand-text">白车轴草</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+                aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <!-- <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="#">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Link</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            Dropdown
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link disabled">Disabled</a>
+                    </li>
+                </ul> -->
+                <!-- <form class="d-flex" role="search">
+                    <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search">
+                    <button class="btn btn-outline-success" type="submit">Search</button>
+                </form> -->
+
+                <ul class="navbar-nav ms-auto mb-2 mb-lg-0 d-flex">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle fw-medium user-center-toggle" href="#" role="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                            {% if user.is_authenticated and user.profile.avatar %}
+                            <img src="{{ user.profile.avatar.url }}" alt="头像" class="nav-avatar me-1">
+                            {% else %}
+                            <i class="fas fa-user" style="line-height: 1; color: rgb(98, 201, 120);"></i>
+                            {% endif %}
+                            用户中心
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2 rounded-3">
+                            {% if user.is_authenticated %}
+                            <li><span class="dropdown-item-text py-2 text-muted">你好，{{ user.username }}</span></li>
+                            <li><a class="dropdown-item py-2" href="{% url 'user_center' %}">个人资料</a></li>
+                            <li>
+                                <hr class="dropdown-divider my-2">
+                            </li>
+                            <li><a class="dropdown-item py-2 text-danger fw-medium" href="{% url 'logout' %}">退出登录</a></li>
+                            {% else %}
+                            <li><a class="dropdown-item py-2" href="{% url 'login' %}">登录</a></li>
+                            <li><a class="dropdown-item py-2" href="{% url 'register' %}">注册</a></li>
+                            {% endif %}
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    {% if messages %}
+    <div class="container mt-3">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- ========== Hero 横幅 ========== -->
+    <section class="hero-section" id="hero">
+        <div class="container">
+            <h1 class="hero-title">&#9752; 欢迎来到白车轴草</h1>
+            <p class="hero-subtitle">记录生活、分享技术、探索世界的小小角落</p>
+            <form class="hero-search d-flex" role="search" method="get" action="{% url 'index' %}">
+                {% if selected_category %}
+                <input type="hidden" name="category" value="{{ selected_category }}">
+                {% endif %}
+                <div class="hero-search-bar">
+                    <input class="form-control search-keyword" type="search" name="q" value="{{ search_query }}" placeholder="搜索文章..." aria-label="搜索">
+                    <label class="hero-date-filter">
+                        <span class="hero-date-label"><i class="far fa-calendar-alt me-1"></i>日期</span>
+                        <input class="form-control search-date" type="date" name="date" value="{{ selected_date }}" aria-label="发布日期">
+                    </label>
+                    <button class="btn" type="submit" aria-label="搜索"><i class="fas fa-search"></i></button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- ========== 主内容区 ========== -->
+    <main class="container py-4">
+        <div class="row">
+            <!-- 文章列表（双列卡片） -->
+            <div class="col-lg-8">
+
+                <!-- 创建文章按钮 -->
+                <div class="d-flex justify-content-end mb-3">
+                    <a href="{% url 'drafts' %}" class="btn btn-outline-secondary me-2 rounded-pill"><i class="far fa-folder-open me-1"></i>草稿箱</a>
+                    <a href="{% url 'create_post' %}" class="btn btn-publish rounded-pill"><i class="fas fa-pen-fancy me-1"></i>创建新文章</a>
+                </div>
+
+                {% if selected_category %}
+                <div class="category-filter-bar">
+                    <span><i class="fas fa-filter me-1"></i>正在筛选分类：<strong>{{ selected_category_label }}</strong></span>
+                    <a href="{% url 'index' %}{% if clear_category_query %}?{{ clear_category_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除分类</a>
+                </div>
+                {% endif %}
+
+                {% if search_query %}
+                <div class="category-filter-bar">
+                    <span><i class="fas fa-search me-1"></i>正在搜索：<strong>{{ search_query }}</strong></span>
+                    <a href="{% url 'index' %}{% if clear_search_query %}?{{ clear_search_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除搜索</a>
+                </div>
+                {% endif %}
+
+                {% if selected_date %}
+                <div class="category-filter-bar">
+                    <span><i class="far fa-calendar-alt me-1"></i>正在筛选日期：<strong>{{ selected_date }}</strong></span>
+                    <a href="{% url 'index' %}{% if clear_date_query %}?{{ clear_date_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除日期</a>
+                </div>
+                {% endif %}
+
+                <div class="row">
+
+                    {% for post in posts %}
+                    <!-- 文章卡片 -->
+                    <div class="col-md-6">
+                        <article class="post-card">
+                            {% if post.cover %}
+                            <a href="{% url 'post_detail' post.id %}">
+                                <img src="{{ post.cover.url }}" class="card-img-top" alt="文章封面">
+                            </a>
+                            {% else %}
+                            <a href="{% url 'post_detail' post.id %}">
+                                <img src="https://picsum.photos/seed/blog{{ forloop.counter }}/600/360" class="card-img-top" alt="文章封面">
+                            </a>
+                            {% endif %}
+                            <div class="card-body">
+                                <a href="{% url 'post_detail' post.id %}" style="text-decoration: none; color: inherit;">
+                                    <h2 class="card-title">{{ post.title }}</h2>
+                                </a>
+                                <p class="card-text">{{ post.content|truncatechars:100 }}</p>
+                            </div>
+                            <div class="card-footer">
+                                <span class="post-meta"><i class="far fa-calendar-alt me-1"></i>{{ post.created_at|date:"Y-m-d" }}</span>
+                                <span class="post-category">{{ post.category_label }}</span>
+                            </div>
+                        </article>
+                    </div>
+                    {% empty %}
+                    <div class="col-12 text-center py-5">
+                        {% if search_query or selected_category or selected_date %}
+                        <p class="text-muted">没有找到符合条件的文章。</p>
+                        {% else %}
+                        <p class="text-muted">还没有发布任何文章，快去创建第一篇吧！</p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+
+                </div>
+
+                <!-- 分页 -->
+                {% if page_obj.paginator.num_pages > 1 %}
+                <nav aria-label="文章分页" class="mt-3">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?{{ pagination_prefix }}page={{ page_obj.previous_page_number }}">上一页</a></li>
+                        {% else %}
+                        <li class="page-item disabled"><span class="page-link">上一页</span></li>
+                        {% endif %}
+
+                        {% for page_num in page_obj.paginator.page_range %}
+                        <li class="page-item {% if page_obj.number == page_num %}active{% endif %}">
+                            <a class="page-link" href="?{{ pagination_prefix }}page={{ page_num }}">{{ page_num }}</a>
+                        </li>
+                        {% endfor %}
+
+                        {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?{{ pagination_prefix }}page={{ page_obj.next_page_number }}">下一页</a></li>
+                        {% else %}
+                        <li class="page-item disabled"><span class="page-link">下一页</span></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+            </div>
+
+            <!-- 侧栏 -->
+            <aside class="col-lg-4">
+
+                <!-- 热门文章 -->
+                <div class="sidebar-card">
+                    <h5><i class="fas fa-fire"></i> 最近文章</h5>
+                    {% for recent_post in recent_posts %}
+                    <a href="{% url 'post_detail' recent_post.id %}" class="popular-item">
+                        <span class="num">{{ forloop.counter }}</span>
+                        <span>{{ recent_post.title }}</span>
+                    </a>
+                    {% empty %}
+                    <p class="text-muted mb-0" style="font-size: 0.86rem;">当前账号还没有发布文章</p>
+                    {% endfor %}
+                </div>
+
+                <!-- 文章分类 -->
+                <div class="sidebar-card">
+                    <div class="category-cloud-header">
+                        <h5><i class="fas fa-folder-open"></i> 文章分类</h5>
+                        {% if category_counts|length > 10 %}
+                        <button type="button" class="category-expand-btn" data-bs-toggle="modal" data-bs-target="#allCategoriesModal">展开</button>
+                        {% endif %}
+                    </div>
+                    <div class="category-cloud">
+                        {% for category in top_categories %}
+                        <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_date %}date={{ selected_date|urlencode }}&{% endif %}category={{ category.value|urlencode }}" class="category-pill {% if selected_category == category.value %}active{% endif %}">{{ category.name }}</a>
+                        {% empty %}
+                        <span class="text-muted" style="font-size: 0.86rem;">暂无分类</span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- 关于 -->
+                <div class="sidebar-card text-center">
+                    <h5 class="justify-content-center"><i class="fas fa-leaf"></i> 关于博主</h5>
+                    {% if profile and profile.avatar %}
+                    <img src="{{ profile.avatar.url }}" alt="头像" class="about-avatar mb-3">
+                    {% else %}
+                    <div class="about-avatar about-avatar-placeholder mb-3"><i class="fas fa-user"></i></div>
+                    {% endif %}
+                    <p class="mb-1 fw-bold" style="color: #2e7d32;">{% if profile %}{{ profile.display_name }}{% else %}访客{% endif %}</p>
+                    {% if profile and profile.bio %}
+                    <p class="text-muted" style="font-size: 0.85rem;">{{ profile.bio }}</p>
+                    {% else %}
+                    <p class="text-muted" style="font-size: 0.85rem;">这里会展示当前账号的个人资料和文章动态。</p>
+                    {% endif %}
+                    <div class="about-stat-grid">
+                        <div>
+                            <strong>{{ published_count }}</strong>
+                            <span>已发布</span>
+                        </div>
+                        <div>
+                            <strong>{{ category_count }}</strong>
+                            <span>分类</span>
+                        </div>
+                    </div>
+                </div>
+
+            </aside>
+        </div>
+    </main>
+
+    <div class="modal fade" id="allCategoriesModal" tabindex="-1" aria-labelledby="allCategoriesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="allCategoriesModalLabel"><i class="fas fa-folder-open me-2 text-success"></i>全部分类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="all-categories-list">
+                        {% for category in category_counts %}
+                        <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_date %}date={{ selected_date|urlencode }}&{% endif %}category={{ category.value|urlencode }}" class="category-pill">
+                            <span>{{ category.name }}</span>
+                            <span class="category-count">{{ category.count }}</span>
+                        </a>
+                        {% empty %}
+                        <span class="text-muted">暂无分类</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== Footer ========== -->
+    <footer class="site-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-4 text-center text-md-start mb-3 mb-md-0">
+                    <span style="font-size: 1.1rem; font-weight: 600; color: #fff;">&#9752; 白车轴草</span>
+                </div>
+                <div class="col-md-4 text-center mb-3 mb-md-0">
+                    <div class="footer-social">
+                        {% include 'includes/footer_social_links.html' %}
+                    </div>
+                </div>
+                <div class="col-md-4 text-center text-md-end">
+                    <small>&copy; 2026 白车轴草 &middot; All Rights Reserved</small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="{% static 'js/jquery-3.7.1.js' %}"></script>
+    <script src="{% static 'plugins/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js' %}"></script>
+    <script>
+        const heroSearchForm = document.querySelector('.hero-search');
+
+        function submitHeroSearch(form) {
+            const formData = new FormData(form);
+            const params = new URLSearchParams();
+            const query = (formData.get('q') || '').trim();
+            const date = (formData.get('date') || '').trim();
+            const category = (formData.get('category') || '').trim();
+
+            if (query) {
+                params.set('q', query);
+            }
+            if (date) {
+                params.set('date', date);
+            }
+            if (category) {
+                params.set('category', category);
+            }
+
+            const queryString = params.toString();
+            window.location.href = form.action + (queryString ? `?${queryString}` : '');
+        }
+
+        heroSearchForm?.addEventListener('submit', function (event) {
+            event.preventDefault();
+            submitHeroSearch(this);
+        });
+
+        heroSearchForm?.querySelector('button[type="submit"]')?.addEventListener('click', function (event) {
+            event.preventDefault();
+            submitHeroSearch(heroSearchForm);
+        });
+
+        heroSearchForm?.querySelector('input[name="q"]')?.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                submitHeroSearch(heroSearchForm);
+            }
+        });
+    </script>
+</body>
+
+</html>

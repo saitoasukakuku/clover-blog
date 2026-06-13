@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Django local state
+*.sqlite3
+media/
+
+# Local tooling and editor state
+.claude/
+.codex-run/
+.vscode/
+output/
+
+# Environment files
+.env
+.venv/
+venv/
+env/

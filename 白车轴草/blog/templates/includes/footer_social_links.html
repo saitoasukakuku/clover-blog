@@ -1,0 +1,25 @@
+{% if footer_profile and footer_profile.github_url %}
+<a href="{{ footer_profile.github_url }}" title="GitHub" aria-label="GitHub" target="_blank" rel="noopener noreferrer"><i class="fab fa-github"></i></a>
+{% elif footer_can_configure_social %}
+<a href="{% url 'user_center' %}" title="GitHub（未配置）" aria-label="GitHub（未配置）"><i class="fab fa-github"></i></a>
+{% else %}
+<a title="GitHub（root 未配置）" aria-label="GitHub（root 未配置）" aria-disabled="true"><i class="fab fa-github"></i></a>
+{% endif %}
+
+{% if footer_profile and footer_profile.weibo_url %}
+<a href="{{ footer_profile.weibo_url }}" title="微博" aria-label="微博" target="_blank" rel="noopener noreferrer"><i class="fab fa-weibo"></i></a>
+{% elif footer_can_configure_social %}
+<a href="{% url 'user_center' %}" title="微博（未配置）" aria-label="微博（未配置）"><i class="fab fa-weibo"></i></a>
+{% else %}
+<a title="微博（root 未配置）" aria-label="微博（root 未配置）" aria-disabled="true"><i class="fab fa-weibo"></i></a>
+{% endif %}
+
+{% if footer_email %}
+<a href="mailto:{{ footer_email }}" title="邮箱" aria-label="邮箱"><i class="fas fa-envelope"></i></a>
+{% elif footer_can_configure_social %}
+<a href="{% url 'user_center' %}" title="邮箱（未配置）" aria-label="邮箱（未配置）"><i class="fas fa-envelope"></i></a>
+{% else %}
+<a title="邮箱（root 未配置）" aria-label="邮箱（root 未配置）" aria-disabled="true"><i class="fas fa-envelope"></i></a>
+{% endif %}
+
+<a href="{% url 'rss_feed' %}" title="RSS" aria-label="RSS"><i class="fas fa-rss"></i></a>

@@ -1,0 +1,335 @@
+{% extends 'base.html' %}
+
+{% block title %}创建新文章 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<style>
+    /* ========== 创建文章页面 ========== */
+    .create-page-header {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 50%, #a5d6a7 100%);
+        padding: 36px 0;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .create-page-header::after {
+        content: '\2618';
+        position: absolute;
+        bottom: 10px;
+        right: 40px;
+        font-size: 3rem;
+        opacity: 0.08;
+    }
+
+    .create-page-header h1 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #1b5e20;
+        margin: 0;
+    }
+
+    .create-page-header p {
+        color: #4a7c59;
+        font-size: 0.92rem;
+        margin: 6px 0 0;
+    }
+
+    .create-form-card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 32px;
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+    }
+
+    .create-form-card .form-label {
+        font-weight: 600;
+        color: #2e7d32;
+        font-size: 0.9rem;
+        margin-bottom: 6px;
+    }
+
+    .create-form-card .form-control,
+    .create-form-card .form-select {
+        border: 1.5px solid #e0e0e0;
+        border-radius: 10px;
+        transition: border-color 0.3s, box-shadow 0.3s;
+        font-size: 0.9rem;
+    }
+
+    .create-form-card .form-control:focus,
+    .create-form-card .form-select:focus {
+        border-color: #4caf50;
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.12);
+    }
+
+    .create-form-card textarea {
+        resize: vertical;
+        min-height: 260px;
+    }
+
+    .cover-upload-area {
+        border: 2px dashed #d5e8d4;
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: #fafff9;
+    }
+
+    .cover-upload-area:hover {
+        border-color: #4caf50;
+        background: #f1f8e9;
+    }
+
+    .cover-upload-area i {
+        font-size: 2rem;
+        color: #a5d6a7;
+        transition: color 0.3s;
+    }
+
+    .cover-upload-area:hover i {
+        color: #4caf50;
+    }
+
+    .cover-upload-area p {
+        font-size: 0.82rem;
+        color: #999;
+        margin: 8px 0 0;
+    }
+
+    .btn-back {
+        color: #558b2f;
+        font-weight: 500;
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+
+    .btn-back:hover {
+        color: #2e7d32;
+    }
+
+    .btn-remove-cover {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        text-align: center;
+        line-height: 34px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 页面头部 -->
+<section class="create-page-header">
+    <div class="container">
+        <h1><i class="fas fa-pen-fancy me-2"></i>创建新文章</h1>
+        <p>分享你的想法，记录生活的点滴</p>
+    </div>
+</section>
+
+<!-- 表单主体 -->
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-9">
+            <div class="create-form-card">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+
+                    <!-- 文章标题 -->
+                    <div class="mb-4">
+                        <label for="postTitle" class="form-label"><i class="fas fa-heading me-1"></i>文章标题</label>
+                        <input type="text" class="form-control form-control-lg" id="postTitle" name="title"
+                            value="{{ post.title|default:'' }}" placeholder="输入一个吸引人的标题..." required>
+                    </div>
+
+                    <!-- 文章分类 -->
+                    <div class="mb-4">
+                        <label for="postCategory" class="form-label"><i class="fas fa-folder me-1"></i>文章分类</label>
+                        <select class="form-select" id="postCategory" name="category">
+                            <option {% if not post.category %}selected{% endif %} disabled>选择分类</option>
+                            {% for value, label in categories %}
+                            <option value="{{ value }}" {% if post.category == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                            <option value="{{ custom_category_value }}" {% if is_custom_category %}selected{% endif %}>自定义</option>
+                        </select>
+                        <input type="text" class="form-control mt-3 {% if not is_custom_category %}d-none{% endif %}"
+                            id="customCategory" name="custom_category" value="{{ custom_category }}"
+                            placeholder="输入自定义分类..." maxlength="50">
+                    </div>
+
+                    <!-- 封面图片 -->
+                    <div class="mb-4">
+                        <label class="form-label"><i class="fas fa-image me-1"></i>封面图片</label>
+                        <input type="hidden" name="cropped_cover" id="croppedCover">
+                        <input type="hidden" name="clear_cover" id="clearCover" value="false">
+                        <input type="file" id="coverUpload" accept="image/*" class="d-none">
+
+                        <div style="position: relative;" id="coverPreviewContainer">
+                            <!-- 删除按钮 -->
+                            <button type="button" class="btn btn-danger btn-sm btn-remove-cover" id="removeCoverBtn" {% if not post or not post.cover %}style="display: none;"{% endif %}><i class="fas fa-trash-alt"></i></button>
+
+                            <label for="coverUpload" class="cover-upload-area d-block" id="coverPreviewArea">
+                                {% if post and post.cover %}
+                                <img src="{{ post.cover.url }}" style="max-width: 100%; border-radius: 8px;">
+                                <div class="mt-2 text-success"><i class="fas fa-check-circle me-1"></i>已上传封面，点击图片可重新上传裁剪
+                                </div>
+                                {% else %}
+                                <i class="fas fa-cloud-upload-alt d-block"></i>
+                                <p>点击或拖拽上传封面图片<br><small>推荐尺寸 2400×1440，支持 JPG / PNG</small></p>
+                                {% endif %}
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 文章内容 -->
+                    <div class="mb-4">
+                        <label for="postContent" class="form-label"><i class="fas fa-align-left me-1"></i>文章内容</label>
+                        <textarea class="form-control" id="postContent" name="content" rows="10"
+                            placeholder="写下你的想法...">{{ post.content|default:'' }}</textarea>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="d-flex justify-content-between align-items-center pt-2">
+                        <a href="{% url 'index' %}" class="btn-back"><i class="fas fa-arrow-left me-1"></i>返回首页</a>
+                        <div>
+                            <button type="submit" name="action" value="draft" class="btn btn-draft me-2"><i
+                                    class="far fa-bookmark me-1"></i>存为草稿</button>
+                            <button type="submit" name="action" value="publish" class="btn btn-publish"><i
+                                    class="fas fa-paper-plane me-1"></i>发布文章</button>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- 裁剪图片弹窗 -->
+<div class="modal fade" id="cropModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-crop-alt me-2 text-success"></i>裁剪封面图片</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center bg-light">
+                <div class="img-container" style="max-height: 500px;">
+                    <img id="imageToCrop" src="" alt="待裁剪图片" style="max-width: 100%; display: block;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="cropConfirmBtn">确认裁剪</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+    $(document).ready(function () {
+        var cropper;
+        var image = document.getElementById('imageToCrop');
+        var $modal = $('#cropModal');
+        var $postCategory = $('#postCategory');
+        var $customCategory = $('#customCategory');
+
+        function toggleCustomCategory(shouldFocus) {
+            var isCustom = $postCategory.val() === '{{ custom_category_value }}';
+            $customCategory.toggleClass('d-none', !isCustom)
+                .prop('disabled', !isCustom)
+                .prop('required', isCustom);
+            if (isCustom && shouldFocus) {
+                $customCategory.trigger('focus');
+            }
+        }
+
+        toggleCustomCategory(false);
+        $postCategory.on('change', function () {
+            toggleCustomCategory(true);
+        });
+
+        $('#coverUpload').on('change', function (e) {
+            var files = e.target.files;
+            if (files && files.length > 0) {
+                var file = files[0];
+                var url = URL.createObjectURL(file);
+                image.src = url;
+                $modal.modal('show');
+            }
+        });
+
+        $modal.on('shown.bs.modal', function () {
+            cropper = new Cropper(image, {
+                aspectRatio: 600 / 360,
+                viewMode: 2,
+                autoCropArea: 1,
+            });
+        }).on('hidden.bs.modal', function () {
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+            // Clear the file input so the same file can be selected again if canceled
+            $('#coverUpload').val('');
+        });
+
+        $('#cropConfirmBtn').on('click', function () {
+            if (!cropper) return;
+            // 移除原本 600x360 的绝对像素限制，改用最大分辨率限制，以保证高分屏下的清晰度
+            var canvas = cropper.getCroppedCanvas({
+                maxWidth: 2400,
+                maxHeight: 1440,
+                imageSmoothingEnabled: true,
+                imageSmoothingQuality: 'high',
+            });
+            
+            var base64data = canvas.toDataURL('image/jpeg', 0.95);
+            $('#croppedCover').val(base64data);
+
+            // Update preview area
+            var $area = $('#coverPreviewArea');
+            $area.empty();
+            $area.append('<img src="' + base64data + '" style="max-width: 100%; border-radius: 8px;">');
+            $area.append('<div class="mt-2 text-success"><i class="fas fa-check-circle me-1"></i>裁剪完成，点击图片可重新上传</div>');
+
+            $('#clearCover').val('false');
+            $('#removeCoverBtn').show();
+
+            $modal.modal('hide');
+        });
+
+        // Remove cover button logic
+        var originalUploadUI = `
+            <i class="fas fa-cloud-upload-alt d-block"></i>
+            <p>点击或拖拽上传封面图片<br><small>推荐尺寸 2400×1440，支持 JPG / PNG</small></p>
+        `;
+
+        $('#removeCoverBtn').on('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Clear inputs
+            $('#croppedCover').val('');
+            $('#coverUpload').val('');
+            $('#clearCover').val('true');
+
+            // Restore UI
+            $('#coverPreviewArea').html(originalUploadUI);
+            $(this).hide();
+        });
+    });
+</script>
+{% endblock %}

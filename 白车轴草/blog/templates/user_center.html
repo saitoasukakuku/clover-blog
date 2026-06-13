@@ -1,0 +1,397 @@
+{% extends 'base.html' %}
+
+{% block title %}用户中心 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<style>
+    .profile-page-header {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 50%, #a5d6a7 100%);
+        padding: 38px 0;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .profile-page-header::after {
+        content: '\f007';
+        font-family: 'Font Awesome 5 Free';
+        font-weight: 900;
+        position: absolute;
+        bottom: 8px;
+        right: 42px;
+        font-size: 3rem;
+        opacity: 0.08;
+    }
+
+    .profile-page-header h1 {
+        color: #1b5e20;
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin: 0;
+    }
+
+    .profile-page-header p {
+        color: #4a7c59;
+        font-size: 0.92rem;
+        margin: 6px 0 0;
+    }
+
+    .profile-panel {
+        background: #fff;
+        border-radius: 14px;
+        padding: 28px;
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+    }
+
+    .profile-avatar {
+        width: 112px;
+        height: 112px;
+        border-radius: 50%;
+        border: 4px solid #c8e6c9;
+        object-fit: cover;
+        background: #f1f8e9;
+    }
+
+    .profile-avatar-placeholder {
+        width: 112px;
+        height: 112px;
+        border-radius: 50%;
+        border: 4px solid #c8e6c9;
+        background: #f1f8e9;
+        color: #2e7d32;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.6rem;
+    }
+
+    .profile-name {
+        color: #1b5e20;
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin: 14px 0 4px;
+    }
+
+    .profile-muted {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .profile-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 22px;
+    }
+
+    .profile-stat {
+        background: #f7fbf6;
+        border: 1px solid #e1f0df;
+        border-radius: 10px;
+        padding: 12px 8px;
+        text-align: center;
+    }
+
+    .profile-stat strong {
+        color: #1b5e20;
+        display: block;
+        font-size: 1.15rem;
+    }
+
+    .profile-stat span {
+        color: #6c757d;
+        font-size: 0.8rem;
+    }
+
+    .profile-form .form-label {
+        color: #2e7d32;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .profile-form .form-control {
+        border: 1.5px solid #e0e0e0;
+        border-radius: 10px;
+        font-size: 0.92rem;
+        transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .profile-form .form-control:focus {
+        border-color: #4caf50;
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.12);
+    }
+
+    .avatar-upload-area {
+        border: 2px dashed #d5e8d4;
+        border-radius: 12px;
+        padding: 26px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: #fafff9;
+    }
+
+    .avatar-upload-area:hover {
+        border-color: #4caf50;
+        background: #f1f8e9;
+    }
+
+    .avatar-upload-area i {
+        font-size: 2rem;
+        color: #a5d6a7;
+        transition: color 0.3s;
+    }
+
+    .avatar-upload-area:hover i {
+        color: #4caf50;
+    }
+
+    .avatar-upload-area p {
+        font-size: 0.82rem;
+        color: #999;
+        margin: 8px 0 0;
+    }
+
+    .avatar-preview-img {
+        width: 128px;
+        height: 128px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #c8e6c9;
+        background: #f1f8e9;
+    }
+
+    .btn-remove-avatar {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        text-align: center;
+        line-height: 34px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    .profile-help {
+        color: #7a867d;
+        font-size: 0.8rem;
+        margin-top: 6px;
+    }
+
+    .profile-error {
+        background: #fff5f5;
+        border: 1px solid #ffd1d1;
+        border-radius: 10px;
+        color: #b3261e;
+        font-size: 0.86rem;
+        padding: 9px 11px;
+        margin-top: 8px;
+    }
+
+    .quick-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="profile-page-header">
+    <div class="container">
+        <h1><i class="fas fa-id-card me-2"></i>用户中心</h1>
+        <p>管理头像、昵称、邮箱和个人资料</p>
+    </div>
+</section>
+
+<main class="container py-4">
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <aside class="profile-panel text-center">
+                {% if profile.avatar %}
+                <img src="{{ profile.avatar.url }}" alt="用户头像" class="profile-avatar">
+                {% else %}
+                <div class="profile-avatar-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div class="profile-name">{{ profile.display_name }}</div>
+                <p class="profile-muted">@{{ user.username }}</p>
+                {% if user.email %}
+                <p class="profile-muted mt-2"><i class="fas fa-envelope me-1"></i>{{ user.email }}</p>
+                {% else %}
+                <p class="profile-muted mt-2"><i class="far fa-envelope me-1"></i>暂未绑定邮箱</p>
+                {% endif %}
+                {% if profile.bio %}
+                <p class="profile-muted mt-3">{{ profile.bio }}</p>
+                {% endif %}
+
+                <div class="profile-stat-grid">
+                    <div class="profile-stat">
+                        <strong>{{ stats.published_count }}</strong>
+                        <span>已发布</span>
+                    </div>
+                    <div class="profile-stat">
+                        <strong>{{ stats.draft_count }}</strong>
+                        <span>草稿</span>
+                    </div>
+                    <div class="profile-stat">
+                        <strong>{{ stats.total_count }}</strong>
+                        <span>总文章</span>
+                    </div>
+                </div>
+
+                <div class="quick-actions justify-content-center">
+                    <a href="{% url 'create_post' %}" class="btn btn-publish btn-sm rounded-pill"><i class="fas fa-pen-fancy me-1"></i>写文章</a>
+                    <a href="{% url 'drafts' %}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="far fa-folder-open me-1"></i>草稿箱</a>
+                </div>
+            </aside>
+        </div>
+
+        <div class="col-lg-8">
+            <section class="profile-panel">
+                <form method="post" enctype="multipart/form-data" class="profile-form">
+                    {% csrf_token %}
+
+                    <div class="mb-4">
+                        <label class="form-label"><i class="fas fa-user-circle me-1"></i>头像</label>
+                        <input type="hidden" name="cropped_avatar" id="croppedAvatar">
+                        <input type="hidden" name="clear_avatar" id="clearAvatar" value="false">
+                        <input type="file" id="avatarUpload" accept="image/*" class="d-none">
+
+                        <div style="position: relative;" id="avatarPreviewContainer">
+                            <button type="button" class="btn btn-danger btn-sm btn-remove-avatar" id="removeAvatarBtn" {% if not profile.avatar %}style="display: none;"{% endif %}><i class="fas fa-trash-alt"></i></button>
+
+                            <label for="avatarUpload" class="avatar-upload-area d-block" id="avatarPreviewArea">
+                                {% if profile.avatar %}
+                                <img src="{{ profile.avatar.url }}" alt="头像预览" class="avatar-preview-img">
+                                <div class="mt-2 text-success"><i class="fas fa-check-circle me-1"></i>已上传头像，点击图片可重新上传裁剪</div>
+                                {% else %}
+                                <i class="fas fa-cloud-upload-alt d-block"></i>
+                                <p>点击上传头像图片<br><small>推荐使用正方形图片，支持 JPG / PNG</small></p>
+                                {% endif %}
+                            </label>
+                        </div>
+                        <div class="profile-help">支持 JPG、PNG 等常见图片格式。</div>
+                    </div>
+
+                    {% for field in form %}
+                    {% if field.name != 'avatar' %}
+                    <div class="mb-4">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}
+                        <div class="profile-help">{{ field.help_text }}</div>
+                        {% endif %}
+                        {% for error in field.errors %}
+                        <div class="profile-error">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+
+                    <div class="d-flex justify-content-between align-items-center pt-2">
+                        <a href="{% url 'index' %}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-arrow-left me-1"></i>返回首页</a>
+                        <button type="submit" class="btn btn-publish rounded-pill"><i class="fas fa-save me-1"></i>保存资料</button>
+                    </div>
+                </form>
+            </section>
+        </div>
+    </div>
+</main>
+
+<div class="modal fade" id="avatarCropModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-crop-alt me-2 text-success"></i>裁剪头像图片</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center bg-light">
+                <div class="img-container" style="max-height: 500px;">
+                    <img id="avatarImageToCrop" src="" alt="待裁剪头像" style="max-width: 100%; display: block;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="avatarCropConfirmBtn">确认裁剪</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+    $(document).ready(function () {
+        var avatarCropper;
+        var avatarImage = document.getElementById('avatarImageToCrop');
+        var $avatarModal = $('#avatarCropModal');
+
+        $('#avatarUpload').on('change', function (e) {
+            var files = e.target.files;
+            if (files && files.length > 0) {
+                var file = files[0];
+                avatarImage.src = URL.createObjectURL(file);
+                $avatarModal.modal('show');
+            }
+        });
+
+        $avatarModal.on('shown.bs.modal', function () {
+            avatarCropper = new Cropper(avatarImage, {
+                aspectRatio: 1,
+                viewMode: 2,
+                autoCropArea: 1,
+            });
+        }).on('hidden.bs.modal', function () {
+            if (avatarCropper) {
+                avatarCropper.destroy();
+                avatarCropper = null;
+            }
+            $('#avatarUpload').val('');
+        });
+
+        $('#avatarCropConfirmBtn').on('click', function () {
+            if (!avatarCropper) return;
+
+            var canvas = avatarCropper.getCroppedCanvas({
+                width: 512,
+                height: 512,
+                imageSmoothingEnabled: true,
+                imageSmoothingQuality: 'high',
+            });
+            var base64data = canvas.toDataURL('image/jpeg', 0.95);
+
+            $('#croppedAvatar').val(base64data);
+            $('#clearAvatar').val('false');
+            $('#avatarPreviewArea').html(
+                '<img src="' + base64data + '" alt="头像预览" class="avatar-preview-img">' +
+                '<div class="mt-2 text-success"><i class="fas fa-check-circle me-1"></i>裁剪完成，点击图片可重新上传</div>'
+            );
+            $('#removeAvatarBtn').show();
+
+            $avatarModal.modal('hide');
+        });
+
+        var originalAvatarUploadUI = `
+            <i class="fas fa-cloud-upload-alt d-block"></i>
+            <p>点击上传头像图片<br><small>推荐使用正方形图片，支持 JPG / PNG</small></p>
+        `;
+
+        $('#removeAvatarBtn').on('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            $('#croppedAvatar').val('');
+            $('#avatarUpload').val('');
+            $('#clearAvatar').val('true');
+            $('#avatarPreviewArea').html(originalAvatarUploadUI);
+            $(this).hide();
+        });
+    });
+</script>
+{% endblock %}
