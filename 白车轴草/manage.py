@@ -3,9 +3,12 @@
 import os
 import sys
 
+from sqlite_compat import patch_sqlite
+
 
 def main():
     """Run administrative tasks."""
+    patch_sqlite()
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', '白车轴草.settings')
     try:
         from django.core.management import execute_from_command_line

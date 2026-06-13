@@ -1,3 +1,4 @@
 Django==4.2
 Pillow<11
 gunicorn
+pysqlite3-binary<1
