@@ -1,5 +1,7 @@
 Django==4.2
 Pillow<11
 gunicorn
+mysqlclient<3
 pysqlite3-binary<1
+python-dotenv<2
 whitenoise
