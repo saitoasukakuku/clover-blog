@@ -23,11 +23,9 @@ load_dotenv(BASE_DIR.parent / '.env')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-i*iuulk6a4sg^$dmj-lg9@yn)$=w_&w(p-*abnzgkn$uj9*r)#'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Local development uses these defaults. The server overrides them in .env.
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-development-only')
+DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in {'1', 'true', 'yes', 'on'}
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.20.100', '.trycloudflare.com']
 CSRF_TRUSTED_ORIGINS = ['https://*.trycloudflare.com']
