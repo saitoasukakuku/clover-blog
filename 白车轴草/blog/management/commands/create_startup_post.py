@@ -11,7 +11,7 @@ from blog.models import Post
 
 
 CATEGORY_VALUES = [category_value for category_value, _ in Post.CATEGORY_CHOICES]
-DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat'
+DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash'
 DEEPSEEK_CHAT_COMPLETIONS_URL = 'https://api.deepseek.com/chat/completions'
 
 
