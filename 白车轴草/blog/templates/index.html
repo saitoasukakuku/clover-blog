@@ -843,7 +843,11 @@
                                 <p class="card-text">{{ post.content|truncatechars:100 }}</p>
                             </div>
                             <div class="card-footer">
-                                <span class="post-meta"><i class="far fa-calendar-alt me-1"></i>{{ post.created_at|date:"Y-m-d" }}</span>
+                                <span class="post-meta">
+                                    <i class="far fa-calendar-alt me-1"></i>{{ post.created_at|date:"Y-m-d" }}
+                                    <span class="mx-1">·</span>
+                                    <i class="fas fa-user me-1"></i>{{ post.author.profile.display_name|default:post.author.username }}
+                                </span>
                                 <span class="post-category">{{ post.category_label }}</span>
                             </div>
                         </article>

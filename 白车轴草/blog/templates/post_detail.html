@@ -416,6 +416,14 @@
                     <h1 class="header-content">{{ post.title }}</h1>
                     <div class="post-meta-info">
                         <span><i class="far fa-calendar-alt"></i>发表于 {{ post.created_at|date:"Y-m-d" }}</span>
+                        <span>
+                            <i class="fas fa-user"></i>
+                            作者 {{ post.author.profile.display_name|default:post.author.username }}
+                        </span>
+                        <span>
+                            <i class="fas fa-eye"></i>
+                            {{ post.get_visibility_display }}
+                        </span>
                         <span class="meta-item">
                             <i class="fas fa-eye"></i>
                             浏览 {{ post.views_count }} 次
@@ -445,16 +453,22 @@
                 <div id="viewMode">
                     <!-- 操作栏 -->
                     <div class="action-toolbar position-relative" style="z-index: 20;">
-                        <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm rounded-pill"><i
-                                class="fas fa-arrow-left me-1"></i>返回首页</a>
+                        <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm rounded-pill">
+                            <i class="fas fa-arrow-left me-1"></i>返回首页
+                        </a>
+
+                        {% if user.is_authenticated and post.author == user %}
                         <div class="d-flex gap-2">
-                            <button type="button" class="btn btn-outline-success btn-sm rounded-pill"
-                                id="startEditBtn"><i class="fas fa-edit me-1"></i>编辑文章</button>
+                            <button type="button" class="btn btn-outline-success btn-sm rounded-pill" id="startEditBtn">
+                                <i class="fas fa-edit me-1"></i>编辑文章
+                            </button>
                             <a href="{% url 'delete_post' post.id %}"
-                                class="btn btn-outline-danger btn-sm rounded-pill"
-                                onclick="return confirm('确定要永久删除这篇已发布的文章吗？此操作不可恢复。')"><i
-                                    class="fas fa-trash-alt me-1"></i>删除文章</a>
+                            class="btn btn-outline-danger btn-sm rounded-pill"
+                            onclick="return confirm('确定要永久删除这篇已发布的文章吗？此操作不可恢复。')">
+                                <i class="fas fa-trash-alt me-1"></i>删除文章
+                            </a>
                         </div>
+                        {% endif %}
                     </div>
 
                     <!-- 正文内容 -->
@@ -466,6 +480,7 @@
                 </div>
 
                 <!-- ================= 编辑模式 ================= -->
+                {% if user.is_authenticated and post.author == user %}
                 <form id="editMode" method="post" action="{% url 'edit_post' post.id %}"
                     enctype="multipart/form-data" style="display: none;">
                     {% csrf_token %}
@@ -493,6 +508,18 @@
                         <input type="text" class="form-control mt-3 {% if not is_custom_category %}d-none{% endif %}"
                             id="customCategory" name="custom_category" value="{{ custom_category }}"
                             placeholder="输入自定义分类..." maxlength="50">
+                    </div>
+
+                    <!-- 可见范围 -->
+
+                    <div class="mb-4">
+                        <label for="postVisibility" class="form-label">
+                            <i class="fas fa-eye me-1"></i>可见范围
+                        </label>
+                        <select class="form-select" id="postVisibility" name="visibility">
+                            <option value="private" {% if post.visibility == 'private' %}selected{% endif %}>仅自己可见</option>
+                            <option value="public" {% if post.visibility == 'public' %}selected{% endif %}>公开</option>
+                        </select>
                     </div>
 
                     <!-- 封面图片 -->
@@ -542,11 +569,20 @@
                         </div>
                     </div>
                 </form>
+                {% endif %}
 
             </article>
 
             <aside class="detail-sidebar">
                 <h2><i class="fas fa-leaf me-2"></i>文章信息</h2>
+                <div class="detail-stat">
+                    <span>作者</span>
+                    <strong>{{ post.author.profile.display_name|default:post.author.username }}</strong>
+                </div>
+                <div class="detail-stat">
+                    <span>可见范围</span>
+                    <strong>{{ post.get_visibility_display }}</strong>
+                </div>
                 <div class="detail-stat">
                     <span>分类</span>
                     <strong>{{ post.category_label }}</strong>
