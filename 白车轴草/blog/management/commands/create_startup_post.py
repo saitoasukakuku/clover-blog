@@ -260,7 +260,10 @@ class Command(BaseCommand):
         })
         request = Request(
             f'{PEXELS_SEARCH_URL}?{query_parameters}',
-            headers={'Authorization': api_key},
+            headers={
+                'Authorization': api_key,
+                'User-Agent': 'clover-blog/1.0',
+            },
             method='GET',
         )
 
