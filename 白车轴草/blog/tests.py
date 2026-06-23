@@ -1,6 +1,10 @@
 from datetime import datetime
+from io import StringIO
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -274,3 +278,39 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '<rss version="2.0">')
         self.assertContains(response, 'root 的文章')
         self.assertNotContains(response, 'writer 的文章')
+
+
+class StartupPostCommandTests(TestCase):
+    def test_create_startup_post_creates_one_published_post_for_user(self):
+        author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
+        command_output = StringIO()
+
+        with patch(
+            'blog.management.commands.create_startup_post.Command.get_boot_id',
+            return_value='test-boot-id',
+        ):
+            call_command('create_startup_post', stdout=command_output)
+
+        post = Post.objects.get(author=author)
+        self.assertEqual(post.status, 'published')
+        self.assertEqual(post.category, 'project')
+        self.assertIn('boot:test-boot-id', post.tags)
+        self.assertIn('Created startup post', command_output.getvalue())
+
+    def test_create_startup_post_skips_duplicate_for_same_boot(self):
+        author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
+        command_output = StringIO()
+
+        with patch(
+            'blog.management.commands.create_startup_post.Command.get_boot_id',
+            return_value='test-boot-id',
+        ):
+            call_command('create_startup_post', stdout=command_output)
+            call_command('create_startup_post', stdout=command_output)
+
+        self.assertEqual(Post.objects.filter(author=author).count(), 1)
+        self.assertIn('Startup post already exists', command_output.getvalue())
+
+    def test_create_startup_post_requires_existing_user(self):
+        with self.assertRaises(CommandError):
+            call_command('create_startup_post', username='missing-user')
