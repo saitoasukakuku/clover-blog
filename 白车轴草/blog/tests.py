@@ -281,7 +281,7 @@ class AuthViewsTests(TestCase):
 
 
 class StartupPostCommandTests(TestCase):
-    def test_create_startup_post_creates_one_published_post_for_user(self):
+    def test_create_startup_post_creates_one_draft_article_for_user(self):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
         command_output = StringIO()
 
@@ -292,10 +292,23 @@ class StartupPostCommandTests(TestCase):
             call_command('create_startup_post', stdout=command_output)
 
         post = Post.objects.get(author=author)
-        self.assertEqual(post.status, 'published')
-        self.assertEqual(post.category, 'project')
+        self.assertEqual(post.status, 'draft')
+        self.assertIn(post.category, ['food', 'life', 'study', 'tech'])
+        self.assertIn('自动草稿', post.tags)
         self.assertIn('boot:test-boot-id', post.tags)
-        self.assertIn('Created startup post', command_output.getvalue())
+        self.assertIn('Created generated article', command_output.getvalue())
+
+    def test_create_startup_post_can_publish_article_when_requested(self):
+        author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
+
+        with patch(
+            'blog.management.commands.create_startup_post.Command.get_boot_id',
+            return_value='test-boot-id',
+        ):
+            call_command('create_startup_post', publish=True)
+
+        post = Post.objects.get(author=author)
+        self.assertEqual(post.status, 'published')
 
     def test_create_startup_post_skips_duplicate_for_same_boot(self):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
@@ -309,7 +322,7 @@ class StartupPostCommandTests(TestCase):
             call_command('create_startup_post', stdout=command_output)
 
         self.assertEqual(Post.objects.filter(author=author).count(), 1)
-        self.assertIn('Startup post already exists', command_output.getvalue())
+        self.assertIn('Generated article already exists', command_output.getvalue())
 
     def test_create_startup_post_requires_existing_user(self):
         with self.assertRaises(CommandError):
