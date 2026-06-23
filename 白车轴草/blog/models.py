@@ -30,6 +30,7 @@ class Post(models.Model):
     cover = models.ImageField(upload_to='covers/', null=True, blank=True, verbose_name='封面图片')
     content = models.TextField(verbose_name='文章内容')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name='状态')
+    views_count = models.PositiveIntegerField(default=0, verbose_name='浏览量')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 

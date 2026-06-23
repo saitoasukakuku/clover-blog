@@ -416,6 +416,10 @@
                     <h1 class="header-content">{{ post.title }}</h1>
                     <div class="post-meta-info">
                         <span><i class="far fa-calendar-alt"></i>发表于 {{ post.created_at|date:"Y-m-d" }}</span>
+                        <span class="meta-item">
+                            <i class="fas fa-eye"></i>
+                            浏览 {{ post.views_count }} 次
+                        </span>
                         {% if post.updated_at|date:"Y-m-d" != post.created_at|date:"Y-m-d" %}
                         <span><i class="fas fa-history"></i>更新于 {{ post.updated_at|date:"Y-m-d" }}</span>
                         {% endif %}

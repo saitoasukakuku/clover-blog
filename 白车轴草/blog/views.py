@@ -4,7 +4,7 @@ from django.core.paginator import Paginator
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import F, Q
 from django.http import HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -316,10 +316,15 @@ def delete_draft(request, post_id):
 
 @login_required
 def post_detail(request, post_id):
-    post = get_object_or_404(Post, id=post_id, author=request.user, status='published')
-    context = {'post': post}
-    context.update(get_category_context(post))
-    return render(request, 'post_detail.html', context)
+    post = get_object_or_404(Post, id=post_id, author=request.user)
+
+    if post.status != 'published':
+        return redirect('drafts')
+
+    Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)
+    post.refresh_from_db(fields=['views_count'])
+
+    return render(request, 'post_detail.html', {'post': post})
 
 @login_required
 def delete_post(request, post_id):

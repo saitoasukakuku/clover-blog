@@ -316,6 +316,23 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '<rss version="2.0">')
         self.assertContains(response, 'root 的文章')
         self.assertNotContains(response, 'writer 的文章')
+    
+    def test_post_detail_increments_views_count(self):
+        owner = User.objects.create_user(username='owner', password='StrongPass12345')
+        post = Post.objects.create(
+            author=owner,
+            title='有浏览量的文章',
+            category='life',
+            content='测试浏览量',
+            status='published',
+        )
+        self.client.login(username='owner', password='StrongPass12345')
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertEqual(response.status_code, 200)
+        post.refresh_from_db()
+        self.assertEqual(post.views_count, 1)
 
 
 class StartupPostCommandTests(TestCase):
