@@ -1,9 +1,11 @@
 import os
 import json
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -13,6 +15,21 @@ from blog.models import Post
 CATEGORY_VALUES = [category_value for category_value, _ in Post.CATEGORY_CHOICES]
 DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash'
 DEEPSEEK_CHAT_COMPLETIONS_URL = 'https://api.deepseek.com/chat/completions'
+PEXELS_SEARCH_URL = 'https://api.pexels.com/v1/search'
+PEXELS_CATEGORY_QUERIES = {
+    'tech': 'workspace laptop coding',
+    'life': 'cozy morning home',
+    'reading': 'books reading desk',
+    'cycling': 'bicycle road',
+    'photography': 'camera photography',
+    'travel': 'travel landscape',
+    'movie': 'cinema film',
+    'music': 'music headphones',
+    'food': 'home cooking food',
+    'study': 'study notebook desk',
+    'project': 'creative project workspace',
+    'mood': 'quiet nature mood',
+}
 
 
 class Command(BaseCommand):
@@ -34,10 +51,16 @@ class Command(BaseCommand):
             default=os.getenv('DEEPSEEK_MODEL', DEFAULT_DEEPSEEK_MODEL),
             help='DeepSeek model used to generate the article.',
         )
+        parser.add_argument(
+            '--skip-cover',
+            action='store_true',
+            help='Publish the article without searching Pexels for a cover image.',
+        )
 
     def handle(self, *args, **options):
         username = options['username']
         should_create_draft = options['draft']
+        should_skip_cover = options['skip_cover']
         model = options['model']
         current_time = timezone.localtime()
         current_date = current_time.date()
@@ -77,6 +100,14 @@ class Command(BaseCommand):
             status=status,
         )
 
+        if should_skip_cover:
+            self.stdout.write(self.style.WARNING('Skipped Pexels cover image.'))
+        else:
+            try:
+                self.attach_cover(post, generated_article, current_date)
+            except CommandError as error:
+                self.stderr.write(self.style.WARNING(f'Cover image was not attached: {error}'))
+
         self.stdout.write(self.style.SUCCESS(f'Created daily article: {post.title}'))
 
     def generate_article(self, model, formatted_date, recent_titles):
@@ -101,7 +132,7 @@ class Command(BaseCommand):
                     'role': 'user',
                     'content': (
                         f'今天日期是 {formatted_date}。\n'
-                        '请从做菜、生活技巧、学习笔记、技术小记、读书、骑行、摄影、项目记录中选择一个角度。\n'
+                        '请从做菜、生活技巧、学习笔记、技术小记、读书、骑行、摄影、项目记录等选择一个角度，你也可以自己随便想一个。\n'
                         '最近已经写过的标题如下，请避免重复主题和重复标题：\n'
                         f'{json.dumps(recent_titles, ensure_ascii=False)}\n'
                         'JSON 字段必须是 title、category、tags、content。'
@@ -191,3 +222,91 @@ class Command(BaseCommand):
 
         final_tags = ['自动发布', *cleaned_tags, daily_tag]
         return ','.join(final_tags)[:200]
+
+    def attach_cover(self, post, generated_article, current_date):
+        api_key = os.getenv('PEXELS_API_KEY')
+        if not api_key:
+            self.stderr.write(self.style.WARNING('PEXELS_API_KEY is not configured; article published without cover.'))
+            return
+
+        pexels_photo = self.search_pexels_photo(api_key, generated_article, current_date)
+        image_url = pexels_photo.get('src', {}).get('landscape') or pexels_photo.get('src', {}).get('large')
+        if not image_url:
+            self.stderr.write(self.style.WARNING('Pexels photo did not include a usable image URL.'))
+            return
+
+        image_bytes = self.download_pexels_image(image_url)
+        photo_id = pexels_photo.get('id', 'unknown')
+        cover_filename = f'auto_covers/{current_date.isoformat()}-{photo_id}.jpg'
+        post.cover.save(cover_filename, ContentFile(image_bytes), save=True)
+        self.append_pexels_attribution(post, pexels_photo)
+        self.stdout.write(self.style.SUCCESS(f'Attached Pexels cover: {cover_filename}'))
+
+    def search_pexels_photo(self, api_key, generated_article, current_date):
+        search_query = self.build_pexels_query(generated_article)
+        query_parameters = urlencode({
+            'query': search_query,
+            'orientation': 'landscape',
+            'per_page': 10,
+            'locale': 'zh-CN',
+        })
+        request = Request(
+            f'{PEXELS_SEARCH_URL}?{query_parameters}',
+            headers={'Authorization': api_key},
+            method='GET',
+        )
+
+        try:
+            with urlopen(request, timeout=30) as response:
+                response_text = response.read().decode('utf-8')
+        except HTTPError as error:
+            error_text = error.read().decode('utf-8', errors='replace')
+            raise CommandError(f'Pexels API HTTP error {error.code}: {error_text}') from error
+        except URLError as error:
+            raise CommandError(f'Pexels API network error: {error.reason}') from error
+
+        try:
+            response_body = json.loads(response_text)
+        except json.JSONDecodeError as error:
+            raise CommandError(f'Pexels API returned invalid JSON: {error}') from error
+
+        photos = response_body.get('photos', [])
+        if not photos:
+            raise CommandError(f'Pexels did not find a photo for query: {search_query}')
+
+        photo_index = current_date.toordinal() % len(photos)
+        return photos[photo_index]
+
+    def build_pexels_query(self, generated_article):
+        category = generated_article['category']
+        title = generated_article['title']
+        tags = generated_article['tags']
+        category_query = PEXELS_CATEGORY_QUERIES.get(category, 'personal blog lifestyle')
+        first_tag = tags[0] if tags else ''
+        return f'{category_query} {first_tag} {title}'[:120]
+
+    def download_pexels_image(self, image_url):
+        request = Request(image_url, headers={'User-Agent': 'clover-blog/1.0'}, method='GET')
+        try:
+            with urlopen(request, timeout=60) as response:
+                return response.read()
+        except HTTPError as error:
+            error_text = error.read().decode('utf-8', errors='replace')
+            raise CommandError(f'Pexels image HTTP error {error.code}: {error_text}') from error
+        except URLError as error:
+            raise CommandError(f'Pexels image network error: {error.reason}') from error
+
+    def append_pexels_attribution(self, post, pexels_photo):
+        photographer = pexels_photo.get('photographer')
+        photo_url = pexels_photo.get('url')
+        photographer_url = pexels_photo.get('photographer_url')
+        if not photographer or not photo_url:
+            return
+
+        attribution = f'封面图：Photo by {photographer} on Pexels。'
+        if photographer_url:
+            attribution += f'\n摄影师主页：{photographer_url}'
+        attribution += f'\n图片来源：{photo_url}'
+
+        post.content = f'{post.content}\n\n{attribution}'
+        post.save(update_fields=['content', 'updated_at'])

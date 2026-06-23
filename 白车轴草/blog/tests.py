@@ -10,6 +10,8 @@ from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.db.models.fields.files import FieldFile
+from blog.management.commands.create_startup_post import Command
 from blog.models import Post, UserProfile
 
 
@@ -305,7 +307,7 @@ class StartupPostCommandTests(TestCase):
         command_output = StringIO()
         current_date = timezone.localdate()
 
-        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}, clear=True):
             with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.deepseek_response()):
                 call_command('create_startup_post', stdout=command_output)
 
@@ -321,7 +323,7 @@ class StartupPostCommandTests(TestCase):
     def test_create_startup_post_can_create_draft_when_requested(self):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
 
-        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}, clear=True):
             with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.deepseek_response()):
                 call_command('create_startup_post', draft=True)
 
@@ -332,7 +334,7 @@ class StartupPostCommandTests(TestCase):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
         command_output = StringIO()
 
-        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}, clear=True):
             with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.deepseek_response()):
                 call_command('create_startup_post', stdout=command_output)
                 call_command('create_startup_post', stdout=command_output)
@@ -350,6 +352,42 @@ class StartupPostCommandTests(TestCase):
     def test_create_startup_post_requires_existing_user(self):
         with self.assertRaises(CommandError):
             call_command('create_startup_post', username='missing-user')
+
+    def test_attach_cover_saves_pexels_photo_and_attribution(self):
+        author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='测试文章',
+            category='life',
+            tags='自动发布,daily:2026-06-23',
+            content='测试正文',
+            status='published',
+        )
+        generated_article = {
+            'title': '给早晨留出十分钟的整理时间',
+            'category': 'life',
+            'tags': ['生活技巧', '整理'],
+            'content': '测试正文',
+        }
+        pexels_photo = {
+            'id': 12345,
+            'url': 'https://www.pexels.com/photo/test-photo-12345/',
+            'photographer': 'Test Photographer',
+            'photographer_url': 'https://www.pexels.com/@test',
+            'src': {'landscape': 'https://images.pexels.com/photos/12345/test.jpg'},
+        }
+        command = Command()
+
+        with patch.dict(os.environ, {'PEXELS_API_KEY': 'test-key'}, clear=True):
+            with patch.object(command, 'search_pexels_photo', return_value=pexels_photo):
+                with patch.object(command, 'download_pexels_image', return_value=b'image-bytes'):
+                    with patch.object(FieldFile, 'save') as save_cover:
+                        command.attach_cover(post, generated_article, timezone.localdate())
+
+        post.refresh_from_db()
+        self.assertIn('Photo by Test Photographer on Pexels', post.content)
+        self.assertIn('https://www.pexels.com/photo/test-photo-12345/', post.content)
+        save_cover.assert_called_once()
 
 
 class FakeDeepSeekResponse:
