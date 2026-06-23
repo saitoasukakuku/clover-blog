@@ -324,7 +324,9 @@ def post_detail(request, post_id):
     Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)
     post.refresh_from_db(fields=['views_count'])
 
-    return render(request, 'post_detail.html', {'post': post})
+    context = {'post': post}
+    context.update(get_category_context(post))
+    return render(request, 'post_detail.html', context)
 
 @login_required
 def delete_post(request, post_id):

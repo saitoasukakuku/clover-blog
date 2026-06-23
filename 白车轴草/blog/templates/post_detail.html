@@ -484,7 +484,7 @@
                         <label for="postCategory" class="form-label"><i
                                 class="fas fa-folder me-1"></i>文章分类</label>
                         <select class="form-select" id="postCategory" name="category">
-                            <option {% if not post.category %}selected{% endif %} disabled>选择分类</option>
+                            <option value="" {% if not post.category %}selected{% endif %} disabled>选择分类</option>
                             {% for value, label in categories %}
                             <option value="{{ value }}" {% if post.category == value %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
