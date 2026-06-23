@@ -9,6 +9,29 @@ class ChineseUserCreationForm(UserCreationForm):
         'password_mismatch': '两次输入的密码不一致。',
     }
 
+    email = forms.EmailField(
+        label='邮箱',
+        required=False,
+        help_text='可选。填写后会绑定到账号，方便以后展示或联系。',
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': '请输入邮箱',
+            'autocomplete': 'email',
+        }),
+        error_messages={'invalid': '请输入有效的邮箱地址。'},
+    )
+    nickname = forms.CharField(
+        label='昵称',
+        required=False,
+        max_length=50,
+        help_text='可选。昵称会优先作为展示名称，留空则显示用户名。',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': '请输入昵称',
+            'autocomplete': 'nickname',
+            'maxlength': 50,
+        }),
+    )
     username = forms.CharField(
         label='用户名',
         max_length=150,
@@ -44,6 +67,27 @@ class ChineseUserCreationForm(UserCreationForm):
         }),
         error_messages={'required': '请再次输入密码。'},
     )
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ('username', 'email', 'nickname', 'password1', 'password2')
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip()
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('这个邮箱已经被注册。')
+        return email
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.email = self.cleaned_data.get('email', '')
+        if commit:
+            user.save()
+            UserProfile.objects.get_or_create(
+                user=user,
+                defaults={'nickname': self.cleaned_data.get('nickname', '')},
+            )
+        return user
 
 
 class ChineseAuthenticationForm(AuthenticationForm):

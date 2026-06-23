@@ -27,6 +27,40 @@ class AuthViewsTests(TestCase):
         self.assertTrue(User.objects.filter(username='newuser').exists())
         self.assertEqual(self.client.session['_auth_user_id'], str(User.objects.get(username='newuser').id))
 
+    def test_register_saves_email_and_nickname(self):
+        response = self.client.post(reverse('register'), {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertRedirects(response, reverse('index'))
+        user = User.objects.get(username='newuser')
+        profile = UserProfile.objects.get(user=user)
+        self.assertEqual(user.email, 'newuser@example.com')
+        self.assertEqual(profile.nickname, '小草')
+
+    def test_register_rejects_duplicate_email(self):
+        User.objects.create_user(
+            username='existing',
+            email='used@example.com',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(reverse('register'), {
+            'username': 'newuser',
+            'email': 'used@example.com',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username='newuser').exists())
+        self.assertContains(response, '这个邮箱已经被注册。')
+
     def test_login_accepts_existing_user(self):
         User.objects.create_user(username='writer', password='StrongPass12345')
 
