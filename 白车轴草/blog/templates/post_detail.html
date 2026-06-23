@@ -668,11 +668,13 @@
         var cropper;
         var image = document.getElementById('imageToCrop');
         var $modal = $('#cropModal');
+        var selectedCoverType = 'image/jpeg';
 
         $('#coverUpload').on('change', function (e) {
             var files = e.target.files;
             if (files && files.length > 0) {
                 var file = files[0];
+                selectedCoverType = file.type || 'image/jpeg';
                 var url = URL.createObjectURL(file);
                 image.src = url;
                 $modal.modal('show');
@@ -702,7 +704,13 @@
                 imageSmoothingQuality: 'high',
             });
 
-            var base64data = canvas.toDataURL('image/jpeg', 0.95);
+            var outputCoverType = selectedCoverType === 'image/png' || selectedCoverType === 'image/webp'
+                ? selectedCoverType
+                : 'image/jpeg';
+            var outputCoverQuality = outputCoverType === 'image/jpeg' ? 0.98 : undefined;
+            var base64data = outputCoverQuality
+                ? canvas.toDataURL(outputCoverType, outputCoverQuality)
+                : canvas.toDataURL(outputCoverType);
             $('#croppedCover').val(base64data);
 
             var $area = $('#coverPreviewArea');
