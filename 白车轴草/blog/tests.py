@@ -342,6 +342,30 @@ class StartupPostCommandTests(TestCase):
         self.assertEqual(Post.objects.filter(author=author).count(), 1)
         self.assertIn('Daily article already exists', command_output.getvalue())
 
+    def test_create_startup_post_can_attach_cover_to_existing_daily_post(self):
+        author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
+        current_date = timezone.localdate()
+        post = Post.objects.create(
+            author=author,
+            title=f'{current_date.strftime("%Y-%m-%d")}｜已有文章',
+            category='life',
+            tags=f'自动发布,生活技巧,daily:{current_date.isoformat()}',
+            content='已有正文',
+            status='published',
+        )
+
+        with patch.dict(os.environ, {'PEXELS_API_KEY': 'test-key'}, clear=True):
+            with patch('blog.management.commands.create_startup_post.Command.attach_cover') as attach_cover:
+                call_command('create_startup_post', username='白车轴草', cover_existing=True)
+
+        self.assertEqual(Post.objects.filter(author=author).count(), 1)
+        attach_cover.assert_called_once()
+        attached_post = attach_cover.call_args.args[0]
+        generated_article = attach_cover.call_args.args[1]
+        self.assertEqual(attached_post, post)
+        self.assertEqual(generated_article['title'], '已有文章')
+        self.assertEqual(generated_article['category'], 'life')
+
     def test_create_startup_post_requires_deepseek_api_key(self):
         User.objects.create_user(username='白车轴草', password='StrongPass12345')
 

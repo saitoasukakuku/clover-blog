@@ -56,11 +56,17 @@ class Command(BaseCommand):
             action='store_true',
             help='Publish the article without searching Pexels for a cover image.',
         )
+        parser.add_argument(
+            '--cover-existing',
+            action='store_true',
+            help='Attach a Pexels cover to today existing daily article without creating a new article.',
+        )
 
     def handle(self, *args, **options):
         username = options['username']
         should_create_draft = options['draft']
         should_skip_cover = options['skip_cover']
+        should_cover_existing = options['cover_existing']
         model = options['model']
         current_time = timezone.localtime()
         current_date = current_time.date()
@@ -72,6 +78,8 @@ class Command(BaseCommand):
 
         existing_post = Post.objects.filter(author=author, tags__icontains=daily_tag).first()
         if existing_post is not None:
+            if should_cover_existing:
+                self.attach_cover_to_existing_post(existing_post, current_date)
             self.stdout.write(self.style.WARNING(f'Daily article already exists: {existing_post.title}'))
             return
 
@@ -310,3 +318,21 @@ class Command(BaseCommand):
 
         post.content = f'{post.content}\n\n{attribution}'
         post.save(update_fields=['content', 'updated_at'])
+
+    def attach_cover_to_existing_post(self, post, current_date):
+        if post.cover:
+            self.stdout.write(self.style.WARNING(f'Existing post already has cover: {post.cover.name}'))
+            return
+
+        generated_article = {
+            'title': self.remove_date_prefix(post.title),
+            'category': post.category,
+            'tags': post.tag_list,
+            'content': post.content,
+        }
+        self.attach_cover(post, generated_article, current_date)
+
+    def remove_date_prefix(self, title):
+        if '｜' in title:
+            return title.split('｜', 1)[1]
+        return title
