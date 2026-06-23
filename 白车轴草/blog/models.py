@@ -33,6 +33,8 @@ class Post(models.Model):
     views_count = models.PositiveIntegerField(default=0, verbose_name='浏览量')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    VISIBILITY_CHOICES = (('private', '仅自己可见'),('public', '公开'))
+    visibility = models.CharField(max_length=20,choices=VISIBILITY_CHOICES,default='private',verbose_name='可见范围')
 
     @property
     def tag_list(self):

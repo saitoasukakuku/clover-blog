@@ -58,10 +58,16 @@ def get_category_counts(posts):
 
 def index(request):
     if request.user.is_authenticated:
-        all_posts = Post.objects.filter(author=request.user, status='published').order_by('-created_at')
+        all_posts = Post.objects.filter(
+            Q(status='published', visibility='public') |
+            Q(author=request.user, status='published')
+        ).distinct().order_by('-created_at')
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
     else:
-        all_posts = Post.objects.none()
+        all_posts = Post.objects.filter(
+            status='published',
+            visibility='public'
+        ).order_by('-created_at')
         profile = None
     selected_category = request.GET.get('category', '').strip()
     search_query = request.GET.get('q', '').strip()
@@ -235,6 +241,7 @@ def create_post(request):
         action = request.POST.get('action') # 'draft' or 'publish'
 
         status = 'published' if action == 'publish' else 'draft'
+        visibility = request.POST.get('visibility', 'private')
 
         if cropped_cover_data:
             import base64
@@ -253,7 +260,8 @@ def create_post(request):
             tags='',
             content=content,
             cover=cover,
-            status=status
+            status=status,
+            visibility=visibility
         )
         post.save()
         
@@ -297,6 +305,7 @@ def edit_post(request, post_id):
 
         action = request.POST.get('action')
         post.status = 'published' if action == 'publish' else 'draft'
+        post.visibility = request.POST.get('visibility', 'private')
         post.save()
         
         if post.status == 'draft':
@@ -316,10 +325,19 @@ def delete_draft(request, post_id):
 
 @login_required
 def post_detail(request, post_id):
-    post = get_object_or_404(Post, id=post_id, author=request.user)
-
-    if post.status != 'published':
-        return redirect('drafts')
+    if request.user.is_authenticated:
+        post = get_object_or_404(
+            Post,
+            Q(id=post_id),
+            Q(status='published', visibility='public') | Q(author=request.user)
+        )
+    else:
+        post = get_object_or_404(
+            Post,
+            id=post_id,
+            status='published',
+            visibility='public'
+        )
 
     Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)
     post.refresh_from_db(fields=['views_count'])
