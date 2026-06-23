@@ -283,34 +283,30 @@ class AuthViewsTests(TestCase):
 
 
 class StartupPostCommandTests(TestCase):
-    def openai_response(self):
+    def deepseek_response(self):
         response_body = {
-            'output': [
+            'choices': [
                 {
-                    'type': 'message',
-                    'content': [
-                        {
-                            'type': 'output_text',
-                            'text': (
-                                '{"title": "给早晨留出十分钟的整理时间", '
-                                '"category": "life", '
-                                '"tags": ["生活技巧", "整理"], '
-                                '"content": "早晨的状态往往会影响一整天。可以把起床后的前十分钟留给简单整理：先喝一杯温水，再把桌面上明显不用的物品放回原位，最后写下今天最重要的一件事。这个过程不需要追求完美，重点是让自己从混乱里慢慢进入节奏。整理空间的同时，也是在整理注意力。坚持几天后，你会发现开始工作或学习时，犹豫和拖延会少一点。"}'
-                            ),
-                        }
-                    ],
+                    'message': {
+                        'content': (
+                            '{"title": "给早晨留出十分钟的整理时间", '
+                            '"category": "life", '
+                            '"tags": ["生活技巧", "整理"], '
+                            '"content": "早晨的状态往往会影响一整天。可以把起床后的前十分钟留给简单整理：先喝一杯温水，再把桌面上明显不用的物品放回原位，最后写下今天最重要的一件事。这个过程不需要追求完美，重点是让自己从混乱里慢慢进入节奏。整理空间的同时，也是在整理注意力。坚持几天后，你会发现开始工作或学习时，犹豫和拖延会少一点。"}'
+                        ),
+                    },
                 }
             ]
         }
-        return FakeOpenAIResponse(response_body)
+        return FakeDeepSeekResponse(response_body)
 
     def test_create_startup_post_creates_one_published_daily_article_for_user(self):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
         command_output = StringIO()
         current_date = timezone.localdate()
 
-        with patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'}):
-            with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.openai_response()):
+        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+            with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.deepseek_response()):
                 call_command('create_startup_post', stdout=command_output)
 
         post = Post.objects.get(author=author)
@@ -325,8 +321,8 @@ class StartupPostCommandTests(TestCase):
     def test_create_startup_post_can_create_draft_when_requested(self):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
 
-        with patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'}):
-            with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.openai_response()):
+        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+            with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.deepseek_response()):
                 call_command('create_startup_post', draft=True)
 
         post = Post.objects.get(author=author)
@@ -336,15 +332,15 @@ class StartupPostCommandTests(TestCase):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')
         command_output = StringIO()
 
-        with patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'}):
-            with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.openai_response()):
+        with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+            with patch('blog.management.commands.create_startup_post.urlopen', return_value=self.deepseek_response()):
                 call_command('create_startup_post', stdout=command_output)
                 call_command('create_startup_post', stdout=command_output)
 
         self.assertEqual(Post.objects.filter(author=author).count(), 1)
         self.assertIn('Daily article already exists', command_output.getvalue())
 
-    def test_create_startup_post_requires_openai_api_key(self):
+    def test_create_startup_post_requires_deepseek_api_key(self):
         User.objects.create_user(username='白车轴草', password='StrongPass12345')
 
         with patch.dict(os.environ, {}, clear=True):
@@ -356,7 +352,7 @@ class StartupPostCommandTests(TestCase):
             call_command('create_startup_post', username='missing-user')
 
 
-class FakeOpenAIResponse:
+class FakeDeepSeekResponse:
     def __init__(self, response_body):
         self.response_body = response_body
 

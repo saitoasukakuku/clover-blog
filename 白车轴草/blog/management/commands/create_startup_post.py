@@ -11,44 +11,12 @@ from blog.models import Post
 
 
 CATEGORY_VALUES = [category_value for category_value, _ in Post.CATEGORY_CHOICES]
-DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini'
-OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
-
-ARTICLE_SCHEMA = {
-    'type': 'object',
-    'additionalProperties': False,
-    'properties': {
-        'title': {
-            'type': 'string',
-            'minLength': 8,
-            'maxLength': 80,
-        },
-        'category': {
-            'type': 'string',
-            'enum': CATEGORY_VALUES,
-        },
-        'tags': {
-            'type': 'array',
-            'minItems': 2,
-            'maxItems': 4,
-            'items': {
-                'type': 'string',
-                'minLength': 1,
-                'maxLength': 20,
-            },
-        },
-        'content': {
-            'type': 'string',
-            'minLength': 500,
-            'maxLength': 1800,
-        },
-    },
-    'required': ['title', 'category', 'tags', 'content'],
-}
+DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat'
+DEEPSEEK_CHAT_COMPLETIONS_URL = 'https://api.deepseek.com/chat/completions'
 
 
 class Command(BaseCommand):
-    help = 'Create one AI-generated published article for the current day.'
+    help = 'Create one DeepSeek-generated published article for the current day.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -63,8 +31,8 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--model',
-            default=os.getenv('OPENAI_MODEL', DEFAULT_OPENAI_MODEL),
-            help='OpenAI model used to generate the article.',
+            default=os.getenv('DEEPSEEK_MODEL', DEFAULT_DEEPSEEK_MODEL),
+            help='DeepSeek model used to generate the article.',
         )
 
     def handle(self, *args, **options):
@@ -112,20 +80,21 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'Created daily article: {post.title}'))
 
     def generate_article(self, model, formatted_date, recent_titles):
-        api_key = os.getenv('OPENAI_API_KEY')
+        api_key = os.getenv('DEEPSEEK_API_KEY')
         if not api_key:
-            raise CommandError('OPENAI_API_KEY is not configured.')
+            raise CommandError('DEEPSEEK_API_KEY is not configured.')
 
         request_body = {
             'model': model,
-            'input': [
+            'messages': [
                 {
-                    'role': 'developer',
+                    'role': 'system',
                     'content': (
                         '你是一个中文个人博客作者。请生成一篇原创文章。'
                         '文章要适合个人博客，不要声称自己亲历了不存在的事情。'
                         '不要写实时新闻、价格、医疗建议、法律建议或无法验证的事实。'
                         '文章应自然、有用、具体，避免空泛鸡汤。'
+                        '只输出 JSON 对象，不要输出 Markdown。'
                     ),
                 },
                 {
@@ -134,35 +103,34 @@ class Command(BaseCommand):
                         f'今天日期是 {formatted_date}。\n'
                         '请从做菜、生活技巧、学习笔记、技术小记、读书、骑行、摄影、项目记录中选择一个角度。\n'
                         '最近已经写过的标题如下，请避免重复主题和重复标题：\n'
-                        f'{json.dumps(recent_titles, ensure_ascii=False)}'
+                        f'{json.dumps(recent_titles, ensure_ascii=False)}\n'
+                        'JSON 字段必须是 title、category、tags、content。'
+                        f'category 必须从这些值中选择：{json.dumps(CATEGORY_VALUES, ensure_ascii=False)}。'
+                        'tags 必须是 2 到 4 个中文短标签组成的数组。'
+                        'content 写 500 到 1800 个中文字符。'
                     ),
                 },
             ],
-            'text': {
-                'format': {
-                    'type': 'json_schema',
-                    'name': 'daily_blog_article',
-                    'strict': True,
-                    'schema': ARTICLE_SCHEMA,
-                }
+            'response_format': {
+                'type': 'json_object',
             },
-            'max_output_tokens': 1800,
+            'max_tokens': 1800,
         }
-        response_body = self.send_openai_request(api_key, request_body)
-        output_text = self.extract_output_text(response_body)
+        response_body = self.send_deepseek_request(api_key, request_body)
+        output_text = self.extract_message_content(response_body)
 
         try:
             generated_article = json.loads(output_text)
         except json.JSONDecodeError as error:
-            raise CommandError(f'OpenAI returned invalid JSON: {error}') from error
+            raise CommandError(f'DeepSeek returned invalid JSON: {error}') from error
 
         self.validate_article(generated_article)
         return generated_article
 
-    def send_openai_request(self, api_key, request_body):
+    def send_deepseek_request(self, api_key, request_body):
         request_data = json.dumps(request_body).encode('utf-8')
         request = Request(
-            OPENAI_RESPONSES_URL,
+            DEEPSEEK_CHAT_COMPLETIONS_URL,
             data=request_data,
             headers={
                 'Authorization': f'Bearer {api_key}',
@@ -176,26 +144,26 @@ class Command(BaseCommand):
                 response_text = response.read().decode('utf-8')
         except HTTPError as error:
             error_text = error.read().decode('utf-8', errors='replace')
-            raise CommandError(f'OpenAI API HTTP error {error.code}: {error_text}') from error
+            raise CommandError(f'DeepSeek API HTTP error {error.code}: {error_text}') from error
         except URLError as error:
-            raise CommandError(f'OpenAI API network error: {error.reason}') from error
+            raise CommandError(f'DeepSeek API network error: {error.reason}') from error
 
         try:
             return json.loads(response_text)
         except json.JSONDecodeError as error:
-            raise CommandError(f'OpenAI API returned invalid JSON: {error}') from error
+            raise CommandError(f'DeepSeek API returned invalid JSON: {error}') from error
 
-    def extract_output_text(self, response_body):
-        output_items = response_body.get('output', [])
-        for output_item in output_items:
-            if output_item.get('type') != 'message':
-                continue
-            content_items = output_item.get('content', [])
-            for content_item in content_items:
-                if content_item.get('type') == 'output_text':
-                    return content_item.get('text', '')
+    def extract_message_content(self, response_body):
+        choices = response_body.get('choices', [])
+        if not choices:
+            raise CommandError('DeepSeek API response did not include choices.')
 
-        raise CommandError('OpenAI API response did not include output text.')
+        message = choices[0].get('message', {})
+        content = message.get('content', '')
+        if content:
+            return content
+
+        raise CommandError('DeepSeek API response did not include message content.')
 
     def validate_article(self, generated_article):
         title = generated_article.get('title')
