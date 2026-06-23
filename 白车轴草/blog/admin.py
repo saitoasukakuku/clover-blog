@@ -5,8 +5,8 @@ from blog.models import Post, UserProfile
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ('title', 'author', 'category', 'status', 'views_count', 'created_at', 'updated_at')
-    list_filter = ('status', 'category', 'created_at')
+    list_display = ('title', 'author', 'category', 'status', 'visibility', 'views_count', 'created_at', 'updated_at')
+    list_filter = ('status', 'category', 'visibility', 'created_at')
     search_fields = ('title', 'content', 'tags')
     ordering = ('-created_at',)
 

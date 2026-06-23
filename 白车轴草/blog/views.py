@@ -57,6 +57,7 @@ def get_category_counts(posts):
     return categories
 
 def index(request):
+    owner, owner_profile = get_site_owner_profile()
     if request.user.is_authenticated:
         all_posts = Post.objects.filter(
             Q(status='published', visibility='public') |
@@ -69,6 +70,13 @@ def index(request):
             visibility='public'
         ).order_by('-created_at')
         profile = None
+
+    owner_public_posts = Post.objects.filter(
+        author=owner,
+        status='published',
+        visibility='public',
+    ) if owner else Post.objects.none()
+
     selected_category = request.GET.get('category', '').strip()
     search_query = request.GET.get('q', '').strip()
     date_query = request.GET.get('date', '').strip()
@@ -135,9 +143,9 @@ def index(request):
         'clear_date_query': clear_date_query,
         'category_counts': category_counts,
         'top_categories': category_counts[:10],
-        'profile': profile,
-        'published_count': published_count,
-        'category_count': len(category_counts),
+        'profile': owner_profile,
+        'published_count': owner_public_posts.count(),
+        'category_count': len(get_category_counts(owner_public_posts)),
         'recent_posts': all_posts[:5],
     })
 
@@ -323,7 +331,6 @@ def delete_draft(request, post_id):
         post.delete()
     return redirect('drafts')
 
-@login_required
 def post_detail(request, post_id):
     if request.user.is_authenticated:
         post = get_object_or_404(
@@ -359,7 +366,7 @@ def rss_feed(request):
     if not owner:
         return HttpResponse('RSS 未配置', status=404, content_type='text/plain; charset=utf-8')
 
-    posts = Post.objects.filter(author=owner, status='published').order_by('-created_at')[:20]
+    posts = Post.objects.filter(author=owner, status='published', visibility='public').order_by('-created_at')[:20]
     site_url = request.build_absolute_uri('/')
     feed_url = request.build_absolute_uri()
     title = f"{profile.display_name} 的文章订阅"

@@ -103,19 +103,19 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '自己的文章')
         self.assertNotContains(response, '别人的文章')
 
-    def test_index_about_card_uses_current_user_profile_and_posts(self):
-        owner = User.objects.create_user(username='owner', password='StrongPass12345')
+    def test_index_about_card_uses_site_owner_profile_and_public_posts(self):
+        owner = User.objects.create_superuser(username='root', password='StrongPass12345')
         other = User.objects.create_user(username='other', password='StrongPass12345')
-        UserProfile.objects.create(user=owner, nickname='写作者', bio='记录自己的文章。')
-        Post.objects.create(author=owner, title='当前账号文章', category='life', content='可见', status='published')
+        UserProfile.objects.create(user=owner, nickname='站点博主', bio='记录公开文章。')
+        Post.objects.create(author=owner, title='当前账号文章', category='life', content='可见', status='published', visibility='public')
         Post.objects.create(author=owner, title='当前账号草稿', category='life', content='不可见', status='draft')
         Post.objects.create(author=other, title='其他账号文章', category='tech', content='不可见', status='published')
         self.client.login(username='owner', password='StrongPass12345')
 
         response = self.client.get(reverse('index'))
 
-        self.assertContains(response, '写作者')
-        self.assertContains(response, '记录自己的文章。')
+        self.assertContains(response, '站点博主')
+        self.assertContains(response, '记录公开文章。')
         self.assertContains(response, '当前账号文章')
         self.assertNotContains(response, '当前账号草稿')
         self.assertNotContains(response, '其他账号文章')
@@ -306,7 +306,7 @@ class AuthViewsTests(TestCase):
     def test_rss_feed_route_returns_xml(self):
         root = User.objects.create_superuser(username='root', password='StrongPass12345')
         writer = User.objects.create_user(username='writer', password='StrongPass12345')
-        Post.objects.create(author=root, title='root 的文章', category='life', content='可见', status='published')
+        Post.objects.create(author=root, title='root 的文章', category='life', content='可见', status='published', visibility='public')
         Post.objects.create(author=writer, title='writer 的文章', category='life', content='不可见', status='published')
 
         response = self.client.get(reverse('rss_feed'))
@@ -364,6 +364,7 @@ class StartupPostCommandTests(TestCase):
 
         post = Post.objects.get(author=author)
         self.assertEqual(post.status, 'published')
+        self.assertEqual(post.visibility, 'public')
         self.assertEqual(post.category, 'life')
         self.assertIn('自动发布', post.tags)
         self.assertIn('生活技巧', post.tags)
@@ -380,6 +381,7 @@ class StartupPostCommandTests(TestCase):
 
         post = Post.objects.get(author=author)
         self.assertEqual(post.status, 'draft')
+        self.assertEqual(post.visibility, 'private')
 
     def test_create_startup_post_skips_duplicate_for_same_day(self):
         author = User.objects.create_user(username='白车轴草', password='StrongPass12345')

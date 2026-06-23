@@ -93,6 +93,7 @@ class Command(BaseCommand):
         title = f"{formatted_date}｜{generated_article['title']}"
         content = generated_article['content']
         status = 'draft' if should_create_draft else 'published'
+        visibility = 'private' if should_create_draft else 'public'
 
         if Post.objects.filter(author=author, title=title).exists():
             raise CommandError(f'Generated duplicate title: {title}')
@@ -106,6 +107,7 @@ class Command(BaseCommand):
             tags=self.build_tags(generated_article['tags'], daily_tag),
             content=content,
             status=status,
+            visibility=visibility,
         )
 
         if should_skip_cover:

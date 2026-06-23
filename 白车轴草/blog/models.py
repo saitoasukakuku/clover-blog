@@ -7,6 +7,10 @@ class Post(models.Model):
         ('draft', '草稿'),
         ('published', '已发布'),
     )
+    VISIBILITY_CHOICES = (
+        ('private', '仅自己可见'),
+        ('public', '公开'),
+    )
     CATEGORY_CHOICES = (
         ('tech', '技术'),
         ('life', '生活随笔'),
@@ -30,11 +34,15 @@ class Post(models.Model):
     cover = models.ImageField(upload_to='covers/', null=True, blank=True, verbose_name='封面图片')
     content = models.TextField(verbose_name='文章内容')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name='状态')
+    visibility = models.CharField(
+        max_length=20,
+        choices=VISIBILITY_CHOICES,
+        default='private',
+        verbose_name='可见范围',
+    )
     views_count = models.PositiveIntegerField(default=0, verbose_name='浏览量')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
-    VISIBILITY_CHOICES = (('private', '仅自己可见'),('public', '公开'))
-    visibility = models.CharField(max_length=20,choices=VISIBILITY_CHOICES,default='private',verbose_name='可见范围')
 
     @property
     def tag_list(self):
