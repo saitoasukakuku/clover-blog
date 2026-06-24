@@ -608,6 +608,179 @@ class AuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(Comment.objects.filter(post=post).exists())
 
+    def test_logged_in_user_can_reply_to_comment(self):
+        post_author = User.objects.create_user(
+            username='post-author',
+            password='StrongPass12345',
+        )
+        reply_author = User.objects.create_user(
+            username='reply-author',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=post_author,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        parent_comment = Comment.objects.create(
+            post=post,
+            author=post_author,
+            content='主评论。',
+        )
+        self.client.login(
+            username='reply-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('add_comment', args=[post.id]),
+            {
+                'content': '这是一条回复。',
+                'parent_id': parent_comment.id,
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('post_detail', args=[post.id]),
+        )
+        reply = Comment.objects.get(parent=parent_comment)
+        self.assertEqual(reply.post, post)
+        self.assertEqual(reply.author, reply_author)
+        self.assertEqual(reply.content, '这是一条回复。')
+
+    def test_reply_parent_must_belong_to_same_post(self):
+        user = User.objects.create_user(
+            username='writer',
+            password='StrongPass12345',
+        )
+        first_post = Post.objects.create(
+            author=user,
+            title='第一篇文章',
+            category='life',
+            content='第一篇正文',
+            status='published',
+            visibility='public',
+        )
+        second_post = Post.objects.create(
+            author=user,
+            title='第二篇文章',
+            category='life',
+            content='第二篇正文',
+            status='published',
+            visibility='public',
+        )
+        other_post_comment = Comment.objects.create(
+            post=second_post,
+            author=user,
+            content='另一篇文章的评论。',
+        )
+        self.client.login(
+            username='writer',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('add_comment', args=[first_post.id]),
+            {
+                'content': '伪造的跨文章回复。',
+                'parent_id': other_post_comment.id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(
+            Comment.objects.filter(
+                post=first_post,
+                content='伪造的跨文章回复。',
+            ).exists()
+        )
+
+    def test_reply_cannot_target_another_reply(self):
+        user = User.objects.create_user(
+            username='writer',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=user,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        parent_comment = Comment.objects.create(
+            post=post,
+            author=user,
+            content='主评论。',
+        )
+        first_reply = Comment.objects.create(
+            post=post,
+            author=user,
+            parent=parent_comment,
+            content='第一层回复。',
+        )
+        self.client.login(
+            username='writer',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('add_comment', args=[post.id]),
+            {
+                'content': '不允许的第二层回复。',
+                'parent_id': first_reply.id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(
+            Comment.objects.filter(content='不允许的第二层回复。').exists()
+        )
+
+    def test_deleting_parent_comment_also_deletes_replies(self):
+        user = User.objects.create_user(
+            username='writer',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=user,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        parent_comment = Comment.objects.create(
+            post=post,
+            author=user,
+            content='主评论。',
+        )
+        reply = Comment.objects.create(
+            post=post,
+            author=user,
+            parent=parent_comment,
+            content='回复。',
+        )
+        self.client.login(
+            username='writer',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('delete_comment', args=[parent_comment.id]),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('post_detail', args=[post.id]),
+        )
+        self.assertFalse(Comment.objects.filter(id=parent_comment.id).exists())
+        self.assertFalse(Comment.objects.filter(id=reply.id).exists())
+
     def test_comment_author_can_delete_own_comment(self):
         post_author = User.objects.create_user(
             username='post-author',

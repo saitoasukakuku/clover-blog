@@ -5,7 +5,7 @@ from django.core.paginator import Paginator
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import F, Q, Sum
+from django.db.models import F, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST
 from django.core.management.base import CommandError
@@ -543,11 +543,20 @@ def post_detail(request, post_id):
     )
 
     if comments_enabled:
-        comments = post.comments.select_related(
+        reply_queryset = Comment.objects.select_related(
             'author__profile'
-        ).all()
+        ).order_by('created_at')
+        comments = post.comments.filter(
+            parent__isnull=True
+        ).select_related(
+            'author__profile'
+        ).prefetch_related(
+            Prefetch('replies', queryset=reply_queryset)
+        )
+        comment_count = post.comments.count()
     else:
         comments = post.comments.none()
+        comment_count = 0
 
     if comments_enabled and request.user.is_authenticated:
         comment_form = CommentForm()
@@ -558,6 +567,7 @@ def post_detail(request, post_id):
         'post': post,
         'comments_enabled': comments_enabled,
         'comments': comments,
+        'comment_count': comment_count,
         'comment_form': comment_form,
     }
     context.update(get_category_context(post))
@@ -574,13 +584,27 @@ def add_comment(request, post_id):
     )
 
     comment_form = CommentForm(request.POST)
+    parent_id = request.POST.get('parent_id')
+    parent_comment = None
+
+    if parent_id:
+        parent_comment = get_object_or_404(
+            Comment,
+            id=parent_id,
+            post=post,
+            parent__isnull=True,
+        )
 
     if comment_form.is_valid():
         comment = comment_form.save(commit=False)
         comment.post = post
         comment.author = request.user
+        comment.parent = parent_comment
         comment.save()
-        messages.success(request, '评论发表成功。')
+        if parent_comment:
+            messages.success(request, '回复发表成功。')
+        else:
+            messages.success(request, '评论发表成功。')
     else:
         messages.error(request, '评论发表失败，请检查评论内容。')
 

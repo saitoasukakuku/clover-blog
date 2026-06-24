@@ -68,6 +68,14 @@ class Comment(models.Model):
         related_name='comments',
         verbose_name='评论者',
     )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        related_name='replies',
+        null=True,
+        blank=True,
+        verbose_name='回复的评论',
+    )
     content = models.TextField(
         max_length=1000,
         verbose_name='评论内容',

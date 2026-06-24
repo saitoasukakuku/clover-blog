@@ -268,6 +268,13 @@
         flex: 0 0 auto;
     }
 
+    .comment-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+    }
+
     .comment-delete-button {
         width: 34px;
         height: 34px;
@@ -283,6 +290,48 @@
         color: var(--detail-ink);
         line-height: 1.75;
         word-break: break-word;
+    }
+
+    .comment-reply-button {
+        border: 0;
+        background: transparent;
+        color: #558b2f;
+        padding: 5px 8px;
+        font-size: 0.82rem;
+    }
+
+    .comment-reply-button:hover {
+        color: #1b5e20;
+    }
+
+    .reply-form {
+        margin: 14px 0 0 50px;
+        padding: 14px;
+        border-left: 3px solid #c8e6c9;
+        background: rgba(241, 248, 233, 0.55);
+    }
+
+    .reply-form textarea {
+        min-height: 90px;
+    }
+
+    .reply-list {
+        margin: 16px 0 0 50px;
+        padding-left: 16px;
+        border-left: 2px solid #e1eee1;
+    }
+
+    .reply-item {
+        padding: 14px 0;
+        border-bottom: 1px solid #edf3ed;
+    }
+
+    .reply-item:last-child {
+        border-bottom: 0;
+    }
+
+    .reply-item .comment-content {
+        margin-left: 42px;
     }
 
     /* ========== 编辑模式表单样式 ========== */
@@ -527,7 +576,7 @@
                     <section class="comments-section mt-5 pt-4 border-top">
                         <h2 class="h5 mb-4">
                             <i class="fas fa-comments me-2 text-success"></i>
-                            评论（{{ comments|length }}）
+                            评论（{{ comment_count }}）
                         </h2>
 
                         {% if comment_form %}
@@ -583,7 +632,17 @@
                                         </div>
                                     </div>
 
+                                    <div class="comment-actions">
                                     {% if user.is_authenticated %}
+                                        <button type="button"
+                                            class="comment-reply-button"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target="#replyForm{{ comment.id }}"
+                                            aria-expanded="false"
+                                            aria-controls="replyForm{{ comment.id }}">
+                                            <i class="fas fa-reply me-1"></i>回复
+                                        </button>
+
                                         {% if comment.author == user or post.author == user %}
                                         <form method="post" action="{% url 'delete_comment' comment.id %}"
                                             class="comment-delete-form"
@@ -598,11 +657,95 @@
                                         </form>
                                         {% endif %}
                                     {% endif %}
+                                    </div>
                                 </div>
 
                                 <div class="comment-content">
                                     {{ comment.content|linebreaksbr }}
                                 </div>
+
+                                {% if user.is_authenticated %}
+                                <div class="collapse reply-form" id="replyForm{{ comment.id }}">
+                                    <form method="post" action="{% url 'add_comment' post.id %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                                        <label for="replyContent{{ comment.id }}" class="form-label fw-bold">
+                                            回复 {{ comment.author.profile.display_name|default:comment.author.username }}
+                                        </label>
+                                        <textarea name="content"
+                                            id="replyContent{{ comment.id }}"
+                                            class="form-control"
+                                            rows="3"
+                                            maxlength="1000"
+                                            placeholder="写下你的回复..."
+                                            required></textarea>
+                                        <div class="text-end mt-2">
+                                            <button type="submit" class="btn btn-success btn-sm rounded-pill">
+                                                <i class="fas fa-reply me-1"></i>提交回复
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                                {% endif %}
+
+                                {% if comment.replies.all %}
+                                <div class="reply-list">
+                                    {% for reply in comment.replies.all %}
+                                    <article class="reply-item">
+                                        <div class="comment-item-header mb-2">
+                                            <div class="comment-author">
+                                                {% if reply.author.profile.avatar %}
+                                                <img src="{{ reply.author.profile.avatar.url }}"
+                                                    alt="{{ reply.author.profile.display_name }}的头像"
+                                                    width="32"
+                                                    height="32"
+                                                    class="rounded-circle"
+                                                    style="object-fit: cover;">
+                                                {% else %}
+                                                <div class="comment-avatar-placeholder"
+                                                    style="width: 32px; height: 32px; flex-basis: 32px;">
+                                                    <i class="fas fa-user"></i>
+                                                </div>
+                                                {% endif %}
+
+                                                <div>
+                                                    <strong>
+                                                        {{ reply.author.profile.display_name|default:reply.author.username }}
+                                                    </strong>
+                                                    <span class="text-muted small">
+                                                        回复
+                                                        {{ comment.author.profile.display_name|default:comment.author.username }}
+                                                    </span>
+                                                    <div class="text-muted small">
+                                                        {{ reply.created_at|date:"Y-m-d H:i" }}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {% if user.is_authenticated %}
+                                                {% if reply.author == user or post.author == user %}
+                                                <form method="post" action="{% url 'delete_comment' reply.id %}"
+                                                    class="comment-delete-form"
+                                                    onsubmit="return confirm('确定要删除这条回复吗？');">
+                                                    {% csrf_token %}
+                                                    <button type="submit"
+                                                        class="btn btn-outline-danger btn-sm comment-delete-button"
+                                                        title="删除回复"
+                                                        aria-label="删除回复">
+                                                        <i class="fas fa-trash-alt"></i>
+                                                    </button>
+                                                </form>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="comment-content">
+                                            {{ reply.content|linebreaksbr }}
+                                        </div>
+                                    </article>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
                             </article>
                             {% empty %}
                             <p class="text-muted text-center py-4">
