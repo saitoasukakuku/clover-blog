@@ -129,12 +129,26 @@ def index(request):
         ) if owner else Post.objects.none()
 
     selected_category = request.GET.get('category', '').strip()
+    selected_author = request.GET.get('author', '').strip()
     search_query = request.GET.get('q', '').strip()
     date_query = request.GET.get('date', '').strip()
     selected_date = parse_date(date_query) if date_query else None
-    category_counts = get_category_counts(all_posts)
     selected_category_label = Post.CATEGORY_LABELS.get(selected_category, selected_category)
-    posts = all_posts
+    selected_author_post = all_posts.filter(
+        author__username=selected_author
+    ).select_related('author__profile').first() if selected_author else None
+    selected_author_label = (
+        selected_author_post.author.profile.display_name
+        if selected_author_post and hasattr(selected_author_post.author, 'profile')
+        else selected_author
+    )
+    author_posts = (
+        all_posts.filter(author__username=selected_author)
+        if selected_author
+        else all_posts
+    )
+    category_counts = get_category_counts(author_posts)
+    posts = author_posts
     published_count = all_posts.count()
 
     if search_query:
@@ -178,6 +192,11 @@ def index(request):
     clear_date_params.pop('page', None)
     clear_date_query = clear_date_params.urlencode()
 
+    clear_author_params = request.GET.copy()
+    clear_author_params.pop('author', None)
+    clear_author_params.pop('page', None)
+    clear_author_query = clear_author_params.urlencode()
+
     paginator = Paginator(posts, 6)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -186,18 +205,25 @@ def index(request):
         'page_obj': page_obj,
         'selected_category': selected_category,
         'selected_category_label': selected_category_label,
+        'selected_author': selected_author,
+        'selected_author_label': selected_author_label,
+        'is_my_posts_filter': (
+            request.user.is_authenticated
+            and selected_author == request.user.username
+        ),
         'search_query': search_query,
         'selected_date': date_query if selected_date else '',
         'pagination_prefix': pagination_prefix,
         'clear_category_query': clear_category_query,
         'clear_search_query': clear_search_query,
         'clear_date_query': clear_date_query,
+        'clear_author_query': clear_author_query,
         'category_counts': category_counts,
         'top_categories': category_counts[:10],
         'profile': profile,
         'published_count': about_posts.count(),
         'total_views': about_posts.aggregate(total=Sum('views_count'))['total'] or 0,
-        'recent_posts': all_posts[:5],
+        'recent_posts': author_posts[:5],
     })
 
 def register(request):

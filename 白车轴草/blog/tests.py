@@ -274,6 +274,126 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '自己的文章')
         self.assertNotContains(response, '别人的文章')
 
+    def test_index_my_posts_filter_only_shows_current_users_published_posts(self):
+        current_user = User.objects.create_user(
+            username='current',
+            password='StrongPass12345',
+        )
+        other_user = User.objects.create_user(
+            username='other',
+            password='StrongPass12345',
+        )
+        Post.objects.create(
+            author=current_user,
+            title='我的公开文章',
+            category='life',
+            content='公开正文',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=current_user,
+            title='我的私密文章',
+            category='study',
+            content='私密正文',
+            status='published',
+            visibility='private',
+        )
+        Post.objects.create(
+            author=other_user,
+            title='其他用户公开文章',
+            category='tech',
+            content='其他正文',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='current', password='StrongPass12345')
+
+        response = self.client.get(reverse('index'), {'author': 'current'})
+
+        result_titles = [
+            post.title
+            for post in response.context['posts'].object_list
+        ]
+        self.assertCountEqual(result_titles, ['我的公开文章', '我的私密文章'])
+        self.assertTrue(response.context['is_my_posts_filter'])
+        self.assertEqual(response.context['selected_author_label'], 'current')
+        self.assertContains(response, '正在看我的文章')
+        self.assertNotContains(response, '其他用户公开文章')
+
+    def test_index_author_filter_only_shows_selected_authors_visible_posts(self):
+        current_user = User.objects.create_user(
+            username='current',
+            password='StrongPass12345',
+        )
+        other_user = User.objects.create_user(
+            username='other',
+            password='StrongPass12345',
+        )
+        UserProfile.objects.create(user=other_user, nickname='其他作者')
+        Post.objects.create(
+            author=current_user,
+            title='当前用户文章',
+            category='life',
+            content='当前正文',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=other_user,
+            title='其他作者公开文章',
+            category='tech',
+            content='公开正文',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=other_user,
+            title='其他作者私密文章',
+            category='study',
+            content='私密正文',
+            status='published',
+            visibility='private',
+        )
+        self.client.login(username='current', password='StrongPass12345')
+
+        response = self.client.get(reverse('index'), {'author': 'other'})
+
+        result_titles = [
+            post.title
+            for post in response.context['posts'].object_list
+        ]
+        self.assertEqual(result_titles, ['其他作者公开文章'])
+        self.assertFalse(response.context['is_my_posts_filter'])
+        self.assertEqual(response.context['selected_author_label'], '其他作者')
+        self.assertContains(response, '正在筛选作者')
+        self.assertNotContains(response, '其他作者私密文章')
+
+    def test_index_card_metadata_contains_clickable_filter_links(self):
+        author = User.objects.create_user(
+            username='writer',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=author,
+            title='可以筛选的文章',
+            category='mood',
+            content='正文',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.filter(pk=post.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 6, 24, 12, 0)),
+        )
+
+        response = self.client.get(reverse('index'))
+
+        self.assertContains(response, 'author=writer')
+        self.assertContains(response, 'date=2026-06-24')
+        self.assertContains(response, 'category=mood')
+        self.assertContains(response, 'post-meta-link')
+        self.assertContains(response, 'post-category')
+
     def test_index_about_card_uses_current_user_profile_and_post_stats(self):
         owner = User.objects.create_superuser(username='root', password='StrongPass12345')
         current_user = User.objects.create_user(username='current', password='StrongPass12345')
