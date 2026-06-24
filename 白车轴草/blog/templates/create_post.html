@@ -204,6 +204,7 @@
                     <div class="mb-4">
                         <label class="form-label"><i class="fas fa-image me-1"></i>封面图片</label>
                         <input type="hidden" name="cropped_cover" id="croppedCover">
+                        <input type="hidden" name="ai_cover_token" id="aiCoverToken">
                         <input type="hidden" name="clear_cover" id="clearCover" value="false">
                         <input type="file" id="coverUpload" accept="image/*" class="d-none">
 
@@ -299,6 +300,12 @@
                         <option value="long">详细</option>
                     </select>
                 </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="generateAiCover" checked>
+                    <label class="form-check-label" for="generateAiCover">
+                        同时匹配 Pexels 封面
+                    </label>
+                </div>
                 <div class="ai-generation-status text-danger" id="aiGenerationStatus"></div>
             </div>
             <div class="modal-footer">
@@ -346,6 +353,7 @@
             if (files && files.length > 0) {
                 var file = files[0];
                 selectedCoverType = file.type || 'image/jpeg';
+                $('#aiCoverToken').val('');
                 var url = URL.createObjectURL(file);
                 image.src = url;
                 $modal.modal('show');
@@ -385,6 +393,7 @@
                 ? canvas.toDataURL(outputCoverType, outputCoverQuality)
                 : canvas.toDataURL(outputCoverType);
             $('#croppedCover').val(base64data);
+            $('#aiCoverToken').val('');
 
             // Update preview area
             var $area = $('#coverPreviewArea');
@@ -410,6 +419,7 @@
 
             // Clear inputs
             $('#croppedCover').val('');
+            $('#aiCoverToken').val('');
             $('#coverUpload').val('');
             $('#clearCover').val('true');
 
@@ -449,13 +459,31 @@
                     topic: topic,
                     requirements: requirements,
                     article_length: articleLength,
+                    generate_cover: $('#generateAiCover').is(':checked') ? 'true' : 'false',
                 },
                 success: function (generatedPost) {
                     $('#postTitle').val(generatedPost.title);
                     $('#postCategory').val(generatedPost.category).trigger('change');
                     $('#postTags').val(generatedPost.tags);
                     $('#postContent').val(generatedPost.content);
-                    $status.removeClass('text-danger').addClass('text-success').text('草稿已填入文章表单。');
+                    if (generatedPost.cover) {
+                        $('#aiCoverToken').val(generatedPost.cover.token);
+                        $('#croppedCover').val('');
+                        $('#clearCover').val('false');
+                        $('#coverPreviewArea').html(
+                            '<img src="' + generatedPost.cover.preview_url + '" alt="AI 匹配封面" ' +
+                            'style="max-width: 100%; border-radius: 8px;">' +
+                            '<div class="mt-2 text-success"><i class="fas fa-check-circle me-1"></i>' +
+                            '已匹配 Pexels 封面，点击图片可改为手动上传</div>'
+                        );
+                        $('#removeCoverBtn').show();
+                    }
+
+                    var successMessage = '草稿已填入文章表单。';
+                    if (generatedPost.cover_warning) {
+                        successMessage += generatedPost.cover_warning;
+                    }
+                    $status.removeClass('text-danger').addClass('text-success').text(successMessage);
 
                     window.setTimeout(function () {
                         bootstrap.Modal.getOrCreateInstance(

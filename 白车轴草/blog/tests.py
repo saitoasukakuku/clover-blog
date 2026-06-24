@@ -1,10 +1,12 @@
 import json
 import os
+import tempfile
 from datetime import datetime
 from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core import signing
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
@@ -13,6 +15,7 @@ from django.utils import timezone
 from django.db.models.fields.files import FieldFile
 from blog.management.commands.create_startup_post import Command
 from blog.models import Post, UserProfile
+from blog.views import AI_COVER_TOKEN_SALT
 
 
 class AuthViewsTests(TestCase):
@@ -139,6 +142,8 @@ class AuthViewsTests(TestCase):
             'category': 'study',
             'tags': 'Django,学习笔记',
             'content': '这是 AI 生成后供用户继续修改的正文。',
+            'cover': None,
+            'cover_warning': '',
         })
         self.assertEqual(Post.objects.filter(author=user).count(), 1)
         generate_custom_article.assert_called_once_with(
@@ -175,6 +180,87 @@ class AuthViewsTests(TestCase):
         self.assertEqual(first_response.status_code, 200)
         self.assertEqual(second_response.status_code, 429)
         self.assertIn('请等待', second_response.json()['error'])
+
+    def test_generate_ai_post_can_return_signed_pexels_cover(self):
+        user = User.objects.create_user(username='writer', password='StrongPass12345')
+        self.client.login(username='writer', password='StrongPass12345')
+        generated_article = {
+            'title': '雨天阅读',
+            'category': 'reading',
+            'tags': ['阅读', '雨天'],
+            'content': '适合雨天阅读的一篇文章。',
+        }
+        pexels_photo = {
+            'id': 12345,
+            'url': 'https://www.pexels.com/photo/books-12345/',
+            'photographer': 'Test Photographer',
+            'photographer_url': 'https://www.pexels.com/@test',
+            'src': {
+                'landscape': 'https://images.pexels.com/photos/12345/books.jpg',
+            },
+        }
+
+        with patch.dict(os.environ, {'PEXELS_API_KEY': 'test-key'}):
+            with patch(
+                'blog.views.StartupPostCommand.generate_custom_article',
+                return_value=generated_article,
+            ):
+                with patch(
+                    'blog.views.StartupPostCommand.search_pexels_photo',
+                    return_value=pexels_photo,
+                ):
+                    response = self.client.post(reverse('generate_ai_post'), {
+                        'topic': '雨天阅读',
+                        'article_length': 'short',
+                        'generate_cover': 'true',
+                    })
+
+        self.assertEqual(response.status_code, 200)
+        response_cover = response.json()['cover']
+        self.assertEqual(
+            response_cover['preview_url'],
+            'https://images.pexels.com/photos/12345/books.jpg',
+        )
+        signed_cover_data = signing.loads(
+            response_cover['token'],
+            salt=AI_COVER_TOKEN_SALT,
+        )
+        self.assertEqual(signed_cover_data['photo_id'], 12345)
+        self.assertEqual(signed_cover_data['photographer'], 'Test Photographer')
+
+    def test_create_post_downloads_signed_ai_cover(self):
+        user = User.objects.create_user(username='writer', password='StrongPass12345')
+        self.client.login(username='writer', password='StrongPass12345')
+        cover_data = {
+            'image_url': 'https://images.pexels.com/photos/12345/books.jpg',
+            'photo_id': 12345,
+            'photo_url': 'https://www.pexels.com/photo/books-12345/',
+            'photographer': 'Test Photographer',
+            'photographer_url': 'https://www.pexels.com/@test',
+        }
+        ai_cover_token = signing.dumps(cover_data, salt=AI_COVER_TOKEN_SALT)
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root):
+                with patch(
+                    'blog.views.StartupPostCommand.download_pexels_image',
+                    return_value=b'test-image-bytes',
+                ) as download_pexels_image:
+                    response = self.client.post(reverse('create_post'), {
+                        'title': '带 AI 封面的文章',
+                        'category': 'reading',
+                        'tags': '阅读,雨天',
+                        'content': '文章正文',
+                        'visibility': 'private',
+                        'action': 'draft',
+                        'ai_cover_token': ai_cover_token,
+                    })
+
+        self.assertRedirects(response, reverse('drafts'))
+        post = Post.objects.get(title='带 AI 封面的文章')
+        self.assertTrue(post.cover.name.startswith('covers/ai_'))
+        self.assertIn('Photo by Test Photographer on Pexels', post.content)
+        download_pexels_image.assert_called_once_with(cover_data['image_url'])
 
     def test_index_only_shows_current_users_posts(self):
         owner = User.objects.create_user(username='owner', password='StrongPass12345')

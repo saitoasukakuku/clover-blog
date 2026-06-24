@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404, render, redirect
 from django.core.files.base import ContentFile
+from django.core import signing
 from django.core.paginator import Paginator
 from django.contrib import messages
 from django.contrib.auth import login, logout
@@ -9,6 +10,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST
 from django.core.management.base import CommandError
 from django.utils.dateparse import parse_date
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import strip_tags
 from django.utils.xmlutils import SimplerXMLGenerator
@@ -25,10 +27,13 @@ import base64
 import os
 import time
 import uuid
+from urllib.parse import urlparse
 
 
 CUSTOM_CATEGORY_VALUE = '__custom__'
 AI_GENERATION_COOLDOWN_SECONDS = 60
+AI_COVER_TOKEN_SALT = 'blog.ai-cover'
+AI_COVER_TOKEN_MAX_AGE_SECONDS = 7200
 
 
 def get_category_context(post=None):
@@ -47,6 +52,40 @@ def resolve_category(request):
     if category == CUSTOM_CATEGORY_VALUE:
         return (request.POST.get('custom_category') or '').strip()[:50]
     return category
+
+
+def get_ai_cover_data(ai_cover_token):
+    if not ai_cover_token:
+        return None
+
+    try:
+        cover_data = signing.loads(
+            ai_cover_token,
+            salt=AI_COVER_TOKEN_SALT,
+            max_age=AI_COVER_TOKEN_MAX_AGE_SECONDS,
+        )
+    except (signing.BadSignature, signing.SignatureExpired):
+        return None
+
+    image_url = cover_data.get('image_url', '')
+    parsed_image_url = urlparse(image_url)
+    if parsed_image_url.scheme != 'https' or parsed_image_url.hostname != 'images.pexels.com':
+        return None
+    return cover_data
+
+
+def append_ai_cover_attribution(content, cover_data):
+    photographer = cover_data.get('photographer', '').strip()
+    photo_url = cover_data.get('photo_url', '').strip()
+    photographer_url = cover_data.get('photographer_url', '').strip()
+    if not photographer or not photo_url:
+        return content
+
+    attribution = f'封面图：Photo by {photographer} on Pexels。'
+    if photographer_url:
+        attribution += f'\n摄影师主页：{photographer_url}'
+    attribution += f'\n图片来源：{photo_url}'
+    return f'{content}\n\n{attribution}'
 
 
 def get_category_counts(posts):
@@ -259,20 +298,32 @@ def create_post(request):
         content = request.POST.get('content')
         cover = request.FILES.get('cover')
         cropped_cover_data = request.POST.get('cropped_cover')
+        ai_cover_token = request.POST.get('ai_cover_token', '')
         action = request.POST.get('action') # 'draft' or 'publish'
 
         status = 'published' if action == 'publish' else 'draft'
         visibility = request.POST.get('visibility', 'private')
 
         if cropped_cover_data:
-            import base64
-            import uuid
-            from django.core.files.base import ContentFile
-            
-            format, imgstr = cropped_cover_data.split(';base64,') 
-            ext = format.split('/')[-1] 
-            file_name = f"cover_{uuid.uuid4().hex[:8]}.{ext}"
-            cover = ContentFile(base64.b64decode(imgstr), name=file_name)
+            image_format, image_data = cropped_cover_data.split(';base64,')
+            extension = image_format.split('/')[-1]
+            file_name = f"cover_{uuid.uuid4().hex[:8]}.{extension}"
+            cover = ContentFile(base64.b64decode(image_data), name=file_name)
+
+        ai_cover_data = None
+        if cover is None:
+            ai_cover_data = get_ai_cover_data(ai_cover_token)
+            if ai_cover_data:
+                try:
+                    image_bytes = StartupPostCommand().download_pexels_image(
+                        ai_cover_data['image_url']
+                    )
+                    photo_id = ai_cover_data.get('photo_id', 'ai')
+                    file_name = f"ai_{uuid.uuid4().hex[:8]}-{photo_id}.jpg"
+                    cover = ContentFile(image_bytes, name=file_name)
+                    content = append_ai_cover_attribution(content, ai_cover_data)
+                except CommandError:
+                    messages.warning(request, '文章已保存，但 AI 封面下载失败。')
 
         post = Post(
             author=request.user,
@@ -299,6 +350,7 @@ def generate_ai_post(request):
     topic = (request.POST.get('topic') or '').strip()
     requirements = (request.POST.get('requirements') or '').strip()
     article_length = (request.POST.get('article_length') or 'medium').strip()
+    should_generate_cover = request.POST.get('generate_cover') == 'true'
 
     if not topic:
         return JsonResponse({'error': '请先填写文章主题。'}, status=400)
@@ -348,12 +400,49 @@ def generate_ai_post(request):
         for tag in generated_article['tags']
         if isinstance(tag, str) and tag.strip()
     ]
-    return JsonResponse({
+    response_data = {
         'title': generated_article['title'].strip()[:200],
         'category': generated_article['category'],
         'tags': ','.join(generated_tags)[:200],
         'content': generated_article['content'].strip(),
-    })
+        'cover': None,
+        'cover_warning': '',
+    }
+
+    if should_generate_cover:
+        pexels_api_key = os.getenv('PEXELS_API_KEY')
+        if not pexels_api_key:
+            response_data['cover_warning'] = '服务器未配置 Pexels，文章已生成但没有自动封面。'
+        else:
+            try:
+                pexels_photo = generator.search_pexels_photo(
+                    pexels_api_key,
+                    generated_article,
+                    timezone.localdate(),
+                )
+                image_url = (
+                    pexels_photo.get('src', {}).get('landscape')
+                    or pexels_photo.get('src', {}).get('large')
+                )
+                if image_url:
+                    cover_data = {
+                        'image_url': image_url,
+                        'photo_id': pexels_photo.get('id', 'ai'),
+                        'photo_url': pexels_photo.get('url', ''),
+                        'photographer': pexels_photo.get('photographer', ''),
+                        'photographer_url': pexels_photo.get('photographer_url', ''),
+                    }
+                    response_data['cover'] = {
+                        'preview_url': image_url,
+                        'photographer': cover_data['photographer'],
+                        'token': signing.dumps(cover_data, salt=AI_COVER_TOKEN_SALT),
+                    }
+                else:
+                    response_data['cover_warning'] = '未找到可用的封面图片。'
+            except CommandError:
+                response_data['cover_warning'] = '封面匹配失败，文章正文仍可正常使用。'
+
+    return JsonResponse(response_data)
 
 
 @login_required
@@ -375,14 +464,10 @@ def edit_post(request, post_id):
         cropped_cover_data = request.POST.get('cropped_cover')
         
         if cropped_cover_data:
-            import base64
-            import uuid
-            from django.core.files.base import ContentFile
-            
-            format, imgstr = cropped_cover_data.split(';base64,') 
-            ext = format.split('/')[-1] 
-            file_name = f"cover_{uuid.uuid4().hex[:8]}.{ext}"
-            post.cover = ContentFile(base64.b64decode(imgstr), name=file_name)
+            image_format, image_data = cropped_cover_data.split(';base64,')
+            extension = image_format.split('/')[-1]
+            file_name = f"cover_{uuid.uuid4().hex[:8]}.{extension}"
+            post.cover = ContentFile(base64.b64decode(image_data), name=file_name)
         elif cover:
             post.cover = cover
         elif request.POST.get('clear_cover') == 'true':
