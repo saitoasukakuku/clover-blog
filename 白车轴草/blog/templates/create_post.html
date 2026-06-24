@@ -123,6 +123,17 @@
         line-height: 34px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
+
+    .ai-writing-bar {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 20px;
+    }
+
+    .ai-generation-status {
+        min-height: 24px;
+        font-size: 0.86rem;
+    }
 </style>
 {% endblock %}
 
@@ -140,6 +151,14 @@
     <div class="row justify-content-center">
         <div class="col-lg-9">
             <div class="create-form-card">
+                {% if not post %}
+                <div class="ai-writing-bar">
+                    <button type="button" class="btn btn-outline-success" data-bs-toggle="modal"
+                        data-bs-target="#aiWritingModal">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i>AI 写文章
+                    </button>
+                </div>
+                {% endif %}
                 <form method="post" enctype="multipart/form-data">
                     {% csrf_token %}
 
@@ -163,6 +182,13 @@
                         <input type="text" class="form-control mt-3 {% if not is_custom_category %}d-none{% endif %}"
                             id="customCategory" name="custom_category" value="{{ custom_category }}"
                             placeholder="输入自定义分类..." maxlength="50">
+                    </div>
+
+                    <!-- 文章标签 -->
+                    <div class="mb-4">
+                        <label for="postTags" class="form-label"><i class="fas fa-tags me-1"></i>文章标签</label>
+                        <input type="text" class="form-control" id="postTags" name="tags"
+                            value="{{ post.tags|default:'' }}" placeholder="多个标签使用逗号分隔" maxlength="200">
                     </div>
 
                      <!-- 可见范围 -->
@@ -242,6 +268,50 @@
         </div>
     </div>
 </div>
+
+{% if not post %}
+<!-- AI 写作弹窗 -->
+<div class="modal fade" id="aiWritingModal" tabindex="-1" aria-labelledby="aiWritingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="aiWritingModalLabel">
+                    <i class="fas fa-wand-magic-sparkles me-2 text-success"></i>AI 写文章
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="aiTopic" class="form-label">文章主题</label>
+                    <input type="text" class="form-control" id="aiTopic" maxlength="200"
+                        placeholder="例如：第一次学习 Django 的收获">
+                </div>
+                <div class="mb-3">
+                    <label for="aiRequirements" class="form-label">补充要求</label>
+                    <textarea class="form-control" id="aiRequirements" rows="4" maxlength="1000"
+                        placeholder="例如：语气轻松，加入三个实用建议"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="aiArticleLength" class="form-label">文章长度</label>
+                    <select class="form-select" id="aiArticleLength">
+                        <option value="short">简短</option>
+                        <option value="medium" selected>适中</option>
+                        <option value="long">详细</option>
+                    </select>
+                </div>
+                <div class="ai-generation-status text-danger" id="aiGenerationStatus"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="generateAiPostBtn">
+                    <i class="fas fa-wand-magic-sparkles me-1"></i>
+                    <span>生成草稿</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% endblock %}
 
@@ -346,6 +416,66 @@
             // Restore UI
             $('#coverPreviewArea').html(originalUploadUI);
             $(this).hide();
+        });
+
+        $('#generateAiPostBtn').on('click', function () {
+            var topic = $('#aiTopic').val().trim();
+            var requirements = $('#aiRequirements').val().trim();
+            var articleLength = $('#aiArticleLength').val();
+            var existingTitle = $('#postTitle').val().trim();
+            var existingContent = $('#postContent').val().trim();
+            var $generateButton = $(this);
+            var $buttonText = $generateButton.find('span');
+            var $status = $('#aiGenerationStatus');
+
+            if (!topic) {
+                $status.text('请先填写文章主题。');
+                $('#aiTopic').trigger('focus');
+                return;
+            }
+            if ((existingTitle || existingContent) && !window.confirm('生成结果会覆盖当前标题和正文，是否继续？')) {
+                return;
+            }
+
+            $status.removeClass('text-success').addClass('text-danger').text('');
+            $generateButton.prop('disabled', true);
+            $buttonText.text('生成中...');
+
+            $.ajax({
+                url: "{% url 'generate_ai_post' %}",
+                method: 'POST',
+                data: {
+                    csrfmiddlewaretoken: $('input[name="csrfmiddlewaretoken"]').val(),
+                    topic: topic,
+                    requirements: requirements,
+                    article_length: articleLength,
+                },
+                success: function (generatedPost) {
+                    $('#postTitle').val(generatedPost.title);
+                    $('#postCategory').val(generatedPost.category).trigger('change');
+                    $('#postTags').val(generatedPost.tags);
+                    $('#postContent').val(generatedPost.content);
+                    $status.removeClass('text-danger').addClass('text-success').text('草稿已填入文章表单。');
+
+                    window.setTimeout(function () {
+                        bootstrap.Modal.getOrCreateInstance(
+                            document.getElementById('aiWritingModal')
+                        ).hide();
+                        $('#postTitle').trigger('focus');
+                    }, 500);
+                },
+                error: function (request) {
+                    var errorMessage = 'AI 生成失败，请稍后重试。';
+                    if (request.responseJSON && request.responseJSON.error) {
+                        errorMessage = request.responseJSON.error;
+                    }
+                    $status.text(errorMessage);
+                },
+                complete: function () {
+                    $generateButton.prop('disabled', false);
+                    $buttonText.text('生成草稿');
+                },
+            });
         });
     });
 </script>

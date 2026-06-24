@@ -5,21 +5,30 @@ from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, Q, Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_POST
+from django.core.management.base import CommandError
 from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import strip_tags
 from django.utils.xmlutils import SimplerXMLGenerator
 from blog.forms import ChineseAuthenticationForm, ChineseUserCreationForm, UserCenterForm
+from blog.management.commands.create_startup_post import (
+    DEFAULT_DEEPSEEK_MODEL,
+    Command as StartupPostCommand,
+)
 from blog.models import Post, UserProfile
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
 from io import StringIO
 import base64
+import os
+import time
 import uuid
 
 
 CUSTOM_CATEGORY_VALUE = '__custom__'
+AI_GENERATION_COOLDOWN_SECONDS = 60
 
 
 def get_category_context(post=None):
@@ -246,6 +255,7 @@ def create_post(request):
     if request.method == 'POST':
         title = request.POST.get('title')
         category = resolve_category(request)
+        tags = (request.POST.get('tags') or '').strip()[:200]
         content = request.POST.get('content')
         cover = request.FILES.get('cover')
         cropped_cover_data = request.POST.get('cropped_cover')
@@ -268,7 +278,7 @@ def create_post(request):
             author=request.user,
             title=title,
             category=category,
-            tags='',
+            tags=tags,
             content=content,
             cover=cover,
             status=status,
@@ -282,6 +292,70 @@ def create_post(request):
 
     return render(request, 'create_post.html', get_category_context())
 
+
+@login_required
+@require_POST
+def generate_ai_post(request):
+    topic = (request.POST.get('topic') or '').strip()
+    requirements = (request.POST.get('requirements') or '').strip()
+    article_length = (request.POST.get('article_length') or 'medium').strip()
+
+    if not topic:
+        return JsonResponse({'error': '请先填写文章主题。'}, status=400)
+    if len(topic) > 200:
+        return JsonResponse({'error': '文章主题不能超过 200 个字符。'}, status=400)
+    if len(requirements) > 1000:
+        return JsonResponse({'error': '补充要求不能超过 1000 个字符。'}, status=400)
+    if article_length not in {'short', 'medium', 'long'}:
+        return JsonResponse({'error': '文章长度选项无效。'}, status=400)
+
+    current_timestamp = int(time.time())
+    last_generation_timestamp = request.session.get('last_ai_generation_timestamp', 0)
+    remaining_seconds = AI_GENERATION_COOLDOWN_SECONDS - (
+        current_timestamp - last_generation_timestamp
+    )
+    if remaining_seconds > 0:
+        return JsonResponse(
+            {'error': f'请等待 {remaining_seconds} 秒后再生成。'},
+            status=429,
+        )
+
+    request.session['last_ai_generation_timestamp'] = current_timestamp
+    recent_titles = list(
+        Post.objects.filter(author=request.user)
+        .order_by('-created_at')
+        .values_list('title', flat=True)[:20]
+    )
+    model = os.getenv('DEEPSEEK_MODEL', DEFAULT_DEEPSEEK_MODEL)
+    generator = StartupPostCommand()
+
+    try:
+        generated_article = generator.generate_custom_article(
+            model=model,
+            topic=topic,
+            requirements=requirements,
+            article_length=article_length,
+            recent_titles=recent_titles,
+        )
+    except CommandError:
+        return JsonResponse(
+            {'error': 'AI 生成失败，请稍后重试或联系管理员检查 DeepSeek 配置。'},
+            status=502,
+        )
+
+    generated_tags = [
+        tag.strip()
+        for tag in generated_article['tags']
+        if isinstance(tag, str) and tag.strip()
+    ]
+    return JsonResponse({
+        'title': generated_article['title'].strip()[:200],
+        'category': generated_article['category'],
+        'tags': ','.join(generated_tags)[:200],
+        'content': generated_article['content'].strip(),
+    })
+
+
 @login_required
 def drafts_list(request):
     posts = Post.objects.filter(author=request.user, status='draft').order_by('-updated_at')
@@ -294,7 +368,7 @@ def edit_post(request, post_id):
     if request.method == 'POST':
         post.title = request.POST.get('title')
         post.category = resolve_category(request)
-        post.tags = ''
+        post.tags = (request.POST.get('tags') or '').strip()[:200]
         post.content = request.POST.get('content')
         
         cover = request.FILES.get('cover')

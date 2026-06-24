@@ -14,6 +14,7 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('user_center/', views.user_center, name='user_center'),
     path('index/create_post/', views.create_post, name='create_post'),
+    path('index/create_post/ai/', views.generate_ai_post, name='generate_ai_post'),
     path('drafts/', views.drafts_list, name='drafts'),
     path('edit_post/<int:post_id>/', views.edit_post, name='edit_post'),
     path('delete_draft/<int:post_id>/', views.delete_draft, name='delete_draft'),

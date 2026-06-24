@@ -84,12 +84,97 @@ class AuthViewsTests(TestCase):
         response = self.client.post(reverse('create_post'), {
             'title': '我的文章',
             'category': 'life',
+            'tags': '生活,记录',
             'content': '只属于当前用户',
             'action': 'publish',
         })
 
         self.assertRedirects(response, reverse('index'))
-        self.assertEqual(Post.objects.get(title='我的文章').author, user)
+        post = Post.objects.get(title='我的文章')
+        self.assertEqual(post.author, user)
+        self.assertEqual(post.tags, '生活,记录')
+
+    def test_generate_ai_post_requires_login(self):
+        response = self.client.post(reverse('generate_ai_post'), {
+            'topic': '学习 Django',
+            'article_length': 'medium',
+        })
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('generate_ai_post')}",
+        )
+
+    def test_generate_ai_post_returns_editable_draft_without_saving_post(self):
+        user = User.objects.create_user(username='writer', password='StrongPass12345')
+        Post.objects.create(
+            author=user,
+            title='以前的文章',
+            category='life',
+            content='以前的正文',
+            status='published',
+        )
+        self.client.login(username='writer', password='StrongPass12345')
+        generated_article = {
+            'title': 'Django 学习记录',
+            'category': 'study',
+            'tags': ['Django', '学习笔记'],
+            'content': '这是 AI 生成后供用户继续修改的正文。',
+        }
+
+        with patch.dict(os.environ, {'DEEPSEEK_MODEL': 'test-model'}):
+            with patch(
+                'blog.views.StartupPostCommand.generate_custom_article',
+                return_value=generated_article,
+            ) as generate_custom_article:
+                response = self.client.post(reverse('generate_ai_post'), {
+                    'topic': '学习 Django',
+                    'requirements': '语气自然',
+                    'article_length': 'medium',
+                })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            'title': 'Django 学习记录',
+            'category': 'study',
+            'tags': 'Django,学习笔记',
+            'content': '这是 AI 生成后供用户继续修改的正文。',
+        })
+        self.assertEqual(Post.objects.filter(author=user).count(), 1)
+        generate_custom_article.assert_called_once_with(
+            model='test-model',
+            topic='学习 Django',
+            requirements='语气自然',
+            article_length='medium',
+            recent_titles=['以前的文章'],
+        )
+
+    def test_generate_ai_post_limits_repeated_requests(self):
+        user = User.objects.create_user(username='writer', password='StrongPass12345')
+        self.client.login(username='writer', password='StrongPass12345')
+        generated_article = {
+            'title': '测试标题',
+            'category': 'life',
+            'tags': ['测试', '生活'],
+            'content': '测试正文',
+        }
+
+        with patch(
+            'blog.views.StartupPostCommand.generate_custom_article',
+            return_value=generated_article,
+        ):
+            first_response = self.client.post(reverse('generate_ai_post'), {
+                'topic': '第一次生成',
+                'article_length': 'short',
+            })
+            second_response = self.client.post(reverse('generate_ai_post'), {
+                'topic': '立即再次生成',
+                'article_length': 'short',
+            })
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 429)
+        self.assertIn('请等待', second_response.json()['error'])
 
     def test_index_only_shows_current_users_posts(self):
         owner = User.objects.create_user(username='owner', password='StrongPass12345')
