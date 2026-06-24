@@ -4,7 +4,7 @@ from django.core.paginator import Paginator
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import F, Q
+from django.db.models import F, Q, Sum
 from django.http import HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -64,18 +64,21 @@ def index(request):
             Q(author=request.user, status='published')
         ).distinct().order_by('-created_at')
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        about_posts = Post.objects.filter(
+            author=request.user,
+            status='published',
+        )
     else:
         all_posts = Post.objects.filter(
             status='published',
             visibility='public'
         ).order_by('-created_at')
-        profile = None
-
-    owner_public_posts = Post.objects.filter(
-        author=owner,
-        status='published',
-        visibility='public',
-    ) if owner else Post.objects.none()
+        profile = owner_profile
+        about_posts = Post.objects.filter(
+            author=owner,
+            status='published',
+            visibility='public',
+        ) if owner else Post.objects.none()
 
     selected_category = request.GET.get('category', '').strip()
     search_query = request.GET.get('q', '').strip()
@@ -143,9 +146,9 @@ def index(request):
         'clear_date_query': clear_date_query,
         'category_counts': category_counts,
         'top_categories': category_counts[:10],
-        'profile': owner_profile,
-        'published_count': owner_public_posts.count(),
-        'category_count': len(get_category_counts(owner_public_posts)),
+        'profile': profile,
+        'published_count': about_posts.count(),
+        'total_views': about_posts.aggregate(total=Sum('views_count'))['total'] or 0,
         'recent_posts': all_posts[:5],
     })
 

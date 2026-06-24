@@ -103,24 +103,41 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '自己的文章')
         self.assertNotContains(response, '别人的文章')
 
-    def test_index_about_card_uses_site_owner_profile_and_public_posts(self):
+    def test_index_about_card_uses_current_user_profile_and_post_stats(self):
         owner = User.objects.create_superuser(username='root', password='StrongPass12345')
-        other = User.objects.create_user(username='other', password='StrongPass12345')
+        current_user = User.objects.create_user(username='current', password='StrongPass12345')
         UserProfile.objects.create(user=owner, nickname='站点博主', bio='记录公开文章。')
-        Post.objects.create(author=owner, title='当前账号文章', category='life', content='可见', status='published', visibility='public')
-        Post.objects.create(author=owner, title='当前账号草稿', category='life', content='不可见', status='draft')
-        Post.objects.create(author=other, title='其他账号文章', category='tech', content='不可见', status='published')
-        self.client.login(username='owner', password='StrongPass12345')
+        current_profile = UserProfile.objects.create(
+            user=current_user,
+            nickname='当前用户',
+            bio='这是当前登录用户。',
+        )
+        Post.objects.create(
+            author=owner,
+            title='站点博主文章',
+            category='life',
+            content='公开可见',
+            status='published',
+            visibility='public',
+            views_count=20,
+        )
+        Post.objects.create(
+            author=current_user,
+            title='当前用户文章',
+            category='tech',
+            content='自己可见',
+            status='published',
+            views_count=7,
+        )
+        self.client.login(username='current', password='StrongPass12345')
 
         response = self.client.get(reverse('index'))
 
-        self.assertContains(response, '站点博主')
-        self.assertContains(response, '记录公开文章。')
-        self.assertContains(response, '当前账号文章')
-        self.assertNotContains(response, '当前账号草稿')
-        self.assertNotContains(response, '其他账号文章')
+        self.assertEqual(response.context['profile'], current_profile)
+        self.assertContains(response, '当前用户')
+        self.assertContains(response, '这是当前登录用户。')
         self.assertEqual(response.context['published_count'], 1)
-        self.assertEqual(response.context['category_count'], 1)
+        self.assertEqual(response.context['total_views'], 7)
 
     def test_index_search_filters_current_users_published_posts(self):
         owner = User.objects.create_user(username='owner', password='StrongPass12345')
