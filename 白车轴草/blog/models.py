@@ -109,3 +109,138 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.display_name
+
+
+class FriendRequest(models.Model):
+    STATUS_CHOICES = (
+        ('pending', '待处理'),
+        ('accepted', '已接受'),
+        ('rejected', '已拒绝'),
+        ('cancelled', '已取消'),
+    )
+
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sent_friend_requests',
+        verbose_name='申请人',
+    )
+    receiver = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='received_friend_requests',
+        verbose_name='接收人',
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name='状态',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='申请时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('sender', 'receiver'),
+                name='unique_friend_request_direction',
+            ),
+            models.CheckConstraint(
+                check=~models.Q(sender=models.F('receiver')),
+                name='friend_request_users_differ',
+            ),
+        ]
+        ordering = ['-updated_at']
+        verbose_name = '好友申请'
+        verbose_name_plural = '好友申请'
+
+    def __str__(self):
+        return f'{self.sender.username} -> {self.receiver.username}'
+
+
+class Friendship(models.Model):
+    user_low = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='friendships_as_low',
+        verbose_name='用户一',
+    )
+    user_high = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='friendships_as_high',
+        verbose_name='用户二',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='成为好友时间')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('user_low', 'user_high'),
+                name='unique_friendship_pair',
+            ),
+            models.CheckConstraint(
+                check=models.Q(user_low__lt=models.F('user_high')),
+                name='friendship_users_ordered',
+            ),
+        ]
+        ordering = ['-created_at']
+        verbose_name = '好友关系'
+        verbose_name_plural = '好友关系'
+
+    @classmethod
+    def connect(cls, first_user, second_user):
+        if first_user.id == second_user.id:
+            raise ValueError('A user cannot befriend themselves.')
+        user_low, user_high = sorted(
+            (first_user, second_user),
+            key=lambda user: user.id,
+        )
+        friendship, _ = cls.objects.get_or_create(
+            user_low=user_low,
+            user_high=user_high,
+        )
+        return friendship
+
+    def __str__(self):
+        return f'{self.user_low.username} ↔ {self.user_high.username}'
+
+    def save(self, *args, **kwargs):
+        if self.user_low_id and self.user_high_id and self.user_low_id > self.user_high_id:
+            self.user_low_id, self.user_high_id = self.user_high_id, self.user_low_id
+            self._state.fields_cache.pop('user_low', None)
+            self._state.fields_cache.pop('user_high', None)
+        super().save(*args, **kwargs)
+
+
+class PrivateMessage(models.Model):
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sent_private_messages',
+        verbose_name='发送者',
+    )
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='received_private_messages',
+        verbose_name='接收者',
+    )
+    content = models.TextField(max_length=2000, verbose_name='消息内容')
+    is_read = models.BooleanField(default=False, verbose_name='已读')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='发送时间')
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(sender=models.F('recipient')),
+                name='private_message_users_differ',
+            ),
+        ]
+        ordering = ['created_at']
+        verbose_name = '私信'
+        verbose_name_plural = '私信'
+
+    def __str__(self):
+        return f'{self.sender.username} -> {self.recipient.username}: {self.content[:20]}'

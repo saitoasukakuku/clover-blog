@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
-from blog.models import Comment, UserProfile
+from blog.models import Comment, PrivateMessage, UserProfile
 
 
 class ChineseUserCreationForm(UserCreationForm):
@@ -212,5 +212,25 @@ class CommentForm(forms.ModelForm):
             'content': {
                 'required': '请输入评论内容。',
                 'max_length': '评论内容不能超过 1000 个字符。',
+            },
+        }
+
+
+class PrivateMessageForm(forms.ModelForm):
+    class Meta:
+        model = PrivateMessage
+        fields = ('content',)
+        widgets = {
+            'content': forms.Textarea(attrs={
+                'class': 'form-control',
+                'placeholder': '输入私信内容...',
+                'rows': 3,
+                'maxlength': 2000,
+            }),
+        }
+        error_messages = {
+            'content': {
+                'required': '请输入私信内容。',
+                'max_length': '私信内容不能超过 2000 个字符。',
             },
         }

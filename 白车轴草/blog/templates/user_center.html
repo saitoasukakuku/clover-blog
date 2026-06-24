@@ -247,6 +247,18 @@
                 <div class="quick-actions justify-content-center">
                     <a href="{% url 'create_post' %}" class="btn btn-publish btn-sm rounded-pill"><i class="fas fa-pen-fancy me-1"></i>写文章</a>
                     <a href="{% url 'drafts' %}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="far fa-folder-open me-1"></i>草稿箱</a>
+                    <a href="{% url 'friends' %}" class="btn btn-outline-success btn-sm rounded-pill">
+                        <i class="fas fa-user-friends me-1"></i>好友
+                        {% if pending_friend_request_count %}
+                        <span class="badge text-bg-danger ms-1">{{ pending_friend_request_count }}</span>
+                        {% endif %}
+                    </a>
+                    <a href="{% url 'conversations' %}" class="btn btn-outline-success btn-sm rounded-pill">
+                        <i class="fas fa-envelope me-1"></i>私信
+                        {% if unread_private_message_count %}
+                        <span class="badge text-bg-danger ms-1">{{ unread_private_message_count }}</span>
+                        {% endif %}
+                    </a>
                 </div>
             </aside>
         </div>

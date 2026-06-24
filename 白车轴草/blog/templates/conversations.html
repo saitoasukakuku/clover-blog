@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block title %}私信 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<style>
+    .message-shell {
+        max-width: 880px;
+        margin: 0 auto;
+    }
+
+    .message-page {
+        min-height: calc(100vh - 160px);
+    }
+
+    .message-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+    }
+
+    .conversation-list {
+        background: #fff;
+        border: 1px solid #e1eee1;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 3px 14px rgba(31, 83, 40, 0.06);
+    }
+
+    .conversation-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 18px;
+        color: inherit;
+        text-decoration: none;
+        border-bottom: 1px solid #edf3ed;
+    }
+
+    .conversation-row:last-child {
+        border-bottom: 0;
+    }
+
+    .conversation-row:hover {
+        background: #f7fbf6;
+    }
+
+    .conversation-avatar {
+        width: 50px;
+        height: 50px;
+        flex: 0 0 50px;
+        border-radius: 50%;
+        object-fit: cover;
+        background: #e8f5e9;
+    }
+
+    .conversation-avatar-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #2e7d32;
+    }
+
+    .conversation-main {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .conversation-name {
+        color: #1d2b20;
+        font-weight: 700;
+    }
+
+    .conversation-preview {
+        color: #778079;
+        font-size: 0.86rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="container py-4 message-page">
+    <div class="message-shell">
+        <div class="message-header">
+            <h1 class="h4 mb-0 text-success"><i class="fas fa-envelope me-2"></i>私信</h1>
+            <a href="{% url 'friends' %}" class="btn btn-outline-success">
+                <i class="fas fa-user-friends me-1"></i>好友
+            </a>
+        </div>
+
+        <div class="conversation-list">
+            {% for item in conversation_items %}
+            <a href="{% url 'conversation' item.friend.id %}" class="conversation-row">
+                {% if item.friend.profile.avatar %}
+                <img src="{{ item.friend.profile.avatar.url }}" alt="头像" class="conversation-avatar">
+                {% else %}
+                <div class="conversation-avatar conversation-avatar-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div class="conversation-main">
+                    <div class="d-flex align-items-center justify-content-between gap-2">
+                        <span class="conversation-name">
+                            {{ item.friend.profile.display_name|default:item.friend.username }}
+                        </span>
+                        {% if item.last_message %}
+                        <small class="text-muted">{{ item.last_message.created_at|date:"m-d H:i" }}</small>
+                        {% endif %}
+                    </div>
+                    <div class="conversation-preview">
+                        {% if item.last_message %}
+                            {% if item.last_message.sender == user %}我：{% endif %}
+                            {{ item.last_message.content }}
+                        {% else %}
+                            还没有消息，点击开始聊天。
+                        {% endif %}
+                    </div>
+                </div>
+                {% if item.unread_count %}
+                <span class="badge rounded-pill text-bg-danger">{{ item.unread_count }}</span>
+                {% endif %}
+            </a>
+            {% empty %}
+            <div class="text-center text-muted py-5">
+                <p>还没有可聊天的好友。</p>
+                <a href="{% url 'friends' %}" class="btn btn-success btn-sm">去添加好友</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</main>
+{% endblock %}

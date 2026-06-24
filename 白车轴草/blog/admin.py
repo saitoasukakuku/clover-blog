@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from blog.models import Comment, Post, UserProfile
+from blog.models import (
+    Comment,
+    FriendRequest,
+    Friendship,
+    Post,
+    PrivateMessage,
+    UserProfile,
+)
 
 
 @admin.register(Post)
@@ -28,3 +35,30 @@ class CommentAdmin(admin.ModelAdmin):
     @admin.display(description='评论内容')
     def content_preview(self, comment):
         return comment.content[:40]
+
+
+@admin.register(FriendRequest)
+class FriendRequestAdmin(admin.ModelAdmin):
+    list_display = ('sender', 'receiver', 'status', 'updated_at')
+    list_filter = ('status', 'updated_at')
+    search_fields = ('sender__username', 'receiver__username')
+    ordering = ('-updated_at',)
+
+
+@admin.register(Friendship)
+class FriendshipAdmin(admin.ModelAdmin):
+    list_display = ('user_low', 'user_high', 'created_at')
+    search_fields = ('user_low__username', 'user_high__username')
+    ordering = ('-created_at',)
+
+
+@admin.register(PrivateMessage)
+class PrivateMessageAdmin(admin.ModelAdmin):
+    list_display = ('sender', 'recipient', 'content_preview', 'is_read', 'created_at')
+    list_filter = ('is_read', 'created_at')
+    search_fields = ('content', 'sender__username', 'recipient__username')
+    ordering = ('-created_at',)
+
+    @admin.display(description='消息内容')
+    def content_preview(self, private_message):
+        return private_message.content[:40]

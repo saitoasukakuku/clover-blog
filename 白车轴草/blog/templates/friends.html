@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+
+{% block title %}好友 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<style>
+    .social-header {
+        padding: 34px 0;
+        background: #e8f5e9;
+        border-bottom: 1px solid #c8e6c9;
+    }
+
+    .social-header h1 {
+        margin: 0;
+        color: #1b5e20;
+        font-size: 1.65rem;
+        font-weight: 700;
+    }
+
+    .social-main {
+        min-height: calc(100vh - 260px);
+    }
+
+    .social-panel {
+        background: #fff;
+        border: 1px solid #e1eee1;
+        border-radius: 8px;
+        padding: 24px;
+        margin-bottom: 22px;
+        box-shadow: 0 3px 14px rgba(31, 83, 40, 0.06);
+    }
+
+    .social-panel h2 {
+        color: #1b5e20;
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-bottom: 18px;
+    }
+
+    .user-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 0;
+        border-bottom: 1px solid #edf3ed;
+    }
+
+    .user-row:last-child {
+        border-bottom: 0;
+    }
+
+    .user-identity {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }
+
+    .social-avatar {
+        width: 48px;
+        height: 48px;
+        flex: 0 0 48px;
+        border-radius: 50%;
+        object-fit: cover;
+        background: #e8f5e9;
+    }
+
+    .social-avatar-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #2e7d32;
+    }
+
+    .user-name {
+        color: #1d2b20;
+        font-weight: 700;
+    }
+
+    .user-meta {
+        color: #778079;
+        font-size: 0.82rem;
+    }
+
+    .row-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    @media (max-width: 575.98px) {
+        .user-row {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .row-actions {
+            width: 100%;
+            justify-content: flex-start;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="social-header">
+    <div class="container">
+        <h1><i class="fas fa-user-friends me-2"></i>好友</h1>
+    </div>
+</section>
+
+<main class="container py-4 social-main">
+    <div class="d-flex justify-content-end mb-3">
+        <a href="{% url 'conversations' %}" class="btn btn-outline-success">
+            <i class="fas fa-envelope me-1"></i>私信
+            {% if unread_private_message_count %}
+            <span class="badge text-bg-danger ms-1">{{ unread_private_message_count }}</span>
+            {% endif %}
+        </a>
+    </div>
+
+    <section class="social-panel">
+        <h2><i class="fas fa-search me-2"></i>查找用户</h2>
+        <form method="get" class="d-flex gap-2">
+            <input type="search" name="q" value="{{ search_query }}" class="form-control"
+                placeholder="搜索用户名或昵称">
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-search"></i>
+            </button>
+        </form>
+
+        {% if search_query %}
+        <div class="mt-3">
+            {% for found_user in search_results %}
+            <div class="user-row">
+                <div class="user-identity">
+                    {% if found_user.profile.avatar %}
+                    <img src="{{ found_user.profile.avatar.url }}" alt="头像" class="social-avatar">
+                    {% else %}
+                    <div class="social-avatar social-avatar-placeholder"><i class="fas fa-user"></i></div>
+                    {% endif %}
+                    <div>
+                        <div class="user-name">{{ found_user.profile.display_name|default:found_user.username }}</div>
+                        <div class="user-meta">@{{ found_user.username }}</div>
+                    </div>
+                </div>
+                <div class="row-actions">
+                    {% if found_user.relationship_status == 'friend' %}
+                    <a href="{% url 'conversation' found_user.id %}" class="btn btn-sm btn-outline-success">发私信</a>
+                    <span class="btn btn-sm btn-light disabled">已是好友</span>
+                    {% elif found_user.relationship_status == 'incoming' %}
+                    <span class="btn btn-sm btn-light disabled">等待你处理申请</span>
+                    {% elif found_user.relationship_status == 'outgoing' %}
+                    <span class="btn btn-sm btn-light disabled">申请已发送</span>
+                    {% else %}
+                    <form method="post" action="{% url 'send_friend_request' found_user.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-success">加好友</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-muted mb-0 mt-3">没有找到匹配的用户。</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </section>
+
+    {% if incoming_requests %}
+    <section class="social-panel">
+        <h2>
+            <i class="fas fa-user-clock me-2"></i>待处理申请
+            <span class="badge text-bg-danger ms-1">{{ incoming_requests|length }}</span>
+        </h2>
+        {% for friend_request in incoming_requests %}
+        <div class="user-row">
+            <div class="user-identity">
+                {% if friend_request.sender.profile.avatar %}
+                <img src="{{ friend_request.sender.profile.avatar.url }}" alt="头像" class="social-avatar">
+                {% else %}
+                <div class="social-avatar social-avatar-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div>
+                    <div class="user-name">
+                        {{ friend_request.sender.profile.display_name|default:friend_request.sender.username }}
+                    </div>
+                    <div class="user-meta">@{{ friend_request.sender.username }}</div>
+                </div>
+            </div>
+            <div class="row-actions">
+                <form method="post" action="{% url 'accept_friend_request' friend_request.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-success">接受</button>
+                </form>
+                <form method="post" action="{% url 'reject_friend_request' friend_request.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">拒绝</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if outgoing_requests %}
+    <section class="social-panel">
+        <h2><i class="fas fa-paper-plane me-2"></i>已发送申请</h2>
+        {% for friend_request in outgoing_requests %}
+        <div class="user-row">
+            <div class="user-identity">
+                {% if friend_request.receiver.profile.avatar %}
+                <img src="{{ friend_request.receiver.profile.avatar.url }}" alt="头像" class="social-avatar">
+                {% else %}
+                <div class="social-avatar social-avatar-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div>
+                    <div class="user-name">
+                        {{ friend_request.receiver.profile.display_name|default:friend_request.receiver.username }}
+                    </div>
+                    <div class="user-meta">等待对方处理</div>
+                </div>
+            </div>
+            <form method="post" action="{% url 'cancel_friend_request' friend_request.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">取消申请</button>
+            </form>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <section class="social-panel">
+        <h2><i class="fas fa-user-friends me-2"></i>我的好友（{{ friends|length }}）</h2>
+        {% for friend in friends %}
+        <div class="user-row">
+            <div class="user-identity">
+                {% if friend.profile.avatar %}
+                <img src="{{ friend.profile.avatar.url }}" alt="头像" class="social-avatar">
+                {% else %}
+                <div class="social-avatar social-avatar-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div>
+                    <div class="user-name">{{ friend.profile.display_name|default:friend.username }}</div>
+                    <div class="user-meta">@{{ friend.username }}</div>
+                </div>
+            </div>
+            <div class="row-actions">
+                <a href="{% url 'conversation' friend.id %}" class="btn btn-sm btn-success">
+                    <i class="fas fa-envelope me-1"></i>私信
+                </a>
+                <form method="post" action="{% url 'remove_friend' friend.id %}"
+                    onsubmit="return confirm('确定要删除这位好友吗？');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">删除好友</button>
+                </form>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-muted mb-0">还没有好友，可以先搜索用户并发送申请。</p>
+        {% endfor %}
+    </section>
+</main>
+{% endblock %}

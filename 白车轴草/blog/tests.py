@@ -14,7 +14,14 @@ from django.urls import reverse
 from django.utils import timezone
 from django.db.models.fields.files import FieldFile
 from blog.management.commands.create_startup_post import Command
-from blog.models import Comment, Post, UserProfile
+from blog.models import (
+    Comment,
+    FriendRequest,
+    Friendship,
+    Post,
+    PrivateMessage,
+    UserProfile,
+)
 from blog.views import AI_COVER_TOKEN_SALT
 
 
@@ -925,6 +932,274 @@ class AuthViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 405)
         self.assertTrue(Comment.objects.filter(id=comment.id).exists())
+
+    def test_user_can_send_friend_request(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        receiver = User.objects.create_user(
+            username='receiver',
+            password='StrongPass12345',
+        )
+        self.client.login(username='sender', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('send_friend_request', args=[receiver.id]),
+        )
+
+        self.assertRedirects(response, reverse('friends'))
+        friend_request = FriendRequest.objects.get(
+            sender=sender,
+            receiver=receiver,
+        )
+        self.assertEqual(friend_request.status, 'pending')
+
+    def test_user_cannot_send_friend_request_to_self(self):
+        user = User.objects.create_user(
+            username='writer',
+            password='StrongPass12345',
+        )
+        self.client.login(username='writer', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('send_friend_request', args=[user.id]),
+        )
+
+        self.assertRedirects(response, reverse('friends'))
+        self.assertFalse(FriendRequest.objects.exists())
+
+    def test_receiver_can_accept_friend_request(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        receiver = User.objects.create_user(
+            username='receiver',
+            password='StrongPass12345',
+        )
+        friend_request = FriendRequest.objects.create(
+            sender=sender,
+            receiver=receiver,
+        )
+        self.client.login(username='receiver', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('accept_friend_request', args=[friend_request.id]),
+        )
+
+        self.assertRedirects(response, reverse('friends'))
+        friend_request.refresh_from_db()
+        self.assertEqual(friend_request.status, 'accepted')
+        friendship = Friendship.objects.get()
+        self.assertLess(friendship.user_low_id, friendship.user_high_id)
+        self.assertCountEqual(
+            [friendship.user_low_id, friendship.user_high_id],
+            [sender.id, receiver.id],
+        )
+
+    def test_non_receiver_cannot_accept_friend_request(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        receiver = User.objects.create_user(
+            username='receiver',
+            password='StrongPass12345',
+        )
+        unrelated = User.objects.create_user(
+            username='unrelated',
+            password='StrongPass12345',
+        )
+        friend_request = FriendRequest.objects.create(
+            sender=sender,
+            receiver=receiver,
+        )
+        self.client.login(username='unrelated', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('accept_friend_request', args=[friend_request.id]),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Friendship.objects.exists())
+
+    def test_sender_can_cancel_friend_request(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        receiver = User.objects.create_user(
+            username='receiver',
+            password='StrongPass12345',
+        )
+        friend_request = FriendRequest.objects.create(
+            sender=sender,
+            receiver=receiver,
+        )
+        self.client.login(username='sender', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('cancel_friend_request', args=[friend_request.id]),
+        )
+
+        self.assertRedirects(response, reverse('friends'))
+        friend_request.refresh_from_db()
+        self.assertEqual(friend_request.status, 'cancelled')
+
+    def test_receiver_can_reject_friend_request(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        receiver = User.objects.create_user(
+            username='receiver',
+            password='StrongPass12345',
+        )
+        friend_request = FriendRequest.objects.create(
+            sender=sender,
+            receiver=receiver,
+        )
+        self.client.login(username='receiver', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('reject_friend_request', args=[friend_request.id]),
+        )
+
+        self.assertRedirects(response, reverse('friends'))
+        friend_request.refresh_from_db()
+        self.assertEqual(friend_request.status, 'rejected')
+        self.assertFalse(Friendship.objects.exists())
+
+    def test_friend_can_be_removed(self):
+        first_user = User.objects.create_user(
+            username='first',
+            password='StrongPass12345',
+        )
+        second_user = User.objects.create_user(
+            username='second',
+            password='StrongPass12345',
+        )
+        Friendship.connect(first_user, second_user)
+        self.client.login(username='first', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('remove_friend', args=[second_user.id]),
+        )
+
+        self.assertRedirects(response, reverse('friends'))
+        self.assertFalse(Friendship.objects.exists())
+
+    def test_non_friends_cannot_open_conversation(self):
+        first_user = User.objects.create_user(
+            username='first',
+            password='StrongPass12345',
+        )
+        second_user = User.objects.create_user(
+            username='second',
+            password='StrongPass12345',
+        )
+        self.client.login(username='first', password='StrongPass12345')
+
+        response = self.client.get(
+            reverse('conversation', args=[second_user.id]),
+        )
+
+        self.assertRedirects(response, reverse('friends'))
+        self.assertFalse(PrivateMessage.objects.exists())
+
+    def test_friends_can_send_private_message(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        recipient = User.objects.create_user(
+            username='recipient',
+            password='StrongPass12345',
+        )
+        Friendship.connect(sender, recipient)
+        self.client.login(username='sender', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('conversation', args=[recipient.id]),
+            {'content': '你好，这是一条私信。'},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('conversation', args=[recipient.id]),
+        )
+        private_message = PrivateMessage.objects.get()
+        self.assertEqual(private_message.sender, sender)
+        self.assertEqual(private_message.recipient, recipient)
+        self.assertEqual(private_message.content, '你好，这是一条私信。')
+        self.assertFalse(private_message.is_read)
+
+    def test_conversation_list_handles_friend_without_messages(self):
+        first_user = User.objects.create_user(
+            username='first',
+            password='StrongPass12345',
+        )
+        second_user = User.objects.create_user(
+            username='second',
+            password='StrongPass12345',
+        )
+        Friendship.connect(first_user, second_user)
+        self.client.login(username='first', password='StrongPass12345')
+
+        response = self.client.get(reverse('conversations'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'second')
+        self.assertContains(response, '还没有消息')
+
+    def test_opening_conversation_marks_received_messages_read(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        recipient = User.objects.create_user(
+            username='recipient',
+            password='StrongPass12345',
+        )
+        Friendship.connect(sender, recipient)
+        private_message = PrivateMessage.objects.create(
+            sender=sender,
+            recipient=recipient,
+            content='未读消息',
+        )
+        self.client.login(username='recipient', password='StrongPass12345')
+
+        response = self.client.get(
+            reverse('conversation', args=[sender.id]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        private_message.refresh_from_db()
+        self.assertTrue(private_message.is_read)
+
+    def test_navigation_context_contains_social_counts(self):
+        sender = User.objects.create_user(
+            username='sender',
+            password='StrongPass12345',
+        )
+        receiver = User.objects.create_user(
+            username='receiver',
+            password='StrongPass12345',
+        )
+        FriendRequest.objects.create(sender=sender, receiver=receiver)
+        Friendship.connect(sender, receiver)
+        PrivateMessage.objects.create(
+            sender=sender,
+            recipient=receiver,
+            content='未读消息',
+        )
+        self.client.login(username='receiver', password='StrongPass12345')
+
+        response = self.client.get(reverse('user_center'))
+
+        self.assertEqual(response.context['pending_friend_request_count'], 1)
+        self.assertEqual(response.context['unread_private_message_count'], 1)
 
     def test_logout_clears_session(self):
         User.objects.create_user(username='writer', password='StrongPass12345')

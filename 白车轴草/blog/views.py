@@ -5,6 +5,8 @@ from django.core.paginator import Paginator
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+from django.db import transaction
 from django.db.models import F, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST
@@ -14,12 +16,25 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import strip_tags
 from django.utils.xmlutils import SimplerXMLGenerator
-from blog.forms import ChineseAuthenticationForm, ChineseUserCreationForm, UserCenterForm, CommentForm
+from blog.forms import (
+    ChineseAuthenticationForm,
+    ChineseUserCreationForm,
+    CommentForm,
+    PrivateMessageForm,
+    UserCenterForm,
+)
 from blog.management.commands.create_startup_post import (
     DEFAULT_DEEPSEEK_MODEL,
     Command as StartupPostCommand,
 )
-from blog.models import Comment, Post, UserProfile
+from blog.models import (
+    Comment,
+    FriendRequest,
+    Friendship,
+    Post,
+    PrivateMessage,
+    UserProfile,
+)
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
 from io import StringIO
@@ -34,6 +49,37 @@ CUSTOM_CATEGORY_VALUE = '__custom__'
 AI_GENERATION_COOLDOWN_SECONDS = 60
 AI_COVER_TOKEN_SALT = 'blog.ai-cover'
 AI_COVER_TOKEN_MAX_AGE_SECONDS = 7200
+
+
+def get_friendships_for_user(user):
+    return Friendship.objects.filter(
+        Q(user_low=user) | Q(user_high=user)
+    ).select_related(
+        'user_low__profile',
+        'user_high__profile',
+    )
+
+
+def get_friends_for_user(user):
+    friends = []
+    for friendship in get_friendships_for_user(user):
+        friend = (
+            friendship.user_high
+            if friendship.user_low_id == user.id
+            else friendship.user_low
+        )
+        friends.append(friend)
+    return friends
+
+
+def are_friends(first_user, second_user):
+    if first_user.id == second_user.id:
+        return False
+    user_low_id, user_high_id = sorted((first_user.id, second_user.id))
+    return Friendship.objects.filter(
+        user_low_id=user_low_id,
+        user_high_id=user_high_id,
+    ).exists()
 
 
 def get_category_context(post=None):
@@ -314,6 +360,219 @@ def user_center(request):
         'profile': profile,
         'stats': stats,
     })
+
+
+@login_required
+def friends_view(request):
+    search_query = (request.GET.get('q') or '').strip()
+    friends = get_friends_for_user(request.user)
+    friend_ids = {friend.id for friend in friends}
+    incoming_requests = FriendRequest.objects.filter(
+        receiver=request.user,
+        status='pending',
+    ).select_related('sender__profile')
+    outgoing_requests = FriendRequest.objects.filter(
+        sender=request.user,
+        status='pending',
+    ).select_related('receiver__profile')
+
+    search_results = []
+    if search_query:
+        matched_users = User.objects.filter(
+            Q(username__icontains=search_query)
+            | Q(profile__nickname__icontains=search_query)
+        ).exclude(id=request.user.id).select_related('profile').distinct()[:30]
+        incoming_sender_ids = {
+            friend_request.sender_id
+            for friend_request in incoming_requests
+        }
+        outgoing_receiver_ids = {
+            friend_request.receiver_id
+            for friend_request in outgoing_requests
+        }
+        for matched_user in matched_users:
+            if matched_user.id in friend_ids:
+                matched_user.relationship_status = 'friend'
+            elif matched_user.id in incoming_sender_ids:
+                matched_user.relationship_status = 'incoming'
+            elif matched_user.id in outgoing_receiver_ids:
+                matched_user.relationship_status = 'outgoing'
+            else:
+                matched_user.relationship_status = 'none'
+            search_results.append(matched_user)
+
+    return render(request, 'friends.html', {
+        'friends': friends,
+        'incoming_requests': incoming_requests,
+        'outgoing_requests': outgoing_requests,
+        'search_query': search_query,
+        'search_results': search_results,
+    })
+
+
+@login_required
+@require_POST
+def send_friend_request(request, user_id):
+    target_user = get_object_or_404(User, id=user_id)
+    if target_user == request.user:
+        messages.error(request, '不能添加自己为好友。')
+        return redirect('friends')
+    if are_friends(request.user, target_user):
+        messages.info(request, '你们已经是好友。')
+        return redirect('friends')
+    if FriendRequest.objects.filter(
+        sender=target_user,
+        receiver=request.user,
+        status='pending',
+    ).exists():
+        messages.info(request, '对方已向你发送好友申请，请在待处理申请中操作。')
+        return redirect('friends')
+
+    friend_request, created = FriendRequest.objects.get_or_create(
+        sender=request.user,
+        receiver=target_user,
+        defaults={'status': 'pending'},
+    )
+    if not created:
+        friend_request.status = 'pending'
+        friend_request.save(update_fields=['status', 'updated_at'])
+    messages.success(request, '好友申请已发送。')
+    return redirect('friends')
+
+
+@login_required
+@require_POST
+def accept_friend_request(request, request_id):
+    with transaction.atomic():
+        friend_request = get_object_or_404(
+            FriendRequest.objects.select_for_update(),
+            id=request_id,
+            receiver=request.user,
+            status='pending',
+        )
+        Friendship.connect(friend_request.sender, friend_request.receiver)
+        friend_request.status = 'accepted'
+        friend_request.save(update_fields=['status', 'updated_at'])
+        FriendRequest.objects.filter(
+            sender=request.user,
+            receiver=friend_request.sender,
+            status='pending',
+        ).update(status='accepted', updated_at=timezone.now())
+    messages.success(request, '好友申请已接受。')
+    return redirect('friends')
+
+
+@login_required
+@require_POST
+def reject_friend_request(request, request_id):
+    friend_request = get_object_or_404(
+        FriendRequest,
+        id=request_id,
+        receiver=request.user,
+        status='pending',
+    )
+    friend_request.status = 'rejected'
+    friend_request.save(update_fields=['status', 'updated_at'])
+    messages.info(request, '好友申请已拒绝。')
+    return redirect('friends')
+
+
+@login_required
+@require_POST
+def cancel_friend_request(request, request_id):
+    friend_request = get_object_or_404(
+        FriendRequest,
+        id=request_id,
+        sender=request.user,
+        status='pending',
+    )
+    friend_request.status = 'cancelled'
+    friend_request.save(update_fields=['status', 'updated_at'])
+    messages.info(request, '好友申请已取消。')
+    return redirect('friends')
+
+
+@login_required
+@require_POST
+def remove_friend(request, user_id):
+    target_user = get_object_or_404(User, id=user_id)
+    user_low_id, user_high_id = sorted((request.user.id, target_user.id))
+    deleted_count, _ = Friendship.objects.filter(
+        user_low_id=user_low_id,
+        user_high_id=user_high_id,
+    ).delete()
+    if deleted_count:
+        messages.success(request, '好友已删除。')
+    else:
+        messages.error(request, '当前用户不是你的好友。')
+    return redirect('friends')
+
+
+@login_required
+def conversations_view(request):
+    conversation_items = []
+    for friend in get_friends_for_user(request.user):
+        conversation_messages = PrivateMessage.objects.filter(
+            Q(sender=request.user, recipient=friend)
+            | Q(sender=friend, recipient=request.user)
+        )
+        conversation_items.append({
+            'friend': friend,
+            'last_message': conversation_messages.order_by('-created_at').first(),
+            'unread_count': conversation_messages.filter(
+                sender=friend,
+                recipient=request.user,
+                is_read=False,
+            ).count(),
+        })
+
+    conversation_items.sort(
+        key=lambda item: (
+            item['last_message'].created_at.timestamp()
+            if item['last_message']
+            else 0
+        ),
+        reverse=True,
+    )
+    return render(request, 'conversations.html', {
+        'conversation_items': conversation_items,
+    })
+
+
+@login_required
+def conversation_view(request, user_id):
+    friend = get_object_or_404(User.objects.select_related('profile'), id=user_id)
+    if not are_friends(request.user, friend):
+        messages.error(request, '只有好友之间可以发送私信。')
+        return redirect('friends')
+
+    if request.method == 'POST':
+        message_form = PrivateMessageForm(request.POST)
+        if message_form.is_valid():
+            private_message = message_form.save(commit=False)
+            private_message.sender = request.user
+            private_message.recipient = friend
+            private_message.save()
+            return redirect('conversation', user_id=friend.id)
+    else:
+        message_form = PrivateMessageForm()
+
+    PrivateMessage.objects.filter(
+        sender=friend,
+        recipient=request.user,
+        is_read=False,
+    ).update(is_read=True)
+    conversation_messages = PrivateMessage.objects.filter(
+        Q(sender=request.user, recipient=friend)
+        | Q(sender=friend, recipient=request.user)
+    ).select_related('sender__profile')
+
+    return render(request, 'conversation.html', {
+        'friend': friend,
+        'conversation_messages': conversation_messages,
+        'message_form': message_form,
+    })
+
 
 @login_required
 def create_post(request):
