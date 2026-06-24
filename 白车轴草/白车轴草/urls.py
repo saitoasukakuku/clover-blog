@@ -19,6 +19,8 @@ urlpatterns = [
     path('edit_post/<int:post_id>/', views.edit_post, name='edit_post'),
     path('delete_draft/<int:post_id>/', views.delete_draft, name='delete_draft'),
     path('post/<int:post_id>/', views.post_detail, name='post_detail'),
+    path('post/<int:post_id>/comment/', views.add_comment, name='add_comment'),
+    path('comment/<int:comment_id>/delete/', views.delete_comment, name='delete_comment'),
     path('post/<int:post_id>/delete/', views.delete_post, name='delete_post'),
     path('rss.xml', views.rss_feed, name='rss_feed'),
 ]

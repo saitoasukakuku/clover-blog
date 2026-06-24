@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
-from blog.models import UserProfile
+from blog.models import Comment, UserProfile
 
 
 class ChineseUserCreationForm(UserCreationForm):
@@ -191,3 +191,26 @@ class UserCenterForm(forms.ModelForm):
             self.user.save(update_fields=['email'])
             profile.save()
         return profile
+
+
+class CommentForm(forms.ModelForm):
+    class Meta:
+        model = Comment
+        fields = ('content',)
+        labels = {
+            'content': '评论内容',
+        }
+        widgets = {
+            'content': forms.Textarea(attrs={
+                'class': 'form-control',
+                'placeholder': '写下你的评论...',
+                'rows': 4,
+                'maxlength': 1000,
+            }),
+        }
+        error_messages = {
+            'content': {
+                'required': '请输入评论内容。',
+                'max_length': '评论内容不能超过 1000 个字符。',
+            },
+        }

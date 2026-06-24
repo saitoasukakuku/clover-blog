@@ -14,12 +14,12 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import strip_tags
 from django.utils.xmlutils import SimplerXMLGenerator
-from blog.forms import ChineseAuthenticationForm, ChineseUserCreationForm, UserCenterForm
+from blog.forms import ChineseAuthenticationForm, ChineseUserCreationForm, UserCenterForm, CommentForm
 from blog.management.commands.create_startup_post import (
     DEFAULT_DEEPSEEK_MODEL,
     Command as StartupPostCommand,
 )
-from blog.models import Post, UserProfile
+from blog.models import Comment, Post, UserProfile
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
 from io import StringIO
@@ -537,9 +537,77 @@ def post_detail(request, post_id):
     Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)
     post.refresh_from_db(fields=['views_count'])
 
-    context = {'post': post}
+    comments_enabled = (
+        post.status == 'published'
+        and post.visibility == 'public'
+    )
+
+    if comments_enabled:
+        comments = post.comments.select_related(
+            'author__profile'
+        ).all()
+    else:
+        comments = post.comments.none()
+
+    if comments_enabled and request.user.is_authenticated:
+        comment_form = CommentForm()
+    else:
+        comment_form = None
+
+    context = {
+        'post': post,
+        'comments_enabled': comments_enabled,
+        'comments': comments,
+        'comment_form': comment_form,
+    }
     context.update(get_category_context(post))
     return render(request, 'post_detail.html', context)
+
+@login_required
+@require_POST
+def add_comment(request, post_id):
+    post = get_object_or_404(
+        Post,
+        id=post_id,
+        status='published',
+        visibility='public',
+    )
+
+    comment_form = CommentForm(request.POST)
+
+    if comment_form.is_valid():
+        comment = comment_form.save(commit=False)
+        comment.post = post
+        comment.author = request.user
+        comment.save()
+        messages.success(request, '评论发表成功。')
+    else:
+        messages.error(request, '评论发表失败，请检查评论内容。')
+
+    return redirect('post_detail', post_id=post.id)
+
+
+@login_required
+@require_POST
+def delete_comment(request, comment_id):
+    comment = get_object_or_404(
+        Comment.objects.select_related('post'),
+        id=comment_id,
+    )
+    post_id = comment.post_id
+    can_delete_comment = (
+        comment.author_id == request.user.id
+        or comment.post.author_id == request.user.id
+    )
+
+    if not can_delete_comment:
+        messages.error(request, '你没有权限删除这条评论。')
+        return redirect('post_detail', post_id=post_id)
+
+    comment.delete()
+    messages.success(request, '评论已删除。')
+    return redirect('post_detail', post_id=post_id)
+
 
 @login_required
 def delete_post(request, post_id):

@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.db.models.fields.files import FieldFile
 from blog.management.commands.create_startup_post import Command
-from blog.models import Post, UserProfile
+from blog.models import Comment, Post, UserProfile
 from blog.views import AI_COVER_TOKEN_SALT
 
 
@@ -523,6 +523,235 @@ class AuthViewsTests(TestCase):
         response = self.client.get(reverse('post_detail', args=[post.id]))
 
         self.assertEqual(response.status_code, 404)
+
+    def test_logged_in_user_can_comment_on_public_post(self):
+        user = User.objects.create_user(
+            username='commenter',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=user,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(
+            username='commenter',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('add_comment', args=[post.id]),
+            {'content': '这是一条测试评论。'},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('post_detail', args=[post.id]),
+        )
+        comment = Comment.objects.get(post=post)
+        self.assertEqual(comment.author, user)
+        self.assertEqual(comment.content, '这是一条测试评论。')
+
+
+    def test_anonymous_user_cannot_comment(self):
+        author = User.objects.create_user(
+            username='author',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=author,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.post(
+            reverse('add_comment', args=[post.id]),
+            {'content': '游客评论。'},
+        )
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('add_comment', args=[post.id])}",
+        )
+        self.assertFalse(Comment.objects.filter(post=post).exists())
+
+
+    def test_private_post_cannot_be_commented(self):
+        user = User.objects.create_user(
+            username='writer',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=user,
+            title='私密文章',
+            category='life',
+            content='私密正文',
+            status='published',
+            visibility='private',
+        )
+        self.client.login(
+            username='writer',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('add_comment', args=[post.id]),
+            {'content': '不应该保存的评论。'},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Comment.objects.filter(post=post).exists())
+
+    def test_comment_author_can_delete_own_comment(self):
+        post_author = User.objects.create_user(
+            username='post-author',
+            password='StrongPass12345',
+        )
+        comment_author = User.objects.create_user(
+            username='comment-author',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=post_author,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        comment = Comment.objects.create(
+            post=post,
+            author=comment_author,
+            content='由评论者删除。',
+        )
+        self.client.login(
+            username='comment-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('delete_comment', args=[comment.id]),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('post_detail', args=[post.id]),
+        )
+        self.assertFalse(Comment.objects.filter(id=comment.id).exists())
+
+    def test_post_author_can_delete_comment_on_own_post(self):
+        post_author = User.objects.create_user(
+            username='post-author',
+            password='StrongPass12345',
+        )
+        comment_author = User.objects.create_user(
+            username='comment-author',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=post_author,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        comment = Comment.objects.create(
+            post=post,
+            author=comment_author,
+            content='由文章作者管理。',
+        )
+        self.client.login(
+            username='post-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('delete_comment', args=[comment.id]),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('post_detail', args=[post.id]),
+        )
+        self.assertFalse(Comment.objects.filter(id=comment.id).exists())
+
+    def test_unrelated_user_cannot_delete_comment(self):
+        post_author = User.objects.create_user(
+            username='post-author',
+            password='StrongPass12345',
+        )
+        comment_author = User.objects.create_user(
+            username='comment-author',
+            password='StrongPass12345',
+        )
+        unrelated_user = User.objects.create_user(
+            username='unrelated',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=post_author,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        comment = Comment.objects.create(
+            post=post,
+            author=comment_author,
+            content='不能被无关用户删除。',
+        )
+        self.client.login(
+            username='unrelated',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('delete_comment', args=[comment.id]),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('post_detail', args=[post.id]),
+        )
+        self.assertTrue(Comment.objects.filter(id=comment.id).exists())
+
+    def test_delete_comment_rejects_get_request(self):
+        user = User.objects.create_user(
+            username='writer',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=user,
+            title='公开文章',
+            category='life',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+        comment = Comment.objects.create(
+            post=post,
+            author=user,
+            content='不能通过 GET 删除。',
+        )
+        self.client.login(
+            username='writer',
+            password='StrongPass12345',
+        )
+
+        response = self.client.get(
+            reverse('delete_comment', args=[comment.id]),
+        )
+
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(Comment.objects.filter(id=comment.id).exists())
 
     def test_logout_clears_session(self):
         User.objects.create_user(username='writer', password='StrongPass12345')
