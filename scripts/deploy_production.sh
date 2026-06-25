@@ -9,7 +9,9 @@ MANAGE_PY="${PROJECT_DIR}/白车轴草/manage.py"
 LOCK_FILE="/var/lock/clover-blog-deploy.lock"
 DEPLOY_SCRIPT_SOURCE="${PROJECT_DIR}/scripts/deploy_production.sh"
 DEPLOY_SCRIPT_TARGET="/usr/local/sbin/clover-blog-deploy"
-GIT_FETCH_ATTEMPTS=5
+GITHUB_REMOTE_URL="github-clover-blog:saitoasukakuku/clover-blog.git"
+GIT_FETCH_ATTEMPTS=3
+GIT_FETCH_TIMEOUT_SECONDS=30
 HTTP_CHECK_ATTEMPTS=15
 
 trap 'exit_code=$?; echo "部署失败：第 ${LINENO} 行退出，状态码 ${exit_code}。" >&2' ERR
@@ -37,10 +39,12 @@ current_commit="$(sudo -u "${APP_USER}" git rev-parse HEAD)"
 echo "当前提交：${current_commit}"
 echo "正在从 GitHub 获取 origin/main..."
 
+sudo -u "${APP_USER}" git remote set-url origin "${GITHUB_REMOTE_URL}"
+
 fetch_succeeded=false
 for fetch_attempt in $(seq 1 "${GIT_FETCH_ATTEMPTS}"); do
-    if sudo -u "${APP_USER}" git \
-        -c http.version=HTTP/1.1 \
+    if timeout "${GIT_FETCH_TIMEOUT_SECONDS}" \
+        sudo -u "${APP_USER}" git \
         fetch --prune origin main; then
         fetch_succeeded=true
         break

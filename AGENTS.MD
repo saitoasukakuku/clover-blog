@@ -466,7 +466,8 @@ sudo clover-blog-deploy
 
 - 使用文件锁避免两个部署同时执行。
 - 检查服务器是否存在未提交的受 Git 跟踪文件改动。
-- 从 GitHub 获取 `origin/main`，网络失败时最多尝试 5 次。
+- 通过仓库只读 Deploy Key 和 `ssh.github.com:443` 获取 `origin/main`。
+- 单次 Git 获取最多等待 30 秒，网络失败时最多尝试 3 次。
 - 只允许从当前提交快进到 `origin/main`，不会执行强制重置。
 - 同步 Python 依赖。
 - 执行数据库迁移和 `collectstatic`。
@@ -477,6 +478,17 @@ sudo clover-blog-deploy
 
 脚本执行失败时会返回非零状态并指出失败阶段。GitHub 连续连接失败时不会改变当前
 线上提交。
+
+服务器 GitHub 拉取配置：
+
+- 只读 Deploy Key 标题：`clover-blog-production-readonly`
+- 私钥路径：`/home/ubuntu/.ssh/clover_blog_github_ed25519`
+- SSH 别名：`github-clover-blog`
+- SSH 主机：`ssh.github.com`
+- SSH 端口：`443`
+- Git 远程地址：`github-clover-blog:saitoasukakuku/clover-blog.git`
+
+Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
 当前服务器已经成功执行迁移到 `0009`，并已创建超级用户。
 
