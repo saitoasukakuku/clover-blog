@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 from datetime import datetime
+from html.parser import HTMLParser
 from io import StringIO
 from unittest.mock import patch
 
@@ -23,6 +24,54 @@ from blog.models import (
     UserProfile,
 )
 from blog.views import AI_COVER_TOKEN_SALT
+
+
+class DeletionFormParser(HTMLParser):
+    def __init__(self, deletion_url):
+        super().__init__()
+        self.deletion_url = deletion_url
+        self.is_inside_deletion_form = False
+        self.deletion_form_found = False
+        self.csrf_token_found = False
+        self.submit_button_found = False
+        self.delete_link_found = False
+
+    def handle_starttag(self, tag, attributes):
+        attribute_values = dict(attributes)
+
+        if tag == 'a' and attribute_values.get('href') == self.deletion_url:
+            self.delete_link_found = True
+
+        if tag == 'form':
+            form_method = attribute_values.get('method', '').lower()
+            form_action = attribute_values.get('action')
+            if form_method == 'post' and form_action == self.deletion_url:
+                self.is_inside_deletion_form = True
+                self.deletion_form_found = True
+            return
+
+        if not self.is_inside_deletion_form:
+            return
+
+        if tag == 'input':
+            input_type = attribute_values.get('type', '').lower()
+            input_name = attribute_values.get('name')
+            input_value = attribute_values.get('value', '')
+            if (
+                input_type == 'hidden'
+                and input_name == 'csrfmiddlewaretoken'
+                and input_value
+            ):
+                self.csrf_token_found = True
+
+        if tag == 'button':
+            button_type = attribute_values.get('type', '').lower()
+            if button_type == 'submit':
+                self.submit_button_found = True
+
+    def handle_endtag(self, tag):
+        if tag == 'form' and self.is_inside_deletion_form:
+            self.is_inside_deletion_form = False
 
 
 class AuthViewsTests(TestCase):
@@ -1321,6 +1370,30 @@ class AuthViewsTests(TestCase):
 
 
 class PostDeletionTests(TestCase):
+    def assert_post_deletion_form(self, response, deletion_url):
+        self.assertEqual(response.status_code, 200)
+
+        response_html = response.content.decode()
+        deletion_form_parser = DeletionFormParser(deletion_url)
+        deletion_form_parser.feed(response_html)
+
+        self.assertTrue(
+            deletion_form_parser.deletion_form_found,
+            'Deletion POST form was not found.',
+        )
+        self.assertTrue(
+            deletion_form_parser.csrf_token_found,
+            'Deletion POST form does not contain a valid CSRF token.',
+        )
+        self.assertTrue(
+            deletion_form_parser.submit_button_found,
+            'Deletion POST form does not contain a submit button.',
+        )
+        self.assertFalse(
+            deletion_form_parser.delete_link_found,
+            'A GET deletion link is still present.',
+        )
+
     def test_delete_draft_rejects_get_request(self):
         author = User.objects.create_user(
             username='draft-author',
@@ -1388,41 +1461,11 @@ class PostDeletionTests(TestCase):
 
         response = self.client.get(reverse('drafts'))
 
-        response_html = response.content.decode()
         delete_draft_url = reverse(
             'delete_draft',
             args=[draft_post.id],
         )
-        delete_draft_form_start = (
-            f'<form method="post" action="{delete_draft_url}">'
-        )
-        delete_draft_form_start_index = response_html.find(
-            delete_draft_form_start
-        )
-        self.assertNotEqual(
-            delete_draft_form_start_index,
-            -1,
-            'Draft deletion POST form was not found.',
-        )
-
-        delete_draft_form_end_index = response_html.find(
-            '</form>',
-            delete_draft_form_start_index,
-        )
-        self.assertNotEqual(
-            delete_draft_form_end_index,
-            -1,
-            'Draft deletion POST form has no closing tag.',
-        )
-
-        delete_draft_form_html = response_html[
-            delete_draft_form_start_index:
-            delete_draft_form_end_index + len('</form>')
-        ]
-        self.assertIn(
-            '<input type="hidden" name="csrfmiddlewaretoken"',
-            delete_draft_form_html,
-        )
+        self.assert_post_deletion_form(response, delete_draft_url)
 
     def test_delete_published_post_rejects_get_request(self):
         author = User.objects.create_user(
@@ -1500,41 +1543,11 @@ class PostDeletionTests(TestCase):
             reverse('post_detail', args=[published_post.id]),
         )
 
-        response_html = response.content.decode()
         delete_post_url = reverse(
             'delete_post',
             args=[published_post.id],
         )
-        delete_post_form_start = (
-            f'<form method="post" action="{delete_post_url}">'
-        )
-        delete_post_form_start_index = response_html.find(
-            delete_post_form_start
-        )
-        self.assertNotEqual(
-            delete_post_form_start_index,
-            -1,
-            'Published post deletion POST form was not found.',
-        )
-
-        delete_post_form_end_index = response_html.find(
-            '</form>',
-            delete_post_form_start_index,
-        )
-        self.assertNotEqual(
-            delete_post_form_end_index,
-            -1,
-            'Published post deletion POST form has no closing tag.',
-        )
-
-        delete_post_form_html = response_html[
-            delete_post_form_start_index:
-            delete_post_form_end_index + len('</form>')
-        ]
-        self.assertIn(
-            '<input type="hidden" name="csrfmiddlewaretoken"',
-            delete_post_form_html,
-        )
+        self.assert_post_deletion_form(response, delete_post_url)
 
 
 class StartupPostCommandTests(TestCase):
