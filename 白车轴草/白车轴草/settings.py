@@ -27,7 +27,7 @@ load_dotenv(BASE_DIR.parent / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-development-only')
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in {'1', 'true', 'yes', 'on'}
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.20.100', '.trycloudflare.com']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.20.100', '111.230.11.5', '.trycloudflare.com']
 CSRF_TRUSTED_ORIGINS = ['https://*.trycloudflare.com']
 
 
