@@ -372,15 +372,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 60 test(s)`
-- `Ran 60 tests`
+- `Found 66 test(s)`
+- `Ran 66 tests`
 - `OK`
 
 2026-06-26 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 60 tests
+Ran 66 tests
 OK
 ```
 
@@ -544,8 +544,8 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:80
 
 ## 已知注意事项
 
-- `delete_post` 和 `delete_draft` 当前仍通过普通链接触发删除，不是 POST 表单；
-  后续可改进为只接受 POST。
+- `delete_post` 和 `delete_draft` 只接受 POST 请求，模板使用带 CSRF 令牌的表单；
+  GET 请求返回 `405 Method Not Allowed`，不会删除文章或草稿。
 - AI 写作和 AI 封面会消耗第三方 API 额度，需要保留登录限制和调用冷却。
 - Pexels 图片下载必须继续限制可信域名，避免服务端请求伪造风险。
 - 模板仍依赖部分 CDN；离线或网络受限时 Cropper.js 或部分图标可能不可用。
