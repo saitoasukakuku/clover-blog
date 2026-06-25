@@ -1320,6 +1320,171 @@ class AuthViewsTests(TestCase):
         self.assertEqual(post.views_count, 1)
 
 
+class PostDeletionTests(TestCase):
+    def test_delete_draft_rejects_get_request(self):
+        author = User.objects.create_user(
+            username='draft-author',
+            password='StrongPass12345',
+        )
+        draft_post = Post.objects.create(
+            author=author,
+            title='Draft that cannot be deleted with GET',
+            category='life',
+            content='Draft content',
+            status='draft',
+        )
+        self.client.login(
+            username='draft-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.get(
+            reverse('delete_draft', args=[draft_post.id]),
+        )
+
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(Post.objects.filter(id=draft_post.id).exists())
+
+    def test_author_can_delete_draft_with_post_request(self):
+        author = User.objects.create_user(
+            username='draft-author',
+            password='StrongPass12345',
+        )
+        draft_post = Post.objects.create(
+            author=author,
+            title='Draft deleted with POST',
+            category='life',
+            content='Draft content',
+            status='draft',
+        )
+        self.client.login(
+            username='draft-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('delete_draft', args=[draft_post.id]),
+        )
+
+        self.assertRedirects(response, reverse('drafts'))
+        self.assertFalse(Post.objects.filter(id=draft_post.id).exists())
+
+    def test_drafts_page_uses_post_form_for_deletion(self):
+        author = User.objects.create_user(
+            username='draft-author',
+            password='StrongPass12345',
+        )
+        draft_post = Post.objects.create(
+            author=author,
+            title='Draft with deletion form',
+            category='life',
+            content='Draft content',
+            status='draft',
+        )
+        self.client.login(
+            username='draft-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.get(reverse('drafts'))
+
+        delete_draft_url = reverse(
+            'delete_draft',
+            args=[draft_post.id],
+        )
+        self.assertContains(
+            response,
+            f'<form method="post" action="{delete_draft_url}">',
+        )
+        self.assertContains(response, 'csrfmiddlewaretoken')
+
+    def test_delete_published_post_rejects_get_request(self):
+        author = User.objects.create_user(
+            username='published-author',
+            password='StrongPass12345',
+        )
+        published_post = Post.objects.create(
+            author=author,
+            title='Published post that cannot be deleted with GET',
+            category='life',
+            content='Published post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(
+            username='published-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.get(
+            reverse('delete_post', args=[published_post.id]),
+        )
+
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(
+            Post.objects.filter(id=published_post.id).exists()
+        )
+
+    def test_author_can_delete_published_post_with_post_request(self):
+        author = User.objects.create_user(
+            username='published-author',
+            password='StrongPass12345',
+        )
+        published_post = Post.objects.create(
+            author=author,
+            title='Published post deleted with POST',
+            category='life',
+            content='Published post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(
+            username='published-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(
+            reverse('delete_post', args=[published_post.id]),
+        )
+
+        self.assertRedirects(response, reverse('index'))
+        self.assertFalse(
+            Post.objects.filter(id=published_post.id).exists()
+        )
+
+    def test_post_detail_uses_post_form_for_deletion(self):
+        author = User.objects.create_user(
+            username='published-author',
+            password='StrongPass12345',
+        )
+        published_post = Post.objects.create(
+            author=author,
+            title='Published post with deletion form',
+            category='life',
+            content='Published post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(
+            username='published-author',
+            password='StrongPass12345',
+        )
+
+        response = self.client.get(
+            reverse('post_detail', args=[published_post.id]),
+        )
+
+        delete_post_url = reverse(
+            'delete_post',
+            args=[published_post.id],
+        )
+        self.assertContains(
+            response,
+            f'<form method="post" action="{delete_post_url}">',
+        )
+        self.assertContains(response, 'csrfmiddlewaretoken')
+
+
 class StartupPostCommandTests(TestCase):
     def deepseek_response(self):
         response_body = {
