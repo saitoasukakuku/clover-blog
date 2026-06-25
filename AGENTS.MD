@@ -9,7 +9,7 @@
 - Django 工程根目录：`E:\projects\django-projects\白车轴草\白车轴草`
 - GitHub 仓库：`https://github.com/saitoasukakuku/clover-blog`
 - 默认分支：`main`
-- 当前线上部署基线：`f944c9c Allow new production server host`
+- 当前线上部署来源：GitHub `main`，通过服务器一键部署脚本快进更新
 - 线上服务器公网 IPv4：`111.230.11.5`
 - 线上服务器内网 IPv4：`10.1.0.7`
 - 服务器项目目录：`/opt/clover-blog`
@@ -434,6 +434,9 @@ git push
 - Cloudflare 服务：`cloudflared-quick-tunnel.service`
 - 备份服务：`clover-blog-backup.service`
 - 备份定时器：`clover-blog-backup.timer`
+- 一键部署命令：`sudo clover-blog-deploy`
+- 一键部署脚本：`/usr/local/sbin/clover-blog-deploy`
+- 仓库内脚本源文件：`scripts/deploy_production.sh`
 
 当前部署结构：
 
@@ -446,30 +449,34 @@ git push
   -> MySQL 127.0.0.1:3306
 ```
 
-登录和手动部署流程：
+本地完成修改、测试、提交和推送后：
+
+```powershell
+git push origin main
+```
+
+登录服务器并运行一键部署：
 
 ```bash
 ssh ubuntu@111.230.11.5
-cd /opt/clover-blog
-source .venv/bin/activate
-git pull origin main
-pip install -r requirements.txt
-python 白车轴草/manage.py migrate
-python 白车轴草/manage.py collectstatic --noinput
-sudo systemctl restart clover-blog
-sudo systemctl reload nginx
+sudo clover-blog-deploy
 ```
 
-部署后检查：
+一键部署脚本会：
 
-```bash
-python 白车轴草/manage.py check --deploy
-sudo systemctl status clover-blog --no-pager
-sudo systemctl status nginx --no-pager
-sudo systemctl status mysql --no-pager
-sudo systemctl status cloudflared-quick-tunnel.service --no-pager
-curl -I http://127.0.0.1/
-```
+- 使用文件锁避免两个部署同时执行。
+- 检查服务器是否存在未提交的受 Git 跟踪文件改动。
+- 从 GitHub 获取 `origin/main`，网络失败时最多尝试 5 次。
+- 只允许从当前提交快进到 `origin/main`，不会执行强制重置。
+- 同步 Python 依赖。
+- 执行数据库迁移和 `collectstatic`。
+- 执行 Django 部署检查和 Nginx 配置检查。
+- 重启 Gunicorn，重新加载 Nginx。
+- 检查 Gunicorn、Nginx、MySQL、Cloudflare Tunnel 和本机首页。
+- 成功拉取新版脚本后，自动更新 `/usr/local/sbin/clover-blog-deploy`。
+
+脚本执行失败时会返回非零状态并指出失败阶段。GitHub 连续连接失败时不会改变当前
+线上提交。
 
 当前服务器已经成功执行迁移到 `0009`，并已创建超级用户。
 
@@ -557,7 +564,7 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:80
 - Quick Tunnel 的 URL 不能写死到业务代码、数据库或长期文档入口中。
 - 当前 `ALLOWED_HOSTS` 允许 `.trycloudflare.com` 和公网 IP。
 - 当前 `CSRF_TRUSTED_ORIGINS` 允许 `https://*.trycloudflare.com`。
-- 服务器曾临时授权 Codex SSH 公钥，现已全部移除；不要假设助手可直接 SSH 登录。
+- 2026-06-26 已重新授权 Codex 部署公钥；移除公钥后，助手将无法直接 SSH 登录。
 
 ## 协作与安全规则
 
