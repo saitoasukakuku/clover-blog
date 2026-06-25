@@ -772,6 +772,7 @@ def edit_post(request, post_id):
     return render(request, 'create_post.html', context)
 
 @login_required
+@require_POST
 def delete_draft(request, post_id):
     post = get_object_or_404(Post, id=post_id, author=request.user)
     if post.status == 'draft':
@@ -893,6 +894,7 @@ def delete_comment(request, comment_id):
 
 
 @login_required
+@require_POST
 def delete_post(request, post_id):
     post = get_object_or_404(Post, id=post_id, author=request.user)
     if post.status == 'published':

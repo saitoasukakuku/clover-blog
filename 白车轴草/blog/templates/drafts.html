@@ -114,7 +114,14 @@
                 </div>
                 <div class="draft-actions ms-3 d-flex flex-column flex-sm-row gap-2">
                     <a href="{% url 'edit_post' post.id %}" class="btn btn-outline-success text-nowrap"><i class="fas fa-edit me-1"></i>继续编辑</a>
-                    <a href="{% url 'delete_draft' post.id %}" class="btn btn-outline-danger text-nowrap" onclick="return confirm('确定要删除这篇草稿吗？此操作不可恢复。')"><i class="fas fa-trash-alt me-1"></i>删除</a>
+                    <form method="post" action="{% url 'delete_draft' post.id %}">
+                        {% csrf_token %}
+                        <button type="submit"
+                                class="btn btn-outline-danger text-nowrap"
+                                onclick="return confirm('确定要删除这篇草稿吗？此操作不可恢复。')">
+                            <i class="fas fa-trash-alt me-1"></i>删除
+                        </button>
+                    </form>
                 </div>
             </div>
             {% empty %}
