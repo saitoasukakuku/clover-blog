@@ -1388,15 +1388,41 @@ class PostDeletionTests(TestCase):
 
         response = self.client.get(reverse('drafts'))
 
+        response_html = response.content.decode()
         delete_draft_url = reverse(
             'delete_draft',
             args=[draft_post.id],
         )
-        self.assertContains(
-            response,
-            f'<form method="post" action="{delete_draft_url}">',
+        delete_draft_form_start = (
+            f'<form method="post" action="{delete_draft_url}">'
         )
-        self.assertContains(response, 'csrfmiddlewaretoken')
+        delete_draft_form_start_index = response_html.find(
+            delete_draft_form_start
+        )
+        self.assertNotEqual(
+            delete_draft_form_start_index,
+            -1,
+            'Draft deletion POST form was not found.',
+        )
+
+        delete_draft_form_end_index = response_html.find(
+            '</form>',
+            delete_draft_form_start_index,
+        )
+        self.assertNotEqual(
+            delete_draft_form_end_index,
+            -1,
+            'Draft deletion POST form has no closing tag.',
+        )
+
+        delete_draft_form_html = response_html[
+            delete_draft_form_start_index:
+            delete_draft_form_end_index + len('</form>')
+        ]
+        self.assertIn(
+            '<input type="hidden" name="csrfmiddlewaretoken"',
+            delete_draft_form_html,
+        )
 
     def test_delete_published_post_rejects_get_request(self):
         author = User.objects.create_user(
@@ -1474,15 +1500,41 @@ class PostDeletionTests(TestCase):
             reverse('post_detail', args=[published_post.id]),
         )
 
+        response_html = response.content.decode()
         delete_post_url = reverse(
             'delete_post',
             args=[published_post.id],
         )
-        self.assertContains(
-            response,
-            f'<form method="post" action="{delete_post_url}">',
+        delete_post_form_start = (
+            f'<form method="post" action="{delete_post_url}">'
         )
-        self.assertContains(response, 'csrfmiddlewaretoken')
+        delete_post_form_start_index = response_html.find(
+            delete_post_form_start
+        )
+        self.assertNotEqual(
+            delete_post_form_start_index,
+            -1,
+            'Published post deletion POST form was not found.',
+        )
+
+        delete_post_form_end_index = response_html.find(
+            '</form>',
+            delete_post_form_start_index,
+        )
+        self.assertNotEqual(
+            delete_post_form_end_index,
+            -1,
+            'Published post deletion POST form has no closing tag.',
+        )
+
+        delete_post_form_html = response_html[
+            delete_post_form_start_index:
+            delete_post_form_end_index + len('</form>')
+        ]
+        self.assertIn(
+            '<input type="hidden" name="csrfmiddlewaretoken"',
+            delete_post_form_html,
+        )
 
 
 class StartupPostCommandTests(TestCase):
