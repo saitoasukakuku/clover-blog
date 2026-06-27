@@ -151,7 +151,7 @@
     <div class="row justify-content-center">
         <div class="col-lg-9">
             <div class="create-form-card">
-                {% if not post %}
+                {% if not post or not post.id %}
                 <div class="ai-writing-bar">
                     <button type="button" class="btn btn-outline-success" data-bs-toggle="modal"
                         data-bs-target="#aiWritingModal">

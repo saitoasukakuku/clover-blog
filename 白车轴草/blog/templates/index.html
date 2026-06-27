@@ -140,6 +140,48 @@
         gap: 10px;
     }
 
+    .active-filter-bar {
+        align-items: center;
+        background: #f1f8e9;
+        border: 1px solid #c8e6c9;
+        border-radius: 12px;
+        color: #2e7d32;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 18px;
+        padding: 10px 14px;
+    }
+
+    .active-filter-label {
+        font-weight: 700;
+    }
+
+    .active-filter-chip {
+        align-items: center;
+        background: #fff;
+        border: 1px solid #d8ecd5;
+        border-radius: 999px;
+        display: inline-flex;
+        gap: 7px;
+        padding: 5px 10px;
+    }
+
+    .active-filter-chip a {
+        color: #2e7d32;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .active-filter-chip a:hover {
+        color: #1b5e20;
+    }
+
+    .active-filter-clear-all {
+        margin-left: auto;
+    }
+
     .category-cloud-header {
         display: flex;
         align-items: center;
@@ -237,21 +279,29 @@
 
     @media (max-width: 576px) {
         .hero-search-bar {
-            background: transparent;
-            border: 0;
-            border-radius: 0;
-            box-shadow: none;
-            flex-wrap: wrap;
-            gap: 10px;
-            overflow: visible;
-        }
-
-        .search-keyword,
-        .hero-search .btn {
             background: #fff;
             border: 2px solid #a5d6a7;
-            border-radius: 25px;
-            flex: 1 1 100%;
+            border-radius: 30px;
+            box-shadow: 0 8px 22px rgba(46, 125, 50, 0.12);
+            flex-wrap: nowrap;
+            gap: 0;
+            overflow: hidden;
+        }
+
+        .search-keyword {
+            background: #fff;
+            border: 0;
+            border-radius: 0;
+            flex: 1 1 auto;
+            height: 50px;
+        }
+
+        .hero-search .btn {
+            background: #2e7d32;
+            border: 0;
+            border-radius: 0;
+            color: #fff;
+            flex: 0 0 56px;
             height: 50px;
         }
     }
@@ -301,31 +351,21 @@
                 {% endif %}
             </div>
 
-            {% if selected_category %}
-            <div class="category-filter-bar">
-                <span><i class="fas fa-filter me-1"></i>正在筛选分类：<strong>{{ selected_category_label }}</strong></span>
-                <a href="{% url 'index' %}{% if clear_category_query %}?{{ clear_category_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除分类</a>
-            </div>
-            {% endif %}
-
-            {% if search_query %}
-            <div class="category-filter-bar">
-                <span><i class="fas fa-search me-1"></i>正在搜索：<strong>{{ search_query }}</strong></span>
-                <a href="{% url 'index' %}{% if clear_search_query %}?{{ clear_search_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除搜索</a>
-            </div>
-            {% endif %}
-
-            {% if selected_tag %}
-            <div class="category-filter-bar">
-                <span><i class="fas fa-tags me-1"></i>正在筛选标签：<strong>{{ selected_tag }}</strong></span>
-                <a href="{% url 'index' %}{% if clear_tag_query %}?{{ clear_tag_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除标签</a>
-            </div>
-            {% endif %}
-
-            {% if selected_author %}
-            <div class="category-filter-bar">
-                <span><i class="fas fa-user me-1"></i>正在筛选作者：<strong>{{ selected_author_label }}</strong></span>
-                <a href="{% url 'index' %}{% if clear_author_query %}?{{ clear_author_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除作者</a>
+            {% if active_filter_chips %}
+            <div class="active-filter-bar" aria-label="当前筛选条件">
+                <span class="active-filter-label"><i class="fas fa-filter me-1"></i>正在筛选：</span>
+                {% for active_filter_chip in active_filter_chips %}
+                <span class="active-filter-chip">
+                    <i class="{{ active_filter_chip.icon }}"></i>
+                    <span class="visually-hidden">正在筛选{{ active_filter_chip.label }}</span>
+                    <span>{{ active_filter_chip.label }}：<strong>{{ active_filter_chip.value }}</strong></span>
+                    <a href="{% url 'index' %}{% if active_filter_chip.clear_query %}?{{ active_filter_chip.clear_query }}{% endif %}"
+                        aria-label="{{ active_filter_chip.clear_label }}">
+                        {{ active_filter_chip.clear_label }}
+                    </a>
+                </span>
+                {% endfor %}
+                <a href="{% url 'index' %}" class="btn btn-sm btn-outline-success rounded-pill active-filter-clear-all">清除筛选</a>
             </div>
             {% endif %}
 

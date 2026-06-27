@@ -31,6 +31,21 @@
         gap: 12px;
     }
 
+    .tags-toolbar {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        margin-bottom: 22px;
+    }
+
+    .tags-toolbar .form-control {
+        min-width: 0;
+    }
+
+    .tags-toolbar .form-select {
+        max-width: 150px;
+    }
+
     .tag-pill {
         align-items: center;
         background: #fff;
@@ -44,8 +59,10 @@
         transition: all 0.2s ease;
     }
 
-    .tag-pill:hover {
+    .tag-pill:hover,
+    .tag-pill.active {
         background: #f1f8e9;
+        border-color: #91c88c;
         color: #1b5e20;
         transform: translateY(-1px);
     }
@@ -66,6 +83,17 @@
         padding: 32px;
         text-align: center;
     }
+
+    @media (max-width: 576px) {
+        .tags-toolbar {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .tags-toolbar .form-select {
+            max-width: none;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -76,10 +104,29 @@
         <p class="mb-0 text-muted">点击标签后，会使用首页搜索展示相关文章。</p>
     </section>
 
+    <form class="tags-toolbar" method="get" action="{% url 'tags' %}">
+        <input class="form-control" type="search" name="q" value="{{ tag_search_query }}" placeholder="搜索标签..." aria-label="搜索标签">
+        <select class="form-select" name="sort" aria-label="标签排序">
+            <option value="count" {% if tag_sort == 'count' %}selected{% endif %}>按文章数</option>
+            <option value="name" {% if tag_sort == 'name' %}selected{% endif %}>按名称</option>
+        </select>
+        {% if selected_tag %}
+        <input type="hidden" name="selected" value="{{ selected_tag }}">
+        {% endif %}
+        <button class="btn btn-success rounded-pill" type="submit">
+            <i class="fas fa-search me-1"></i>筛选
+        </button>
+        {% if tag_search_query %}
+        <a class="btn btn-outline-secondary rounded-pill" href="{% url 'tags' %}{% if tag_sort != 'count' or selected_tag %}?{% if tag_sort != 'count' %}sort={{ tag_sort|urlencode }}{% endif %}{% if tag_sort != 'count' and selected_tag %}&{% endif %}{% if selected_tag %}selected={{ selected_tag|urlencode }}{% endif %}{% endif %}">
+            清除搜索
+        </a>
+        {% endif %}
+    </form>
+
     {% if tag_counts %}
     <section class="tag-cloud" aria-label="文章标签列表">
         {% for tag in tag_counts %}
-        <a class="tag-pill" href="{% url 'index' %}?tag={{ tag.name|urlencode }}">
+        <a class="tag-pill {% if tag.name == selected_tag %}active{% endif %}" href="{% url 'index' %}?tag={{ tag.name|urlencode }}">
             <span># {{ tag.name }}</span>
             <span class="tag-count">{{ tag.count }} 篇</span>
         </a>

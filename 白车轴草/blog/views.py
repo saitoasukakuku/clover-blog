@@ -16,6 +16,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import strip_tags
 from django.utils.xmlutils import SimplerXMLGenerator
+from PIL import Image, UnidentifiedImageError
 from blog.forms import (
     ChineseAuthenticationForm,
     ChineseUserCreationForm,
@@ -39,8 +40,9 @@ from blog.models import (
 )
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
-from io import StringIO
+from io import BytesIO, StringIO
 import base64
+import binascii
 import os
 import time
 import uuid
@@ -51,6 +53,16 @@ CUSTOM_CATEGORY_VALUE = '__custom__'
 AI_GENERATION_COOLDOWN_SECONDS = 60
 AI_COVER_TOKEN_SALT = 'blog.ai-cover'
 AI_COVER_TOKEN_MAX_AGE_SECONDS = 7200
+MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+ALLOWED_IMAGE_EXTENSIONS = {
+    'jpeg': 'jpg',
+    'jpg': 'jpg',
+    'png': 'png',
+    'webp': 'webp',
+}
+INVALID_IMAGE_DATA_MESSAGE = '图片数据无效，请重新选择图片。'
+INVALID_IMAGE_FILE_MESSAGE = '请上传有效的图片文件。'
+OVERSIZED_IMAGE_MESSAGE = '图片文件不能超过 5MB。'
 
 
 def get_friendships_for_user(user):
@@ -95,11 +107,135 @@ def get_category_context(post=None):
     }
 
 
+def get_clear_query(request, parameter_name):
+    query_params = request.GET.copy()
+    query_params.pop(parameter_name, None)
+    query_params.pop('page', None)
+    return query_params.urlencode()
+
+
+def build_active_filter_chips(
+    search_query,
+    selected_category,
+    selected_category_label,
+    selected_tag,
+    selected_author,
+    selected_author_label,
+    clear_search_query,
+    clear_category_query,
+    clear_tag_query,
+    clear_author_query,
+):
+    active_filter_chips = []
+    if search_query:
+        active_filter_chips.append({
+            'label': '搜索',
+            'value': search_query,
+            'clear_label': '清除搜索',
+            'clear_query': clear_search_query,
+            'icon': 'fas fa-search',
+        })
+    if selected_category:
+        active_filter_chips.append({
+            'label': '分类',
+            'value': selected_category_label,
+            'clear_label': '清除分类',
+            'clear_query': clear_category_query,
+            'icon': 'fas fa-folder-open',
+        })
+    if selected_tag:
+        active_filter_chips.append({
+            'label': '标签',
+            'value': selected_tag,
+            'clear_label': '清除标签',
+            'clear_query': clear_tag_query,
+            'icon': 'fas fa-tags',
+        })
+    if selected_author:
+        active_filter_chips.append({
+            'label': '作者',
+            'value': selected_author_label,
+            'clear_label': '清除作者',
+            'clear_query': clear_author_query,
+            'icon': 'fas fa-user',
+        })
+    return active_filter_chips
+
+
 def resolve_category(request):
     category = (request.POST.get('category') or '').strip()
     if category == CUSTOM_CATEGORY_VALUE:
         return (request.POST.get('custom_category') or '').strip()[:50]
     return category
+
+
+def normalize_image_extension(raw_extension):
+    extension = raw_extension.lower().strip()
+    normalized_extension = ALLOWED_IMAGE_EXTENSIONS.get(extension)
+    if normalized_extension is None:
+        raise ValueError(INVALID_IMAGE_FILE_MESSAGE)
+    return normalized_extension
+
+
+def validate_image_bytes(image_bytes):
+    if len(image_bytes) > MAX_IMAGE_UPLOAD_BYTES:
+        raise ValueError(OVERSIZED_IMAGE_MESSAGE)
+    try:
+        image = Image.open(BytesIO(image_bytes))
+        image.verify()
+    except (UnidentifiedImageError, OSError, ValueError) as error:
+        raise ValueError(INVALID_IMAGE_FILE_MESSAGE) from error
+
+
+def build_image_file_from_data_url(data_url, file_prefix):
+    try:
+        image_format, image_data = data_url.split(';base64,', 1)
+    except ValueError as error:
+        raise ValueError(INVALID_IMAGE_DATA_MESSAGE) from error
+
+    if not image_format.startswith('data:image/'):
+        raise ValueError(INVALID_IMAGE_DATA_MESSAGE)
+
+    raw_extension = image_format.rsplit('/', 1)[-1]
+    extension = normalize_image_extension(raw_extension)
+    try:
+        image_bytes = base64.b64decode(image_data, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError(INVALID_IMAGE_DATA_MESSAGE) from error
+
+    validate_image_bytes(image_bytes)
+    file_name = f'{file_prefix}_{uuid.uuid4().hex[:8]}.{extension}'
+    return ContentFile(image_bytes, name=file_name)
+
+
+def validate_uploaded_image_file(uploaded_file):
+    if uploaded_file.size > MAX_IMAGE_UPLOAD_BYTES:
+        raise ValueError(OVERSIZED_IMAGE_MESSAGE)
+    try:
+        uploaded_file.seek(0)
+        image = Image.open(uploaded_file)
+        image.verify()
+        uploaded_file.seek(0)
+    except (UnidentifiedImageError, OSError, ValueError) as error:
+        try:
+            uploaded_file.seek(0)
+        except OSError:
+            pass
+        raise ValueError(INVALID_IMAGE_FILE_MESSAGE) from error
+    return uploaded_file
+
+
+def build_post_form_context(title, category, tags, content, visibility):
+    post = Post(
+        title=title or '',
+        category=category or '',
+        tags=tags or '',
+        content=content or '',
+        visibility=visibility or 'private',
+    )
+    context = {'post': post}
+    context.update(get_category_context(post))
+    return context
 
 
 def get_ai_cover_data(ai_cover_token):
@@ -160,6 +296,15 @@ def get_user_display_name(user):
     if hasattr(user, 'profile'):
         return user.profile.display_name
     return user.username
+
+
+def get_user_post_stats(user):
+    user_posts = Post.objects.filter(author=user)
+    return {
+        'published_count': user_posts.filter(status='published').count(),
+        'draft_count': user_posts.filter(status='draft').count(),
+        'total_count': user_posts.count(),
+    }
 
 
 def create_notification(
@@ -234,6 +379,8 @@ def build_tag_counts(posts):
     for post in posts:
         unique_tags = set(post.tag_list)
         for tag in unique_tags:
+            if tag.startswith('daily:'):
+                continue
             tag_counter[tag] += 1
 
     return [
@@ -262,6 +409,40 @@ def filter_posts_by_tag(posts, selected_tag):
         post
         for post in posts
         if selected_tag in get_display_tags(post)
+    ]
+
+
+def get_related_posts(post, request_user, limit=3):
+    source_tags = set(get_display_tags(post))
+    if not source_tags:
+        return []
+
+    tag_filter = Q()
+    for source_tag in source_tags:
+        tag_filter |= Q(tags__icontains=source_tag)
+
+    candidate_posts = get_readable_published_posts(request_user).exclude(
+        id=post.id,
+    ).filter(
+        tag_filter,
+    ).select_related(
+        'author',
+        'author__profile',
+    )
+    scored_posts = []
+    for candidate_post in candidate_posts:
+        candidate_tags = set(get_display_tags(candidate_post))
+        shared_tag_count = len(source_tags & candidate_tags)
+        if shared_tag_count:
+            scored_posts.append((shared_tag_count, candidate_post.created_at, candidate_post))
+
+    scored_posts.sort(
+        key=lambda scored_post: (scored_post[0], scored_post[1]),
+        reverse=True,
+    )
+    return [
+        candidate_post
+        for _, __, candidate_post in scored_posts[:limit]
     ]
 
 
@@ -331,25 +512,22 @@ def index(request):
     pagination_query = pagination_params.urlencode()
     pagination_prefix = f'{pagination_query}&' if pagination_query else ''
 
-    clear_category_params = request.GET.copy()
-    clear_category_params.pop('category', None)
-    clear_category_params.pop('page', None)
-    clear_category_query = clear_category_params.urlencode()
-
-    clear_search_params = request.GET.copy()
-    clear_search_params.pop('q', None)
-    clear_search_params.pop('page', None)
-    clear_search_query = clear_search_params.urlencode()
-
-    clear_tag_params = request.GET.copy()
-    clear_tag_params.pop('tag', None)
-    clear_tag_params.pop('page', None)
-    clear_tag_query = clear_tag_params.urlencode()
-
-    clear_author_params = request.GET.copy()
-    clear_author_params.pop('author', None)
-    clear_author_params.pop('page', None)
-    clear_author_query = clear_author_params.urlencode()
+    clear_category_query = get_clear_query(request, 'category')
+    clear_search_query = get_clear_query(request, 'q')
+    clear_tag_query = get_clear_query(request, 'tag')
+    clear_author_query = get_clear_query(request, 'author')
+    active_filter_chips = build_active_filter_chips(
+        search_query,
+        selected_category,
+        selected_category_label,
+        selected_tag,
+        selected_author,
+        selected_author_label,
+        clear_search_query,
+        clear_category_query,
+        clear_tag_query,
+        clear_author_query,
+    )
 
     paginator = Paginator(posts, 6)
     page_number = request.GET.get('page')
@@ -377,6 +555,7 @@ def index(request):
         'clear_search_query': clear_search_query,
         'clear_tag_query': clear_tag_query,
         'clear_author_query': clear_author_query,
+        'active_filter_chips': active_filter_chips,
         'category_counts': category_counts,
         'top_categories': category_counts[:10],
         'profile': profile,
@@ -430,9 +609,31 @@ def archive_view(request):
 
 def tags_view(request):
     posts = get_readable_published_posts(request.user)
+    tag_search_query = request.GET.get('q', '').strip()
+    tag_sort = request.GET.get('sort', 'count').strip()
+    selected_tag = request.GET.get('selected', '').strip()
+    if tag_sort not in {'count', 'name'}:
+        tag_sort = 'count'
+
     tag_counts = build_tag_counts(posts)
+    if tag_search_query:
+        normalized_search_query = tag_search_query.lower()
+        tag_counts = [
+            tag_count
+            for tag_count in tag_counts
+            if normalized_search_query in tag_count['name'].lower()
+        ]
+    if tag_sort == 'name':
+        tag_counts = sorted(
+            tag_counts,
+            key=lambda tag_count: tag_count['name'].lower(),
+        )
+
     return render(request, 'tags.html', {
         'tag_counts': tag_counts,
+        'tag_search_query': tag_search_query,
+        'tag_sort': tag_sort,
+        'selected_tag': selected_tag,
     })
 
 
@@ -500,10 +701,18 @@ def user_center(request):
             profile = form.save(commit=False)
             cropped_avatar_data = request.POST.get('cropped_avatar')
             if cropped_avatar_data:
-                format, imgstr = cropped_avatar_data.split(';base64,')
-                ext = format.split('/')[-1]
-                file_name = f"avatar_{uuid.uuid4().hex[:8]}.{ext}"
-                profile.avatar = ContentFile(base64.b64decode(imgstr), name=file_name)
+                try:
+                    profile.avatar = build_image_file_from_data_url(
+                        cropped_avatar_data,
+                        'avatar',
+                    )
+                except ValueError as error:
+                    messages.error(request, str(error))
+                    return render(request, 'user_center.html', {
+                        'form': form,
+                        'profile': profile,
+                        'stats': get_user_post_stats(request.user),
+                    })
             elif request.POST.get('clear_avatar') == 'true':
                 profile.avatar = None
             request.user.email = form.cleaned_data.get('email', '')
@@ -514,11 +723,7 @@ def user_center(request):
     else:
         form = UserCenterForm(instance=profile, user=request.user)
 
-    stats = {
-        'published_count': Post.objects.filter(author=request.user, status='published').count(),
-        'draft_count': Post.objects.filter(author=request.user, status='draft').count(),
-        'total_count': Post.objects.filter(author=request.user).count(),
-    }
+    stats = get_user_post_stats(request.user)
     return render(request, 'user_center.html', {
         'form': form,
         'profile': profile,
@@ -869,7 +1074,7 @@ def create_post(request):
         title = request.POST.get('title')
         category = resolve_category(request)
         tags = (request.POST.get('tags') or '').strip()[:200]
-        content = request.POST.get('content')
+        content = request.POST.get('content') or ''
         cover = request.FILES.get('cover')
         cropped_cover_data = request.POST.get('cropped_cover')
         ai_cover_token = request.POST.get('ai_cover_token', '')
@@ -879,10 +1084,25 @@ def create_post(request):
         visibility = request.POST.get('visibility', 'private')
 
         if cropped_cover_data:
-            image_format, image_data = cropped_cover_data.split(';base64,')
-            extension = image_format.split('/')[-1]
-            file_name = f"cover_{uuid.uuid4().hex[:8]}.{extension}"
-            cover = ContentFile(base64.b64decode(image_data), name=file_name)
+            try:
+                cover = build_image_file_from_data_url(cropped_cover_data, 'cover')
+            except ValueError as error:
+                messages.error(request, str(error))
+                return render(
+                    request,
+                    'create_post.html',
+                    build_post_form_context(title, category, tags, content, visibility),
+                )
+        elif cover:
+            try:
+                cover = validate_uploaded_image_file(cover)
+            except ValueError as error:
+                messages.error(request, str(error))
+                return render(
+                    request,
+                    'create_post.html',
+                    build_post_form_context(title, category, tags, content, visibility),
+                )
 
         ai_cover_data = None
         if cover is None:
@@ -1038,12 +1258,21 @@ def edit_post(request, post_id):
         cropped_cover_data = request.POST.get('cropped_cover')
         
         if cropped_cover_data:
-            image_format, image_data = cropped_cover_data.split(';base64,')
-            extension = image_format.split('/')[-1]
-            file_name = f"cover_{uuid.uuid4().hex[:8]}.{extension}"
-            post.cover = ContentFile(base64.b64decode(image_data), name=file_name)
+            try:
+                post.cover = build_image_file_from_data_url(cropped_cover_data, 'cover')
+            except ValueError as error:
+                messages.error(request, str(error))
+                context = {'post': post}
+                context.update(get_category_context(post))
+                return render(request, 'create_post.html', context)
         elif cover:
-            post.cover = cover
+            try:
+                post.cover = validate_uploaded_image_file(cover)
+            except ValueError as error:
+                messages.error(request, str(error))
+                context = {'post': post}
+                context.update(get_category_context(post))
+                return render(request, 'create_post.html', context)
         elif request.POST.get('clear_cover') == 'true':
             post.cover = None
 
@@ -1119,6 +1348,7 @@ def post_detail(request, post_id):
         'comment_count': comment_count,
         'comment_form': comment_form,
         'display_tags': get_display_tags(post),
+        'related_posts': get_related_posts(post, request.user),
         'is_favorited': (
             request.user.is_authenticated
             and PostFavorite.objects.filter(user=request.user, post=post).exists()

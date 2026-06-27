@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load blog_extras %}
 
 {% block title %}{{ post.title }} - 白车轴草{% endblock %}
 
@@ -321,6 +322,38 @@
         word-break: break-word;
     }
 
+    .related-post-list {
+        display: grid;
+        gap: 12px;
+    }
+
+    .related-post-card {
+        border: 1px solid var(--detail-line);
+        border-radius: 12px;
+        color: var(--detail-ink);
+        display: block;
+        padding: 14px 16px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+
+    .related-post-card:hover {
+        background: rgba(var(--theme-primary), 0.06);
+        border-color: rgba(var(--theme-primary), 0.22);
+        color: #1b5e20;
+        transform: translateY(-1px);
+    }
+
+    .related-post-title {
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+
+    .related-post-meta {
+        color: var(--detail-muted);
+        font-size: 0.86rem;
+    }
+
     .comment-reply-button {
         border: 0;
         background: transparent;
@@ -630,9 +663,29 @@
 
                     <!-- 正文内容 -->
                     <div class="post-content">
-                        {{ post.content|linebreaks }}
+                        {{ post.content|post_content }}
                         <div class="article-end-mark"></div>
                     </div>
+                    {% if related_posts %}
+                    <section class="related-posts mt-5 pt-4 border-top">
+                        <h2 class="h5 mb-4">
+                            <i class="fas fa-link me-2 text-success"></i>
+                            相关文章
+                        </h2>
+                        <div class="related-post-list">
+                            {% for related_post in related_posts %}
+                            <a class="related-post-card" href="{% url 'post_detail' related_post.id %}">
+                                <div class="related-post-title">{{ related_post.title }}</div>
+                                <div class="related-post-meta">
+                                    <i class="far fa-calendar-alt me-1"></i>{{ related_post.created_at|date:"Y-m-d" }}
+                                    <span class="mx-2">·</span>
+                                    <i class="fas fa-folder me-1"></i>{{ related_post.category_label }}
+                                </div>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </section>
+                    {% endif %}
                     {% if comments_enabled %}
                     <section class="comments-section mt-5 pt-4 border-top">
                         <h2 class="h5 mb-4">

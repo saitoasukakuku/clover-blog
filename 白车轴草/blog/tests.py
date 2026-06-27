@@ -9,6 +9,7 @@ from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.apps import apps
 from django.core import signing
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
@@ -522,6 +523,41 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '正在筛选标签')
         self.assertContains(response, '清除标签')
 
+    def test_index_exposes_unified_active_filter_chips(self):
+        author = User.objects.create_user(
+            username='chip-author',
+            password='StrongPass12345',
+        )
+        UserProfile.objects.create(user=author, nickname='筛选作者')
+        Post.objects.create(
+            author=author,
+            title='Django 标签文章',
+            category='tech',
+            tags='Django,筛选',
+            content='筛选正文',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('index'), {
+            'q': 'Django',
+            'category': 'tech',
+            'tag': '筛选',
+            'author': 'chip-author',
+        })
+
+        active_filter_chips = response.context['active_filter_chips']
+        self.assertEqual(
+            [active_filter_chip['label'] for active_filter_chip in active_filter_chips],
+            ['搜索', '分类', '标签', '作者'],
+        )
+        self.assertEqual(
+            [active_filter_chip['value'] for active_filter_chip in active_filter_chips],
+            ['Django', '技术', '筛选', '筛选作者'],
+        )
+        self.assertContains(response, 'active-filter-chip')
+        self.assertContains(response, '清除筛选')
+
     def test_archive_page_groups_readable_posts_by_month(self):
         author = User.objects.create_user(
             username='archive-author',
@@ -628,7 +664,7 @@ class AuthViewsTests(TestCase):
             author=author,
             title='标签文章一',
             category='life',
-            tags='生活, Django, 生活,,',
+            tags='生活, Django, 生活,, daily:2026-06-27',
             content='标签正文一',
             status='published',
             visibility='public',
@@ -660,8 +696,58 @@ class AuthViewsTests(TestCase):
         self.assertIn({'name': '生活', 'count': 1}, tag_counts)
         self.assertIn({'name': '学习', 'count': 1}, tag_counts)
         self.assertNotIn({'name': '隐藏', 'count': 1}, tag_counts)
+        self.assertNotIn({'name': 'daily:2026-06-27', 'count': 1}, tag_counts)
         self.assertContains(response, 'href="/index/?tag=Django"')
         self.assertContains(response, '2 篇')
+        self.assertNotContains(response, 'daily:2026-06-27')
+
+    def test_tags_page_can_search_sort_and_highlight_tags(self):
+        author = User.objects.create_user(
+            username='tag-search-author',
+            password='StrongPass12345',
+        )
+        Post.objects.create(
+            author=author,
+            title='Django 标签文章',
+            category='tech',
+            tags='Django,Python',
+            content='标签正文一',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='Python 标签文章',
+            category='study',
+            tags='Python',
+            content='标签正文二',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='生活标签文章',
+            category='life',
+            tags='生活',
+            content='标签正文三',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('tags'), {
+            'q': 'py',
+            'sort': 'name',
+            'selected': 'Python',
+        })
+
+        self.assertEqual(response.context['tag_search_query'], 'py')
+        self.assertEqual(response.context['tag_sort'], 'name')
+        self.assertEqual(response.context['selected_tag'], 'Python')
+        self.assertEqual(response.context['tag_counts'], [{'name': 'Python', 'count': 2}])
+        self.assertContains(response, 'value="py"')
+        self.assertContains(response, 'tag-pill active')
+        self.assertContains(response, 'href="/index/?tag=Python"')
+        self.assertNotContains(response, '# 生活')
 
     def test_base_navigation_links_to_archive_and_tags_pages(self):
         response = self.client.get(reverse('index'))
@@ -834,6 +920,77 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '# 生活技巧')
         self.assertContains(response, 'href="/index/?tag=Django"')
         self.assertNotContains(response, 'daily:2026-06-27')
+
+    def test_post_detail_formats_simple_markdown_bold_without_allowing_html(self):
+        author = User.objects.create_user(
+            username='format-author',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=author,
+            title='正文格式文章',
+            category='life',
+            content='**重点段落**\n<script>alert("bad")</script>',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertContains(response, '<strong>重点段落</strong>', html=True)
+        self.assertNotContains(response, '**重点段落**')
+        self.assertContains(response, '&lt;script&gt;alert(&quot;bad&quot;)&lt;/script&gt;')
+
+    def test_post_detail_shows_related_posts_with_shared_exact_tags(self):
+        author = User.objects.create_user(
+            username='related-author',
+            password='StrongPass12345',
+        )
+        current_post = Post.objects.create(
+            author=author,
+            title='当前文章',
+            category='life',
+            tags='生活,Django',
+            content='当前正文',
+            status='published',
+            visibility='public',
+        )
+        related_post = Post.objects.create(
+            author=author,
+            title='相关精确标签文章',
+            category='tech',
+            tags='Django,学习',
+            content='相关正文',
+            status='published',
+            visibility='public',
+        )
+        similar_tag_post = Post.objects.create(
+            author=author,
+            title='相似标签文章',
+            category='life',
+            tags='Django学习',
+            content='相似正文',
+            status='published',
+            visibility='public',
+        )
+        private_post = Post.objects.create(
+            author=author,
+            title='不可见相关文章',
+            category='life',
+            tags='Django',
+            content='私密正文',
+            status='published',
+            visibility='private',
+        )
+
+        response = self.client.get(reverse('post_detail', args=[current_post.id]))
+
+        related_titles = [post.title for post in response.context['related_posts']]
+        self.assertEqual(related_titles, [related_post.title])
+        self.assertContains(response, '相关文章')
+        self.assertContains(response, related_post.title)
+        self.assertNotContains(response, similar_tag_post.title)
+        self.assertNotContains(response, private_post.title)
 
     def test_logged_in_user_can_comment_on_public_post(self):
         user = User.objects.create_user(
@@ -1623,6 +1780,47 @@ class AuthViewsTests(TestCase):
         post.refresh_from_db()
         self.assertEqual(post.views_count, 1)
 
+    def test_create_post_rejects_invalid_cropped_cover_data(self):
+        author = User.objects.create_user(username='invalid-cover-author', password='StrongPass12345')
+        self.client.login(username='invalid-cover-author', password='StrongPass12345')
+
+        response = self.client.post(reverse('create_post'), {
+            'title': '无效裁剪封面文章',
+            'category': 'life',
+            'tags': '',
+            'content': '正文',
+            'visibility': 'public',
+            'action': 'publish',
+            'cropped_cover': 'not-a-valid-data-url',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Post.objects.filter(title='无效裁剪封面文章').exists())
+        self.assertContains(response, '图片数据无效')
+
+    def test_create_post_rejects_non_image_cover_upload(self):
+        author = User.objects.create_user(username='non-image-cover-author', password='StrongPass12345')
+        self.client.login(username='non-image-cover-author', password='StrongPass12345')
+        cover_file = SimpleUploadedFile(
+            'cover.txt',
+            b'this is not an image',
+            content_type='text/plain',
+        )
+
+        response = self.client.post(reverse('create_post'), {
+            'title': '非图片封面文章',
+            'category': 'life',
+            'tags': '',
+            'content': '正文',
+            'visibility': 'public',
+            'action': 'publish',
+            'cover': cover_file,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Post.objects.filter(title='非图片封面文章').exists())
+        self.assertContains(response, '请上传有效的图片文件')
+
 
 class AuthorProfileTests(TestCase):
     def test_author_profile_shows_public_posts_to_anonymous_user(self):
@@ -2039,6 +2237,15 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, '标签')
         self.assertContains(response, '搜索文章')
         self.assertContains(response, 'Homepage inherited post')
+
+    def test_mobile_search_button_keeps_visible_icon_styling(self):
+        response = self.client.get(reverse('index'))
+
+        self.assertContains(response, '@media (max-width: 576px)')
+        self.assertContains(response, '.hero-search .btn')
+        self.assertContains(response, 'background: #2e7d32')
+        self.assertContains(response, 'color: #fff')
+        self.assertContains(response, 'flex: 0 0 56px')
 
 
 class PostDeletionTests(TestCase):
