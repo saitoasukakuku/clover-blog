@@ -282,7 +282,7 @@ def build_archive_groups(posts):
             archive_group = {
                 'year': local_created_at.year,
                 'month': local_created_at.month,
-                'label': local_created_at.strftime('%Y 年 %-m 月'),
+                'label': f'{local_created_at.year} 年 {local_created_at.month} 月',
                 'posts': [],
             }
             group_lookup[group_key] = archive_group
