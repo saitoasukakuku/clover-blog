@@ -283,13 +283,44 @@ python .\白车轴草\manage.py create_startup_post
 - `--username 用户名`：指定文章作者。
 - `--model 模型名`：覆盖 `.env` 中的 DeepSeek 模型。
 
-每日 AI 自动发文的 systemd 定时任务尚未在当前 Ubuntu 服务器配置。预留的服务名为：
+截至 2026-06-27，每日 AI 自动发文的 systemd 定时任务已在当前 Ubuntu 服务器配置：
 
 - `clover-blog-startup-post.service`
 - `clover-blog-startup-post.timer`
 
-管理命令本身可用，但配置定时器会产生真实文章并消耗 DeepSeek/Pexels API
-额度，启用前必须确认执行时间、作者和发布策略。
+当前生产策略：
+
+- 每天服务器时间 `08:30` 自动运行。
+- 使用 Django 用户名 `白车轴草` 作为文章作者。
+- 直接创建公开且已发布文章，不创建草稿。
+- 默认尝试从 Pexels 匹配并保存封面。
+- 不配置自动重试，避免接口异常时重复消耗 DeepSeek/Pexels API 额度。
+- `Persistent=true`，服务器错过执行时间后会在恢复运行时补执行一次。
+- 2026-06-27 已手动运行验证，生成文章
+  `2026-06-27｜夏日凉拌黄瓜的脆爽秘诀`，并保存封面
+  `auto_covers/2026-06-27-14270809.jpg`。
+
+常用运维命令：
+
+```bash
+sudo systemctl list-timers --all | grep clover-blog-startup-post
+sudo systemctl status clover-blog-startup-post.timer --no-pager -l
+sudo systemctl status clover-blog-startup-post.service --no-pager -l
+sudo journalctl -u clover-blog-startup-post.service --no-pager -n 80
+sudo systemctl start clover-blog-startup-post.service
+sudo systemctl disable --now clover-blog-startup-post.timer
+sudo systemctl enable --now clover-blog-startup-post.timer
+```
+
+命令用途：
+
+- 第一行：查看下一次自动发文时间。
+- 第二行：查看定时器是否启用。
+- 第三行：查看最近一次自动发文任务的执行状态。
+- 第四行：查看最近 80 行自动发文日志。
+- 第五行：立即手动运行一次自动发文任务；如果当天已经生成过，会跳过。
+- 第六行：暂停每日自动发文。
+- 第七行：恢复每日自动发文。
 
 ## 路由
 
@@ -540,7 +571,7 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:80
 
 ## 当前线上验证状态
 
-截至 2026-06-26 已确认：
+截至 2026-06-27 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
 - HTTP 根路径返回 `302` 并跳转到 `/index/`。
@@ -549,6 +580,7 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:80
 - Django Admin 可以登录。
 - DeepSeek 和 Pexels 环境变量能被 Django 读取。
 - AI 写作入口和 Pexels 封面功能已实际生成过文章和封面。
+- 每日 AI 自动发文定时器已启用，下一次自动运行由 systemd timer 管理。
 - 数据库迁移已执行到 `0009`。
 - 管理员账号已创建。
 
@@ -559,7 +591,6 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:80
 - Ubuntu `ufw` 当前未启用，腾讯云防火墙规则仍需在控制台单独管理。
 - SSH 当前仍允许密码登录；完成密钥登录方案后可评估关闭密码登录和 root 登录。
 - Django 仍为 4.2，已经超出官方支持周期；升级 Django 5.2 LTS 前必须完整测试。
-- 每日 AI 自动发文定时器尚未配置。
 - HTTPS 安全设置没有按稳定自有域名完成 HSTS 配置。
 
 ## 前端约定
