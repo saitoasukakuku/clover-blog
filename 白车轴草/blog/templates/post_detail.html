@@ -112,6 +112,35 @@
         background: rgba(255, 255, 255, 0.72);
     }
 
+    .detail-tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+    }
+
+    .detail-tag {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(var(--theme-primary), 0.22);
+        border-radius: 999px;
+        color: #2e7d32;
+        display: inline-flex;
+        font-size: 0.92rem;
+        font-weight: 600;
+        gap: 6px;
+        padding: 7px 13px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+
+    .detail-tag:hover {
+        background: rgba(var(--theme-primary), 0.1);
+        border-color: rgba(var(--theme-primary), 0.38);
+        color: #1b5e20;
+        transform: translateY(-1px);
+    }
+
     .hero-cover {
         min-height: 300px;
         border-radius: 8px;
@@ -528,6 +557,15 @@
                         <span><i class="fas fa-history"></i>更新于 {{ post.updated_at|date:"Y-m-d" }}</span>
                         {% endif %}
                     </div>
+                    {% if display_tags %}
+                    <div class="detail-tag-list" aria-label="文章标签">
+                        {% for tag in display_tags %}
+                        <a class="detail-tag" href="{% url 'index' %}?q={{ tag|urlencode }}">
+                            <span># {{ tag }}</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="hero-cover">
                     {% if post.cover %}

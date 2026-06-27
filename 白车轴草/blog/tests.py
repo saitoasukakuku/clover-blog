@@ -729,6 +729,29 @@ class AuthViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_post_detail_displays_readable_tags_with_search_links(self):
+        author = User.objects.create_user(
+            username='tag-detail-author',
+            password='StrongPass12345',
+        )
+        post = Post.objects.create(
+            author=author,
+            title='带标签的文章',
+            category='life',
+            tags='Django, 生活技巧, daily:2026-06-27',
+            content='文章正文',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertEqual(response.context['display_tags'], ['Django', '生活技巧'])
+        self.assertContains(response, '# Django')
+        self.assertContains(response, '# 生活技巧')
+        self.assertContains(response, 'href="/index/?q=Django"')
+        self.assertNotContains(response, 'daily:2026-06-27')
+
     def test_logged_in_user_can_comment_on_public_post(self):
         user = User.objects.create_user(
             username='commenter',

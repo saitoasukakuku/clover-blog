@@ -203,6 +203,16 @@ def build_tag_counts(posts):
     ]
 
 
+def get_display_tags(post):
+    display_tags = []
+    for tag in post.tag_list:
+        if tag.startswith('daily:'):
+            continue
+        if tag not in display_tags:
+            display_tags.append(tag)
+    return display_tags
+
+
 def index(request):
     owner, owner_profile = get_site_owner_profile()
     all_posts = get_readable_published_posts(request.user)
@@ -895,6 +905,7 @@ def post_detail(request, post_id):
         'comments': comments,
         'comment_count': comment_count,
         'comment_form': comment_form,
+        'display_tags': get_display_tags(post),
     }
     context.update(get_category_context(post))
     return render(request, 'post_detail.html', context)
