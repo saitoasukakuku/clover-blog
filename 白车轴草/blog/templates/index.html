@@ -327,6 +327,31 @@
             line-height: 1.6;
         }
 
+        .post-card-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .post-card-tag {
+            background: #f7fbf5;
+            border: 1px solid #dcefd8;
+            border-radius: 999px;
+            color: #2e7d32;
+            font-size: 0.76rem;
+            font-weight: 600;
+            padding: 4px 9px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .post-card-tag:hover {
+            background: #2e7d32;
+            border-color: #2e7d32;
+            color: #fff;
+        }
+
         .post-card .card-footer {
             background: transparent;
             border-top: 1px solid #f0f0f0;
@@ -950,6 +975,15 @@
                                     <h2 class="card-title">{{ post.title }}</h2>
                                 </a>
                                 <p class="card-text">{{ post.content|truncatechars:100 }}</p>
+                                {% if post.card_display_tags %}
+                                <div class="post-card-tags" aria-label="文章标签">
+                                    {% for tag in post.card_display_tags %}
+                                    <a class="post-card-tag" href="{% url 'index' %}?q={{ tag|urlencode }}">
+                                        # {{ tag }}
+                                    </a>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="card-footer">
                                 <span class="post-meta">

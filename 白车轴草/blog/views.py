@@ -302,6 +302,10 @@ def index(request):
     paginator = Paginator(posts, 6)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+    page_posts = list(page_obj.object_list)
+    for post in page_posts:
+        post.card_display_tags = get_display_tags(post)[:3]
+    page_obj.object_list = page_posts
     return render(request, 'index.html', {
         'posts': page_obj,
         'page_obj': page_obj,

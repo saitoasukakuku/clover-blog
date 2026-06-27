@@ -450,6 +450,32 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'post-meta-link')
         self.assertContains(response, 'post-category')
 
+    def test_index_cards_show_limited_readable_tag_links(self):
+        author = User.objects.create_user(
+            username='card-tag-author',
+            password='StrongPass12345',
+        )
+        Post.objects.create(
+            author=author,
+            title='首页标签文章',
+            category='life',
+            tags='Django, 生活技巧, 整理, 第四个标签, daily:2026-06-27',
+            content='首页标签正文',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('index'))
+
+        post = response.context['posts'].object_list[0]
+        self.assertEqual(post.card_display_tags, ['Django', '生活技巧', '整理'])
+        self.assertContains(response, '# Django')
+        self.assertContains(response, '# 生活技巧')
+        self.assertContains(response, '# 整理')
+        self.assertContains(response, 'href="/index/?q=Django"')
+        self.assertNotContains(response, '第四个标签')
+        self.assertNotContains(response, 'daily:2026-06-27')
+
     def test_archive_page_groups_readable_posts_by_month(self):
         author = User.objects.create_user(
             username='archive-author',
