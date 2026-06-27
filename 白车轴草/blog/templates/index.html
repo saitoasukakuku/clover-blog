@@ -62,31 +62,6 @@
         padding: 0 22px;
     }
 
-    .hero-date-filter {
-        align-items: center;
-        align-self: stretch;
-        background: #f6fff6;
-        border-left: 1px solid #d8edd9;
-        color: #2e7d32;
-        display: flex;
-        gap: 8px;
-        padding: 0 14px;
-        white-space: nowrap;
-    }
-
-    .hero-date-label {
-        font-size: 0.82rem;
-        font-weight: 700;
-    }
-
-    .search-date {
-        background: transparent;
-        color: #2f6b33;
-        flex: 0 0 124px;
-        min-width: 124px;
-        padding: 0;
-    }
-
     .hero-search .btn {
         align-self: stretch;
         background: #2e7d32;
@@ -272,18 +247,12 @@
         }
 
         .search-keyword,
-        .hero-date-filter,
         .hero-search .btn {
             background: #fff;
             border: 2px solid #a5d6a7;
             border-radius: 25px;
             flex: 1 1 100%;
             height: 50px;
-        }
-
-        .hero-date-filter {
-            justify-content: space-between;
-            padding: 0 18px;
         }
     }
 </style>
@@ -306,10 +275,6 @@
             {% endif %}
             <div class="hero-search-bar">
                 <input class="form-control search-keyword" type="search" name="q" value="{{ search_query }}" placeholder="搜索文章..." aria-label="搜索文章">
-                <label class="hero-date-filter">
-                    <span class="hero-date-label"><i class="far fa-calendar-alt me-1"></i>日期</span>
-                    <input class="form-control search-date" type="date" name="date" value="{{ selected_date }}" aria-label="发布日期">
-                </label>
                 <button class="btn" type="submit" aria-label="搜索"><i class="fas fa-search"></i></button>
             </div>
         </form>
@@ -326,7 +291,7 @@
                     <i class="fas fa-user-check me-1"></i>正在看我的文章
                 </a>
                 {% else %}
-                <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_category %}category={{ selected_category|urlencode }}&{% endif %}{% if selected_date %}date={{ selected_date|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}author={{ user.username|urlencode }}" class="btn btn-outline-success rounded-pill">
+                <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_category %}category={{ selected_category|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}author={{ user.username|urlencode }}" class="btn btn-outline-success rounded-pill">
                     <i class="fas fa-user me-1"></i>只看我的文章
                 </a>
                 {% endif %}
@@ -357,19 +322,18 @@
             </div>
             {% endif %}
 
-            {% if selected_date %}
-            <div class="category-filter-bar">
-                <span><i class="far fa-calendar-alt me-1"></i>正在筛选日期：<strong>{{ selected_date }}</strong></span>
-                <a href="{% url 'index' %}{% if clear_date_query %}?{{ clear_date_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除日期</a>
-            </div>
-            {% endif %}
-
             {% if selected_author %}
             <div class="category-filter-bar">
                 <span><i class="fas fa-user me-1"></i>正在筛选作者：<strong>{{ selected_author_label }}</strong></span>
                 <a href="{% url 'index' %}{% if clear_author_query %}?{{ clear_author_query }}{% endif %}" class="btn btn-sm btn-outline-success rounded-pill">清除作者</a>
             </div>
             {% endif %}
+
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                <div class="text-muted small">
+                    <i class="fas fa-list-ul me-1"></i>共找到 {{ result_count }} 篇文章
+                </div>
+            </div>
 
             <div class="row">
                 {% for post in posts %}
@@ -397,15 +361,15 @@
                         </div>
                         <div class="card-footer">
                             <span class="post-meta">
-                                <a class="post-meta-link" href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_category %}category={{ selected_category|urlencode }}&{% endif %}{% if selected_author %}author={{ selected_author|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}date={{ post.created_at|date:'Y-m-d' }}">
+                                <span>
                                     <i class="far fa-calendar-alt me-1"></i>{{ post.created_at|date:"Y-m-d" }}
-                                </a>
+                                </span>
                                 <span class="mx-1">·</span>
                                 <a class="post-meta-link" href="{% url 'author_profile' post.author.username %}" data-author-filter="?author={{ post.author.username|urlencode }}">
                                     <i class="fas fa-user me-1"></i>{{ post.author.profile.display_name|default:post.author.username }}
                                 </a>
                             </span>
-                            <a class="post-category" href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_date %}date={{ selected_date|urlencode }}&{% endif %}{% if selected_author %}author={{ selected_author|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}category={{ post.category|urlencode }}">
+                            <a class="post-category" href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_author %}author={{ selected_author|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}category={{ post.category|urlencode }}">
                                 {{ post.category_label }}
                             </a>
                         </div>
@@ -413,7 +377,7 @@
                 </div>
                 {% empty %}
                 <div class="col-12 text-center py-5">
-                    {% if search_query or selected_category or selected_date or selected_author or selected_tag %}
+                    {% if search_query or selected_category or selected_author or selected_tag %}
                     <p class="text-muted">没有找到符合条件的文章。</p>
                     {% else %}
                     <p class="text-muted">还没有发布任何文章，快去创建第一篇吧！</p>
@@ -469,7 +433,7 @@
                 </div>
                 <div class="category-cloud">
                     {% for category in top_categories %}
-                    <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_date %}date={{ selected_date|urlencode }}&{% endif %}{% if selected_author %}author={{ selected_author|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}category={{ category.value|urlencode }}" class="category-pill {% if selected_category == category.value %}active{% endif %}">{{ category.name }}</a>
+                    <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_author %}author={{ selected_author|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}category={{ category.value|urlencode }}" class="category-pill {% if selected_category == category.value %}active{% endif %}">{{ category.name }}</a>
                     {% empty %}
                     <span class="text-muted" style="font-size: 0.86rem;">暂无分类</span>
                     {% endfor %}
@@ -514,7 +478,7 @@
             <div class="modal-body">
                 <div class="all-categories-list">
                     {% for category in category_counts %}
-                    <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_date %}date={{ selected_date|urlencode }}&{% endif %}{% if selected_author %}author={{ selected_author|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}category={{ category.value|urlencode }}" class="category-pill">
+                    <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if selected_author %}author={{ selected_author|urlencode }}&{% endif %}{% if selected_tag %}tag={{ selected_tag|urlencode }}&{% endif %}category={{ category.value|urlencode }}" class="category-pill">
                         <span>{{ category.name }}</span>
                         <span class="category-count">{{ category.count }}</span>
                     </a>
@@ -536,13 +500,11 @@
         const formData = new FormData(form);
         const params = new URLSearchParams();
         const query = (formData.get('q') || '').trim();
-        const date = (formData.get('date') || '').trim();
         const category = (formData.get('category') || '').trim();
         const author = (formData.get('author') || '').trim();
         const tag = (formData.get('tag') || '').trim();
 
         if (query) params.set('q', query);
-        if (date) params.set('date', date);
         if (category) params.set('category', category);
         if (author) params.set('author', author);
         if (tag) params.set('tag', tag);

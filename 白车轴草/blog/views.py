@@ -12,7 +12,6 @@ from django.http import HttpResponse, JsonResponse
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.core.management.base import CommandError
-from django.utils.dateparse import parse_date
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import strip_tags
@@ -287,8 +286,6 @@ def index(request):
     selected_author = request.GET.get('author', '').strip()
     selected_tag = request.GET.get('tag', '').strip()
     search_query = request.GET.get('q', '').strip()
-    date_query = request.GET.get('date', '').strip()
-    selected_date = parse_date(date_query) if date_query else None
     selected_category_label = Post.CATEGORY_LABELS.get(selected_category, selected_category)
     selected_author_post = all_posts.filter(
         author__username=selected_author
@@ -325,13 +322,12 @@ def index(request):
     if selected_category:
         posts = posts.filter(category=selected_category)
 
-    if selected_date:
-        posts = posts.filter(created_at__date=selected_date)
-
     posts = filter_posts_by_tag(posts, selected_tag)
+    result_count = len(posts) if isinstance(posts, list) else posts.count()
 
     pagination_params = request.GET.copy()
     pagination_params.pop('page', None)
+    pagination_params.pop('date', None)
     pagination_query = pagination_params.urlencode()
     pagination_prefix = f'{pagination_query}&' if pagination_query else ''
 
@@ -349,11 +345,6 @@ def index(request):
     clear_tag_params.pop('tag', None)
     clear_tag_params.pop('page', None)
     clear_tag_query = clear_tag_params.urlencode()
-
-    clear_date_params = request.GET.copy()
-    clear_date_params.pop('date', None)
-    clear_date_params.pop('page', None)
-    clear_date_query = clear_date_params.urlencode()
 
     clear_author_params = request.GET.copy()
     clear_author_params.pop('author', None)
@@ -380,12 +371,11 @@ def index(request):
         ),
         'search_query': search_query,
         'selected_tag': selected_tag,
-        'selected_date': date_query if selected_date else '',
         'pagination_prefix': pagination_prefix,
+        'result_count': result_count,
         'clear_category_query': clear_category_query,
         'clear_search_query': clear_search_query,
         'clear_tag_query': clear_tag_query,
-        'clear_date_query': clear_date_query,
         'clear_author_query': clear_author_query,
         'category_counts': category_counts,
         'top_categories': category_counts[:10],

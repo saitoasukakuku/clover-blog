@@ -426,7 +426,7 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '正在筛选作者')
         self.assertNotContains(response, '其他作者私密文章')
 
-    def test_index_card_metadata_contains_clickable_filter_links(self):
+    def test_index_card_metadata_keeps_date_as_plain_text(self):
         author = User.objects.create_user(
             username='writer',
             password='StrongPass12345',
@@ -446,7 +446,8 @@ class AuthViewsTests(TestCase):
         response = self.client.get(reverse('index'))
 
         self.assertContains(response, 'author=writer')
-        self.assertContains(response, 'date=2026-06-24')
+        self.assertContains(response, '2026-06-24')
+        self.assertNotContains(response, 'date=2026-06-24')
         self.assertContains(response, 'category=mood')
         self.assertContains(response, 'post-meta-link')
         self.assertContains(response, 'post-category')
@@ -757,7 +758,18 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '?q=Django&amp;category=life&amp;page=2')
         self.assertContains(response, 'value="Django"')
 
-    def test_index_date_search_filters_by_created_date(self):
+    def test_index_shows_filtered_result_count(self):
+        owner = User.objects.create_user(username='result-count-owner', password='StrongPass12345')
+        Post.objects.create(author=owner, title='Django 入门', category='tech', content='筛选', status='published', visibility='public')
+        Post.objects.create(author=owner, title='Django 模板', category='tech', content='筛选', status='published', visibility='public')
+        Post.objects.create(author=owner, title='生活记录', category='life', content='筛选', status='published', visibility='public')
+
+        response = self.client.get(reverse('index'), {'q': 'Django'})
+
+        self.assertEqual(response.context['result_count'], 2)
+        self.assertContains(response, '共找到 2 篇文章')
+
+    def test_index_ignores_date_query_parameter(self):
         owner = User.objects.create_user(username='owner', password='StrongPass12345')
         target_post = Post.objects.create(author=owner, title='六月文章', category='life', content='夏天', status='published')
         other_post = Post.objects.create(author=owner, title='五月文章', category='life', content='春天', status='published')
@@ -768,12 +780,12 @@ class AuthViewsTests(TestCase):
         response = self.client.get(reverse('index'), {'date': '2026-06-13'})
 
         result_titles = [post.title for post in response.context['posts'].object_list]
-        self.assertEqual(result_titles, ['六月文章'])
-        self.assertEqual(response.context['selected_date'], '2026-06-13')
-        self.assertContains(response, 'value="2026-06-13"')
-        self.assertContains(response, '正在筛选日期')
+        self.assertEqual(result_titles, ['六月文章', '五月文章'])
+        self.assertNotIn('selected_date', response.context)
+        self.assertNotContains(response, 'type="date"')
+        self.assertNotContains(response, '正在筛选日期')
 
-    def test_index_date_search_can_combine_with_keyword_and_category(self):
+    def test_index_search_ignores_date_when_combined_with_keyword_and_category(self):
         owner = User.objects.create_user(username='owner', password='StrongPass12345')
         matched = Post.objects.create(author=owner, title='Django 日期', category='tech', content='筛选', status='published')
         wrong_date = Post.objects.create(author=owner, title='Django 旧文', category='tech', content='筛选', status='published')
@@ -786,9 +798,9 @@ class AuthViewsTests(TestCase):
         response = self.client.get(reverse('index'), {'q': 'Django', 'date': '2026-06-13', 'category': 'tech'})
 
         result_titles = [post.title for post in response.context['posts'].object_list]
-        self.assertEqual(result_titles, ['Django 日期'])
-        self.assertEqual(response.context['pagination_prefix'], 'q=Django&date=2026-06-13&category=tech&')
-        self.assertContains(response, 'value="2026-06-13"')
+        self.assertEqual(result_titles, ['Django 日期', 'Django 旧文'])
+        self.assertEqual(response.context['pagination_prefix'], 'q=Django&category=tech&')
+        self.assertNotContains(response, 'value="2026-06-13"')
 
     def test_detail_requires_post_owner(self):
         owner = User.objects.create_user(username='owner', password='StrongPass12345')
