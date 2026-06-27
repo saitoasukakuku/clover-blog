@@ -67,6 +67,41 @@
             border: 2px solid #c8e6c9;
         }
 
+        .quick-nav {
+            gap: 0.45rem;
+        }
+
+        .quick-nav .quick-nav-link {
+            align-items: center;
+            border: 1px solid #dcefd8;
+            border-radius: 999px;
+            color: #425047;
+            display: inline-flex;
+            font-size: 0.95rem;
+            padding: 0.42rem 0.82rem;
+            transition: all 0.2s ease;
+        }
+
+        .quick-nav .quick-nav-link:hover {
+            background: #f1f8e9;
+            border-color: #b7dfb4;
+            color: #2e7d32;
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 991.98px) {
+            .quick-nav {
+                border-top: 1px solid #edf4ed;
+                margin-top: 0.75rem;
+                padding-top: 0.75rem;
+            }
+
+            .quick-nav .quick-nav-link {
+                justify-content: flex-start;
+                width: 100%;
+            }
+        }
+
         .dropdown-menu.show {
             display: block;
             animation: menuPopup 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -746,20 +781,20 @@
                     <button class="btn btn-outline-success" type="submit">Search</button>
                 </form> -->
 
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <ul class="navbar-nav quick-nav ms-lg-auto me-lg-3 mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'archive' %}">
+                        <a class="nav-link quick-nav-link" href="{% url 'archive' %}">
                             <i class="far fa-calendar-alt me-1"></i>归档
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'tags' %}">
+                        <a class="nav-link quick-nav-link" href="{% url 'tags' %}">
                             <i class="fas fa-tags me-1"></i>标签
                         </a>
                     </li>
                 </ul>
 
-                <ul class="navbar-nav ms-auto mb-2 mb-lg-0 d-flex">
+                <ul class="navbar-nav mb-2 mb-lg-0 d-flex">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle fw-medium user-center-toggle" href="#" role="button"
                             data-bs-toggle="dropdown" aria-expanded="false">
