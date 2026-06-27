@@ -134,6 +134,19 @@ def append_ai_cover_attribution(content, cover_data):
     return f'{content}\n\n{attribution}'
 
 
+def get_readable_published_posts(request_user):
+    if request_user.is_authenticated:
+        return Post.objects.filter(
+            Q(status='published', visibility='public')
+            | Q(author=request_user, status='published')
+        ).distinct().order_by('-created_at')
+
+    return Post.objects.filter(
+        status='published',
+        visibility='public',
+    ).order_by('-created_at')
+
+
 def get_category_counts(posts):
     counter = Counter(post.category for post in posts if post.category)
     categories = [
@@ -150,23 +163,56 @@ def get_category_counts(posts):
     )
     return categories
 
+
+def build_archive_groups(posts):
+    archive_groups = []
+    group_lookup = {}
+
+    for post in posts:
+        local_created_at = timezone.localtime(post.created_at)
+        group_key = (local_created_at.year, local_created_at.month)
+        if group_key not in group_lookup:
+            archive_group = {
+                'year': local_created_at.year,
+                'month': local_created_at.month,
+                'label': f'{local_created_at.year} 年 {local_created_at.month} 月',
+                'posts': [],
+            }
+            group_lookup[group_key] = archive_group
+            archive_groups.append(archive_group)
+
+        group_lookup[group_key]['posts'].append(post)
+
+    return archive_groups
+
+
+def build_tag_counts(posts):
+    tag_counter = Counter()
+
+    for post in posts:
+        unique_tags = set(post.tag_list)
+        for tag in unique_tags:
+            tag_counter[tag] += 1
+
+    return [
+        {'name': tag_name, 'count': tag_count}
+        for tag_name, tag_count in sorted(
+            tag_counter.items(),
+            key=lambda tag_item: (-tag_item[1], tag_item[0].lower()),
+        )
+    ]
+
+
 def index(request):
     owner, owner_profile = get_site_owner_profile()
+    all_posts = get_readable_published_posts(request.user)
     if request.user.is_authenticated:
-        all_posts = Post.objects.filter(
-            Q(status='published', visibility='public') |
-            Q(author=request.user, status='published')
-        ).distinct().order_by('-created_at')
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
         about_posts = Post.objects.filter(
             author=request.user,
             status='published',
         )
     else:
-        all_posts = Post.objects.filter(
-            status='published',
-            visibility='public'
-        ).order_by('-created_at')
         profile = owner_profile
         about_posts = Post.objects.filter(
             author=owner,
@@ -271,6 +317,26 @@ def index(request):
         'total_views': about_posts.aggregate(total=Sum('views_count'))['total'] or 0,
         'recent_posts': author_posts[:5],
     })
+
+
+def archive_view(request):
+    posts = get_readable_published_posts(request.user).select_related(
+        'author',
+        'author__profile',
+    )
+    archive_groups = build_archive_groups(posts)
+    return render(request, 'archive.html', {
+        'archive_groups': archive_groups,
+    })
+
+
+def tags_view(request):
+    posts = get_readable_published_posts(request.user)
+    tag_counts = build_tag_counts(posts)
+    return render(request, 'tags.html', {
+        'tag_counts': tag_counts,
+    })
+
 
 def register(request):
     if request.user.is_authenticated:

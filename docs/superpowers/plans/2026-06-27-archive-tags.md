@@ -25,6 +25,8 @@
   - Add `/archive/` and `/tags/` URL patterns.
 - Modify `白车轴草/blog/templates/base.html`
   - Add navigation links to archive and tags pages.
+- Modify `白车轴草/blog/templates/index.html`
+  - Add matching navigation links because the homepage is a standalone template.
 - Create `白车轴草/blog/templates/archive.html`
   - Render grouped archive data.
 - Create `白车轴草/blog/templates/tags.html`
@@ -351,6 +353,7 @@ Expected result: tests still fail because URLs and templates are not added yet.
 **Files:**
 - Modify: `白车轴草/白车轴草/urls.py`
 - Modify: `白车轴草/blog/templates/base.html`
+- Modify: `白车轴草/blog/templates/index.html`
 - Create: `白车轴草/blog/templates/archive.html`
 - Create: `白车轴草/blog/templates/tags.html`
 
@@ -382,7 +385,26 @@ Inside `白车轴草/blog/templates/base.html`, add this list before the user-ce
                 </ul>
 ```
 
-- [ ] **Step 3: Create archive template**
+- [ ] **Step 3: Add homepage navigation links**
+
+Inside `白车轴草/blog/templates/index.html`, add the same list before the user-center `<ul class="navbar-nav ms-auto...">`:
+
+```html
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'archive' %}">
+                            <i class="far fa-calendar-alt me-1"></i>归档
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'tags' %}">
+                            <i class="fas fa-tags me-1"></i>标签
+                        </a>
+                    </li>
+                </ul>
+```
+
+- [ ] **Step 4: Create archive template**
 
 Create `白车轴草/blog/templates/archive.html`:
 
@@ -511,7 +533,7 @@ Create `白车轴草/blog/templates/archive.html`:
 {% endblock %}
 ```
 
-- [ ] **Step 4: Create tags template**
+- [ ] **Step 5: Create tags template**
 
 Create `白车轴草/blog/templates/tags.html`:
 
@@ -612,7 +634,7 @@ Create `白车轴草/blog/templates/tags.html`:
 {% endblock %}
 ```
 
-- [ ] **Step 5: Run the focused tests**
+- [ ] **Step 6: Run the focused tests**
 
 Run:
 
@@ -691,7 +713,7 @@ Expected result: no whitespace errors; diff only includes archive/tag feature fi
 Run:
 
 ```powershell
-git add AGENTS.MD 白车轴草/blog/tests.py 白车轴草/blog/views.py 白车轴草/白车轴草/urls.py 白车轴草/blog/templates/base.html 白车轴草/blog/templates/archive.html 白车轴草/blog/templates/tags.html
+git add AGENTS.MD docs/superpowers/plans/2026-06-27-archive-tags.md 白车轴草/blog/tests.py 白车轴草/blog/views.py 白车轴草/白车轴草/urls.py 白车轴草/blog/templates/base.html 白车轴草/blog/templates/index.html 白车轴草/blog/templates/archive.html 白车轴草/blog/templates/tags.html
 git commit -m "Add archive and tags pages"
 git push origin main
 ```

@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+
+{% block title %}文章归档 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<style>
+    .archive-page {
+        max-width: 980px;
+        margin: 42px auto 64px;
+        padding: 0 16px;
+    }
+
+    .archive-hero {
+        background: linear-gradient(135deg, #f1f8e9, #ffffff);
+        border: 1px solid #e0f0dd;
+        border-radius: 24px;
+        padding: 32px;
+        margin-bottom: 28px;
+        box-shadow: 0 16px 40px rgba(76, 175, 80, 0.08);
+    }
+
+    .archive-hero h1 {
+        color: #2e7d32;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .archive-group {
+        background: #fff;
+        border: 1px solid #eef4ec;
+        border-radius: 18px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.04);
+    }
+
+    .archive-month {
+        color: #2e7d32;
+        font-weight: 700;
+        margin-bottom: 16px;
+    }
+
+    .archive-post {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 14px 0;
+        border-top: 1px solid #f1f3f0;
+    }
+
+    .archive-post:first-of-type {
+        border-top: 0;
+    }
+
+    .archive-post-title {
+        color: #2d3a2d;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .archive-post-title:hover {
+        color: #2e7d32;
+    }
+
+    .archive-meta {
+        color: #7b8a7b;
+        font-size: 0.9rem;
+    }
+
+    .archive-empty {
+        background: #fff;
+        border: 1px dashed #cfe5cc;
+        border-radius: 18px;
+        color: #7b8a7b;
+        padding: 32px;
+        text-align: center;
+    }
+
+    @media (max-width: 640px) {
+        .archive-post {
+            display: block;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="archive-page">
+    <section class="archive-hero">
+        <h1><i class="far fa-calendar-alt me-2"></i>文章归档</h1>
+        <p class="mb-0 text-muted">按月份回看已经发布的文章。</p>
+    </section>
+
+    {% if archive_groups %}
+        {% for archive_group in archive_groups %}
+        <section class="archive-group">
+            <h2 class="archive-month">{{ archive_group.label }}</h2>
+            {% for post in archive_group.posts %}
+            <article class="archive-post">
+                <div>
+                    <a class="archive-post-title" href="{% url 'post_detail' post.id %}">{{ post.title }}</a>
+                    <div class="archive-meta mt-1">
+                        <i class="fas fa-folder me-1"></i>{{ post.category_label }}
+                        <span class="mx-2">·</span>
+                        <i class="fas fa-user me-1"></i>{{ post.author.profile.display_name|default:post.author.username }}
+                    </div>
+                </div>
+                <div class="archive-meta text-nowrap">
+                    <i class="far fa-clock me-1"></i>{{ post.created_at|date:"Y-m-d" }}
+                    <span class="ms-2"><i class="far fa-eye me-1"></i>{{ post.views_count }}</span>
+                </div>
+            </article>
+            {% endfor %}
+        </section>
+        {% endfor %}
+    {% else %}
+    <div class="archive-empty">
+        暂时还没有可以查看的已发布文章。
+    </div>
+    {% endif %}
+</main>
+{% endblock %}

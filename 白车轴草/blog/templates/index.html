@@ -746,6 +746,19 @@
                     <button class="btn btn-outline-success" type="submit">Search</button>
                 </form> -->
 
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'archive' %}">
+                            <i class="far fa-calendar-alt me-1"></i>归档
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'tags' %}">
+                            <i class="fas fa-tags me-1"></i>标签
+                        </a>
+                    </li>
+                </ul>
+
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0 d-flex">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle fw-medium user-center-toggle" href="#" role="button"

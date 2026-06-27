@@ -450,6 +450,155 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'post-meta-link')
         self.assertContains(response, 'post-category')
 
+    def test_archive_page_groups_readable_posts_by_month(self):
+        author = User.objects.create_user(
+            username='archive-author',
+            password='StrongPass12345',
+        )
+        june_post = Post.objects.create(
+            author=author,
+            title='六月公开文章',
+            category='life',
+            content='六月正文',
+            status='published',
+            visibility='public',
+        )
+        may_post = Post.objects.create(
+            author=author,
+            title='五月公开文章',
+            category='study',
+            content='五月正文',
+            status='published',
+            visibility='public',
+        )
+        draft_post = Post.objects.create(
+            author=author,
+            title='草稿不进归档',
+            category='tech',
+            content='草稿正文',
+            status='draft',
+            visibility='private',
+        )
+        Post.objects.filter(pk=june_post.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 6, 27, 9, 0)),
+        )
+        Post.objects.filter(pk=may_post.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 5, 20, 9, 0)),
+        )
+        Post.objects.filter(pk=draft_post.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 6, 28, 9, 0)),
+        )
+
+        response = self.client.get(reverse('archive'))
+
+        self.assertEqual(response.status_code, 200)
+        archive_groups = response.context['archive_groups']
+        self.assertEqual(len(archive_groups), 2)
+        self.assertEqual(archive_groups[0]['year'], 2026)
+        self.assertEqual(archive_groups[0]['month'], 6)
+        self.assertEqual(archive_groups[0]['posts'][0].title, '六月公开文章')
+        self.assertEqual(archive_groups[1]['month'], 5)
+        self.assertContains(response, '六月公开文章')
+        self.assertContains(response, '五月公开文章')
+        self.assertNotContains(response, '草稿不进归档')
+
+    def test_archive_page_includes_current_users_private_published_posts(self):
+        current_user = User.objects.create_user(
+            username='archive-current',
+            password='StrongPass12345',
+        )
+        other_user = User.objects.create_user(
+            username='archive-other',
+            password='StrongPass12345',
+        )
+        own_private_post = Post.objects.create(
+            author=current_user,
+            title='自己的私密已发布文章',
+            category='life',
+            content='自己可见',
+            status='published',
+            visibility='private',
+        )
+        other_private_post = Post.objects.create(
+            author=other_user,
+            title='别人的私密已发布文章',
+            category='life',
+            content='别人私密',
+            status='published',
+            visibility='private',
+        )
+        Post.objects.filter(pk=own_private_post.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 6, 25, 9, 0)),
+        )
+        Post.objects.filter(pk=other_private_post.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 6, 24, 9, 0)),
+        )
+        self.client.login(username='archive-current', password='StrongPass12345')
+
+        response = self.client.get(reverse('archive'))
+
+        archive_titles = [
+            post.title
+            for archive_group in response.context['archive_groups']
+            for post in archive_group['posts']
+        ]
+        self.assertIn('自己的私密已发布文章', archive_titles)
+        self.assertNotIn('别人的私密已发布文章', archive_titles)
+        self.assertContains(response, '自己的私密已发布文章')
+        self.assertNotContains(response, '别人的私密已发布文章')
+
+    def test_tags_page_counts_visible_tags_once_per_post(self):
+        author = User.objects.create_user(
+            username='tag-author',
+            password='StrongPass12345',
+        )
+        Post.objects.create(
+            author=author,
+            title='标签文章一',
+            category='life',
+            tags='生活, Django, 生活,,',
+            content='标签正文一',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='标签文章二',
+            category='study',
+            tags='Django, 学习',
+            content='标签正文二',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='草稿标签不统计',
+            category='tech',
+            tags='隐藏',
+            content='草稿正文',
+            status='draft',
+            visibility='private',
+        )
+
+        response = self.client.get(reverse('tags'))
+
+        self.assertEqual(response.status_code, 200)
+        tag_counts = response.context['tag_counts']
+        self.assertEqual(tag_counts[0], {'name': 'Django', 'count': 2})
+        self.assertIn({'name': '生活', 'count': 1}, tag_counts)
+        self.assertIn({'name': '学习', 'count': 1}, tag_counts)
+        self.assertNotIn({'name': '隐藏', 'count': 1}, tag_counts)
+        self.assertContains(response, 'href="/index/?q=Django"')
+        self.assertContains(response, '2 篇')
+
+    def test_base_navigation_links_to_archive_and_tags_pages(self):
+        response = self.client.get(reverse('index'))
+
+        self.assertContains(response, f'href="{reverse("archive")}"')
+        self.assertContains(response, f'href="{reverse("tags")}"')
+        self.assertContains(response, '归档')
+        self.assertContains(response, '标签')
+
     def test_index_about_card_uses_current_user_profile_and_post_stats(self):
         owner = User.objects.create_superuser(username='root', password='StrongPass12345')
         current_user = User.objects.create_user(username='current', password='StrongPass12345')

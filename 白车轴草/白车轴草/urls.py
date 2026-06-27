@@ -9,6 +9,8 @@ urlpatterns = [
     path('', RedirectView.as_view(pattern_name='index', permanent=False), name='home'),
     path('admin/', admin.site.urls),
     path('index/', views.index, name='index'),
+    path('archive/', views.archive_view, name='archive'),
+    path('tags/', views.tags_view, name='tags'),
     path('register/', views.register, name='register'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),

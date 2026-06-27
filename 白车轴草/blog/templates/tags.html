@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block title %}文章标签 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tags-page {
+        max-width: 980px;
+        margin: 42px auto 64px;
+        padding: 0 16px;
+    }
+
+    .tags-hero {
+        background: linear-gradient(135deg, #f1f8e9, #ffffff);
+        border: 1px solid #e0f0dd;
+        border-radius: 24px;
+        padding: 32px;
+        margin-bottom: 28px;
+        box-shadow: 0 16px 40px rgba(76, 175, 80, 0.08);
+    }
+
+    .tags-hero h1 {
+        color: #2e7d32;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .tag-cloud {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .tag-pill {
+        align-items: center;
+        background: #fff;
+        border: 1px solid #d8ecd5;
+        border-radius: 999px;
+        color: #2e7d32;
+        display: inline-flex;
+        gap: 8px;
+        padding: 10px 16px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+
+    .tag-pill:hover {
+        background: #f1f8e9;
+        color: #1b5e20;
+        transform: translateY(-1px);
+    }
+
+    .tag-count {
+        background: #e8f5e9;
+        border-radius: 999px;
+        color: #4c7d4f;
+        font-size: 0.82rem;
+        padding: 2px 8px;
+    }
+
+    .tags-empty {
+        background: #fff;
+        border: 1px dashed #cfe5cc;
+        border-radius: 18px;
+        color: #7b8a7b;
+        padding: 32px;
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="tags-page">
+    <section class="tags-hero">
+        <h1><i class="fas fa-tags me-2"></i>文章标签</h1>
+        <p class="mb-0 text-muted">点击标签后，会使用首页搜索展示相关文章。</p>
+    </section>
+
+    {% if tag_counts %}
+    <section class="tag-cloud" aria-label="文章标签列表">
+        {% for tag in tag_counts %}
+        <a class="tag-pill" href="{% url 'index' %}?q={{ tag.name|urlencode }}">
+            <span># {{ tag.name }}</span>
+            <span class="tag-count">{{ tag.count }} 篇</span>
+        </a>
+        {% endfor %}
+    </section>
+    {% else %}
+    <div class="tags-empty">
+        暂时还没有可以展示的标签。
+    </div>
+    {% endif %}
+</main>
+{% endblock %}
