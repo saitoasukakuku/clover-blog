@@ -472,9 +472,53 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '# Django')
         self.assertContains(response, '# 生活技巧')
         self.assertContains(response, '# 整理')
-        self.assertContains(response, 'href="/index/?q=Django"')
+        self.assertContains(response, 'href="/index/?tag=Django"')
         self.assertNotContains(response, '第四个标签')
         self.assertNotContains(response, 'daily:2026-06-27')
+
+    def test_index_tag_filter_matches_exact_tags(self):
+        author = User.objects.create_user(
+            username='exact-tag-author',
+            password='StrongPass12345',
+        )
+        Post.objects.create(
+            author=author,
+            title='精确标签文章',
+            category='life',
+            tags='生活,Django',
+            content='真正带有生活标签',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='正文提到生活但无标签',
+            category='life',
+            tags='随笔',
+            content='正文里面提到了生活两个字',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='相似标签文章',
+            category='life',
+            tags='生活方式',
+            content='标签相似但不是同一个标签',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('index'), {'tag': '生活'})
+
+        result_titles = [
+            post.title
+            for post in response.context['posts'].object_list
+        ]
+        self.assertEqual(result_titles, ['精确标签文章'])
+        self.assertEqual(response.context['selected_tag'], '生活')
+        self.assertContains(response, '正在筛选标签')
+        self.assertContains(response, '清除标签')
 
     def test_archive_page_groups_readable_posts_by_month(self):
         author = User.objects.create_user(
@@ -614,7 +658,7 @@ class AuthViewsTests(TestCase):
         self.assertIn({'name': '生活', 'count': 1}, tag_counts)
         self.assertIn({'name': '学习', 'count': 1}, tag_counts)
         self.assertNotIn({'name': '隐藏', 'count': 1}, tag_counts)
-        self.assertContains(response, 'href="/index/?q=Django"')
+        self.assertContains(response, 'href="/index/?tag=Django"')
         self.assertContains(response, '2 篇')
 
     def test_base_navigation_links_to_archive_and_tags_pages(self):
@@ -775,7 +819,7 @@ class AuthViewsTests(TestCase):
         self.assertEqual(response.context['display_tags'], ['Django', '生活技巧'])
         self.assertContains(response, '# Django')
         self.assertContains(response, '# 生活技巧')
-        self.assertContains(response, 'href="/index/?q=Django"')
+        self.assertContains(response, 'href="/index/?tag=Django"')
         self.assertNotContains(response, 'daily:2026-06-27')
 
     def test_logged_in_user_can_comment_on_public_post(self):

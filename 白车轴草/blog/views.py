@@ -213,6 +213,16 @@ def get_display_tags(post):
     return display_tags
 
 
+def filter_posts_by_tag(posts, selected_tag):
+    if not selected_tag:
+        return posts
+    return [
+        post
+        for post in posts
+        if selected_tag in get_display_tags(post)
+    ]
+
+
 def index(request):
     owner, owner_profile = get_site_owner_profile()
     all_posts = get_readable_published_posts(request.user)
@@ -232,6 +242,7 @@ def index(request):
 
     selected_category = request.GET.get('category', '').strip()
     selected_author = request.GET.get('author', '').strip()
+    selected_tag = request.GET.get('tag', '').strip()
     search_query = request.GET.get('q', '').strip()
     date_query = request.GET.get('date', '').strip()
     selected_date = parse_date(date_query) if date_query else None
@@ -274,6 +285,8 @@ def index(request):
     if selected_date:
         posts = posts.filter(created_at__date=selected_date)
 
+    posts = filter_posts_by_tag(posts, selected_tag)
+
     pagination_params = request.GET.copy()
     pagination_params.pop('page', None)
     pagination_query = pagination_params.urlencode()
@@ -288,6 +301,11 @@ def index(request):
     clear_search_params.pop('q', None)
     clear_search_params.pop('page', None)
     clear_search_query = clear_search_params.urlencode()
+
+    clear_tag_params = request.GET.copy()
+    clear_tag_params.pop('tag', None)
+    clear_tag_params.pop('page', None)
+    clear_tag_query = clear_tag_params.urlencode()
 
     clear_date_params = request.GET.copy()
     clear_date_params.pop('date', None)
@@ -318,10 +336,12 @@ def index(request):
             and selected_author == request.user.username
         ),
         'search_query': search_query,
+        'selected_tag': selected_tag,
         'selected_date': date_query if selected_date else '',
         'pagination_prefix': pagination_prefix,
         'clear_category_query': clear_category_query,
         'clear_search_query': clear_search_query,
+        'clear_tag_query': clear_tag_query,
         'clear_date_query': clear_date_query,
         'clear_author_query': clear_author_query,
         'category_counts': category_counts,

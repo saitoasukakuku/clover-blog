@@ -79,7 +79,7 @@
     {% if tag_counts %}
     <section class="tag-cloud" aria-label="文章标签列表">
         {% for tag in tag_counts %}
-        <a class="tag-pill" href="{% url 'index' %}?q={{ tag.name|urlencode }}">
+        <a class="tag-pill" href="{% url 'index' %}?tag={{ tag.name|urlencode }}">
             <span># {{ tag.name }}</span>
             <span class="tag-count">{{ tag.count }} 篇</span>
         </a>

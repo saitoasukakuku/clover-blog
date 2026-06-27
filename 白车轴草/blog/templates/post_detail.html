@@ -560,7 +560,7 @@
                     {% if display_tags %}
                     <div class="detail-tag-list" aria-label="文章标签">
                         {% for tag in display_tags %}
-                        <a class="detail-tag" href="{% url 'index' %}?q={{ tag|urlencode }}">
+                        <a class="detail-tag" href="{% url 'index' %}?tag={{ tag|urlencode }}">
                             <span># {{ tag }}</span>
                         </a>
                         {% endfor %}
