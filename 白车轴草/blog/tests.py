@@ -7,6 +7,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.apps import apps
 from django.core import signing
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -1609,6 +1610,423 @@ class AuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         post.refresh_from_db()
         self.assertEqual(post.views_count, 1)
+
+
+class AuthorProfileTests(TestCase):
+    def test_author_profile_shows_public_posts_to_anonymous_user(self):
+        author = User.objects.create_user(username='profile-author', password='StrongPass12345')
+        Post.objects.create(
+            author=author,
+            title='Public profile post',
+            category='life',
+            content='Readable content',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='Private profile post',
+            category='life',
+            content='Hidden content',
+            status='published',
+            visibility='private',
+        )
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Public profile post')
+        self.assertNotContains(response, 'Private profile post')
+        self.assertEqual(response.context['published_count'], 1)
+
+    def test_author_profile_shows_own_private_published_posts_to_author(self):
+        author = User.objects.create_user(username='private-author', password='StrongPass12345')
+        Post.objects.create(
+            author=author,
+            title='Own private published post',
+            category='study',
+            content='Private but readable by owner',
+            status='published',
+            visibility='private',
+        )
+        self.client.login(username='private-author', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Own private published post')
+        self.assertEqual(response.context['published_count'], 1)
+
+    def test_author_profile_excludes_drafts(self):
+        author = User.objects.create_user(username='draft-profile-author', password='StrongPass12345')
+        Post.objects.create(
+            author=author,
+            title='Draft profile post',
+            category='life',
+            content='Draft content',
+            status='draft',
+            visibility='public',
+        )
+        self.client.login(username='draft-profile-author', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Draft profile post')
+        self.assertEqual(response.context['published_count'], 0)
+
+    def test_index_author_link_points_to_author_profile(self):
+        author = User.objects.create_user(username='linked-author', password='StrongPass12345')
+        Post.objects.create(
+            author=author,
+            title='Linked author post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('index'))
+
+        self.assertContains(response, reverse('author_profile', args=[author.username]))
+
+
+class FavoritePostTests(TestCase):
+    def get_favorite_model(self):
+        return apps.get_model('blog', 'PostFavorite')
+
+    def test_logged_in_user_can_favorite_readable_post(self):
+        author = User.objects.create_user(username='favorite-author', password='StrongPass12345')
+        reader = User.objects.create_user(username='favorite-reader', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Readable favorite post',
+            category='reading',
+            content='Readable content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='favorite-reader', password='StrongPass12345')
+
+        response = self.client.post(reverse('toggle_favorite', args=[post.id]), {
+            'next': reverse('post_detail', args=[post.id]),
+        })
+
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        PostFavorite = self.get_favorite_model()
+        self.assertTrue(PostFavorite.objects.filter(user=reader, post=post).exists())
+
+    def test_repeating_favorite_post_removes_favorite(self):
+        author = User.objects.create_user(username='toggle-author', password='StrongPass12345')
+        reader = User.objects.create_user(username='toggle-reader', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Toggle favorite post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        PostFavorite = self.get_favorite_model()
+        PostFavorite.objects.create(user=reader, post=post)
+        self.client.login(username='toggle-reader', password='StrongPass12345')
+
+        response = self.client.post(reverse('toggle_favorite', args=[post.id]), {
+            'next': reverse('post_detail', args=[post.id]),
+        })
+
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        self.assertFalse(PostFavorite.objects.filter(user=reader, post=post).exists())
+
+    def test_anonymous_user_cannot_favorite_post(self):
+        author = User.objects.create_user(username='anonymous-favorite-author', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Anonymous favorite post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.post(reverse('toggle_favorite', args=[post.id]))
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('toggle_favorite', args=[post.id])}",
+        )
+
+    def test_user_cannot_favorite_unreadable_private_post(self):
+        author = User.objects.create_user(username='private-favorite-author', password='StrongPass12345')
+        reader = User.objects.create_user(username='private-favorite-reader', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Unreadable private favorite post',
+            category='life',
+            content='Private content',
+            status='published',
+            visibility='private',
+        )
+        self.client.login(username='private-favorite-reader', password='StrongPass12345')
+
+        response = self.client.post(reverse('toggle_favorite', args=[post.id]))
+
+        self.assertEqual(response.status_code, 404)
+        PostFavorite = self.get_favorite_model()
+        self.assertFalse(PostFavorite.objects.filter(user=reader, post=post).exists())
+
+    def test_favorites_page_only_lists_still_readable_posts(self):
+        owner = User.objects.create_user(username='favorite-owner', password='StrongPass12345')
+        reader = User.objects.create_user(username='favorite-page-reader', password='StrongPass12345')
+        public_post = Post.objects.create(
+            author=owner,
+            title='Still readable favorite',
+            category='life',
+            content='Public content',
+            status='published',
+            visibility='public',
+        )
+        private_post = Post.objects.create(
+            author=owner,
+            title='No longer readable favorite',
+            category='life',
+            content='Private content',
+            status='published',
+            visibility='private',
+        )
+        PostFavorite = self.get_favorite_model()
+        PostFavorite.objects.create(user=reader, post=public_post)
+        PostFavorite.objects.create(user=reader, post=private_post)
+        self.client.login(username='favorite-page-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('favorite_posts'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Still readable favorite')
+        self.assertNotContains(response, 'No longer readable favorite')
+
+
+class NotificationCenterTests(TestCase):
+    def get_notification_model(self):
+        return apps.get_model('blog', 'Notification')
+
+    def test_commenting_on_post_notifies_post_author(self):
+        author = User.objects.create_user(username='comment-notify-author', password='StrongPass12345')
+        commenter = User.objects.create_user(username='comment-notify-user', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Comment notification post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='comment-notify-user', password='StrongPass12345')
+
+        self.client.post(reverse('add_comment', args=[post.id]), {'content': 'New comment'})
+
+        Notification = self.get_notification_model()
+        notification = Notification.objects.get(recipient=author)
+        self.assertEqual(notification.actor, commenter)
+        self.assertEqual(notification.notification_type, 'comment_on_post')
+        self.assertIn(reverse('post_detail', args=[post.id]), notification.target_url)
+
+    def test_replying_to_comment_notifies_parent_comment_author(self):
+        author = User.objects.create_user(username='reply-post-author', password='StrongPass12345')
+        commenter = User.objects.create_user(username='reply-parent-author', password='StrongPass12345')
+        replier = User.objects.create_user(username='reply-user', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Reply notification post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        parent_comment = Comment.objects.create(post=post, author=commenter, content='Parent comment')
+        self.client.login(username='reply-user', password='StrongPass12345')
+
+        self.client.post(reverse('add_comment', args=[post.id]), {
+            'content': 'Reply comment',
+            'parent_id': parent_comment.id,
+        })
+
+        Notification = self.get_notification_model()
+        notification = Notification.objects.get(recipient=commenter)
+        self.assertEqual(notification.actor, replier)
+        self.assertEqual(notification.notification_type, 'reply_to_comment')
+
+    def test_user_does_not_receive_notification_for_own_action(self):
+        author = User.objects.create_user(username='self-notify-author', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Self notification post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='self-notify-author', password='StrongPass12345')
+
+        self.client.post(reverse('add_comment', args=[post.id]), {'content': 'Own comment'})
+
+        Notification = self.get_notification_model()
+        self.assertFalse(Notification.objects.filter(recipient=author).exists())
+
+    def test_sending_friend_request_notifies_receiver(self):
+        sender = User.objects.create_user(username='notify-request-sender', password='StrongPass12345')
+        receiver = User.objects.create_user(username='notify-request-receiver', password='StrongPass12345')
+        self.client.login(username='notify-request-sender', password='StrongPass12345')
+
+        self.client.post(reverse('send_friend_request', args=[receiver.id]))
+
+        Notification = self.get_notification_model()
+        notification = Notification.objects.get(recipient=receiver)
+        self.assertEqual(notification.actor, sender)
+        self.assertEqual(notification.notification_type, 'friend_request_received')
+
+    def test_accepting_friend_request_notifies_sender(self):
+        sender = User.objects.create_user(username='accepted-request-sender', password='StrongPass12345')
+        receiver = User.objects.create_user(username='accepted-request-receiver', password='StrongPass12345')
+        friend_request = FriendRequest.objects.create(sender=sender, receiver=receiver)
+        self.client.login(username='accepted-request-receiver', password='StrongPass12345')
+
+        self.client.post(reverse('accept_friend_request', args=[friend_request.id]))
+
+        Notification = self.get_notification_model()
+        notification = Notification.objects.get(recipient=sender)
+        self.assertEqual(notification.actor, receiver)
+        self.assertEqual(notification.notification_type, 'friend_request_accepted')
+
+    def test_sending_private_message_notifies_recipient(self):
+        sender = User.objects.create_user(username='notify-message-sender', password='StrongPass12345')
+        recipient = User.objects.create_user(username='notify-message-recipient', password='StrongPass12345')
+        Friendship.connect(sender, recipient)
+        self.client.login(username='notify-message-sender', password='StrongPass12345')
+
+        self.client.post(reverse('conversation', args=[recipient.id]), {'content': 'Hello from a friend'})
+
+        Notification = self.get_notification_model()
+        notification = Notification.objects.get(recipient=recipient)
+        self.assertEqual(notification.actor, sender)
+        self.assertEqual(notification.notification_type, 'private_message')
+
+    def test_notifications_page_only_shows_current_users_notifications(self):
+        current_user = User.objects.create_user(username='notification-owner', password='StrongPass12345')
+        other_user = User.objects.create_user(username='notification-other', password='StrongPass12345')
+        Notification = self.get_notification_model()
+        Notification.objects.create(
+            recipient=current_user,
+            actor=other_user,
+            notification_type='private_message',
+            message='Visible notification',
+            target_url=reverse('index'),
+        )
+        Notification.objects.create(
+            recipient=other_user,
+            actor=current_user,
+            notification_type='private_message',
+            message='Hidden notification',
+            target_url=reverse('index'),
+        )
+        self.client.login(username='notification-owner', password='StrongPass12345')
+
+        response = self.client.get(reverse('notifications'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Visible notification')
+        self.assertNotContains(response, 'Hidden notification')
+
+    def test_read_notification_marks_it_read_and_redirects_to_target(self):
+        recipient = User.objects.create_user(username='read-notification-user', password='StrongPass12345')
+        actor = User.objects.create_user(username='read-notification-actor', password='StrongPass12345')
+        post = Post.objects.create(
+            author=actor,
+            title='Notification target post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        Notification = self.get_notification_model()
+        notification = Notification.objects.create(
+            recipient=recipient,
+            actor=actor,
+            notification_type='comment_on_post',
+            message='Read me',
+            target_url=reverse('post_detail', args=[post.id]),
+        )
+        self.client.login(username='read-notification-user', password='StrongPass12345')
+
+        response = self.client.post(reverse('read_notification', args=[notification.id]))
+
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+
+    def test_mark_all_notifications_read_only_updates_current_user(self):
+        current_user = User.objects.create_user(username='read-all-current', password='StrongPass12345')
+        other_user = User.objects.create_user(username='read-all-other', password='StrongPass12345')
+        Notification = self.get_notification_model()
+        current_notification = Notification.objects.create(
+            recipient=current_user,
+            notification_type='private_message',
+            message='Current unread',
+            target_url=reverse('index'),
+        )
+        other_notification = Notification.objects.create(
+            recipient=other_user,
+            notification_type='private_message',
+            message='Other unread',
+            target_url=reverse('index'),
+        )
+        self.client.login(username='read-all-current', password='StrongPass12345')
+
+        response = self.client.post(reverse('mark_all_notifications_read'))
+
+        self.assertRedirects(response, reverse('notifications'))
+        current_notification.refresh_from_db()
+        other_notification.refresh_from_db()
+        self.assertTrue(current_notification.is_read)
+        self.assertFalse(other_notification.is_read)
+
+    def test_navigation_context_contains_unread_notification_count(self):
+        recipient = User.objects.create_user(username='notification-count-user', password='StrongPass12345')
+        Notification = self.get_notification_model()
+        Notification.objects.create(
+            recipient=recipient,
+            notification_type='private_message',
+            message='Unread notification',
+            target_url=reverse('index'),
+        )
+        self.client.login(username='notification-count-user', password='StrongPass12345')
+
+        response = self.client.get(reverse('index'))
+
+        self.assertEqual(response.context['unread_notification_count'], 1)
+        self.assertContains(response, '通知')
+
+
+class HomepageTemplateIntegrationTests(TestCase):
+    def test_index_uses_shared_navigation_and_still_renders_search_and_posts(self):
+        author = User.objects.create_user(username='homepage-author', password='StrongPass12345')
+        Post.objects.create(
+            author=author,
+            title='Homepage inherited post',
+            category='life',
+            content='Homepage content',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('index'))
+
+        self.assertTemplateUsed(response, 'index.html')
+        self.assertTemplateUsed(response, 'base.html')
+        self.assertContains(response, '归档')
+        self.assertContains(response, '标签')
+        self.assertContains(response, '搜索文章')
+        self.assertContains(response, 'Homepage inherited post')
 
 
 class PostDeletionTests(TestCase):

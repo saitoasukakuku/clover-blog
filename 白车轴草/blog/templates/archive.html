@@ -102,7 +102,10 @@
                     <div class="archive-meta mt-1">
                         <i class="fas fa-folder me-1"></i>{{ post.category_label }}
                         <span class="mx-2">·</span>
-                        <i class="fas fa-user me-1"></i>{{ post.author.profile.display_name|default:post.author.username }}
+                        <i class="fas fa-user me-1"></i>
+                        <a href="{% url 'author_profile' post.author.username %}" class="archive-post-title">
+                            {{ post.author.profile.display_name|default:post.author.username }}
+                        </a>
                     </div>
                 </div>
                 <div class="archive-meta text-nowrap">

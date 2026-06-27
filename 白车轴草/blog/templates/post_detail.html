@@ -543,7 +543,10 @@
                         <span><i class="far fa-calendar-alt"></i>发表于 {{ post.created_at|date:"Y-m-d" }}</span>
                         <span>
                             <i class="fas fa-user"></i>
-                            作者 {{ post.author.profile.display_name|default:post.author.username }}
+                            作者
+                            <a href="{% url 'author_profile' post.author.username %}" class="text-decoration-none text-muted">
+                                {{ post.author.profile.display_name|default:post.author.username }}
+                            </a>
                         </span>
                         <span>
                             <i class="fas fa-eye"></i>
@@ -591,8 +594,25 @@
                             <i class="fas fa-arrow-left me-1"></i>返回首页
                         </a>
 
+                        <div class="d-flex gap-2 flex-wrap justify-content-end">
+                            {% if user.is_authenticated %}
+                            <form method="post" action="{% url 'toggle_favorite' post.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <button type="submit"
+                                        class="btn {% if is_favorited %}btn-success{% else %}btn-outline-success{% endif %} btn-sm rounded-pill">
+                                    <i class="{% if is_favorited %}fas{% else %}far{% endif %} fa-bookmark me-1"></i>
+                                    {% if is_favorited %}已收藏{% else %}收藏{% endif %}
+                                </button>
+                            </form>
+                            {% else %}
+                            <a href="{% url 'login' %}?next={{ request.path|urlencode }}"
+                                class="btn btn-outline-success btn-sm rounded-pill">
+                                <i class="far fa-bookmark me-1"></i>登录后收藏
+                            </a>
+                            {% endif %}
+
                         {% if user.is_authenticated and post.author == user %}
-                        <div class="d-flex gap-2">
                             <button type="button" class="btn btn-outline-success btn-sm rounded-pill" id="startEditBtn">
                                 <i class="fas fa-edit me-1"></i>编辑文章
                             </button>
@@ -604,8 +624,8 @@
                                     <i class="fas fa-trash-alt me-1"></i>删除文章
                                 </button>
                             </form>
-                        </div>
                         {% endif %}
+                        </div>
                     </div>
 
                     <!-- 正文内容 -->
@@ -897,7 +917,11 @@
                 <h2><i class="fas fa-leaf me-2"></i>文章信息</h2>
                 <div class="detail-stat">
                     <span>作者</span>
-                    <strong>{{ post.author.profile.display_name|default:post.author.username }}</strong>
+                    <strong>
+                        <a href="{% url 'author_profile' post.author.username %}" class="text-decoration-none text-success">
+                            {{ post.author.profile.display_name|default:post.author.username }}
+                        </a>
+                    </strong>
                 </div>
                 <div class="detail-stat">
                     <span>可见范围</span>

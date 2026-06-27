@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+
+{% block title %}我的收藏 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<style>
+    .favorites-page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 34px 16px 58px;
+    }
+
+    .favorites-header {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+
+    .favorite-row {
+        background: #fff;
+        border: 1px solid #e1eee1;
+        border-radius: 8px;
+        box-shadow: 0 3px 14px rgba(31, 83, 40, 0.06);
+        display: grid;
+        grid-template-columns: 160px minmax(0, 1fr);
+        gap: 18px;
+        overflow: hidden;
+        margin-bottom: 16px;
+    }
+
+    .favorite-cover {
+        aspect-ratio: 5 / 3;
+        background: #f1f8e9;
+        color: #8abf8c;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 96px;
+    }
+
+    .favorite-cover img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .favorite-body {
+        padding: 16px 18px 16px 0;
+    }
+
+    .favorite-title {
+        color: #263329;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .favorite-title:hover {
+        color: #2e7d32;
+    }
+
+    .favorites-empty {
+        background: #fff;
+        border: 1px dashed #cfe5cc;
+        border-radius: 8px;
+        color: #7b8a7b;
+        padding: 36px;
+        text-align: center;
+    }
+
+    @media (max-width: 640px) {
+        .favorite-row {
+            grid-template-columns: 1fr;
+        }
+
+        .favorite-body {
+            padding: 0 18px 18px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="favorites-page">
+    <div class="favorites-header">
+        <h1 class="h4 mb-0 text-success"><i class="fas fa-bookmark me-2"></i>我的收藏</h1>
+        <a href="{% url 'index' %}" class="btn btn-outline-success btn-sm">
+            <i class="fas fa-search me-1"></i>继续浏览
+        </a>
+    </div>
+
+    {% for favorite in favorites %}
+    <article class="favorite-row">
+        <a href="{% url 'post_detail' favorite.post.id %}" class="favorite-cover">
+            {% if favorite.post.cover %}
+            <img src="{{ favorite.post.cover.url }}" alt="{{ favorite.post.title }}封面">
+            {% else %}
+            <i class="far fa-image fa-2x"></i>
+            {% endif %}
+        </a>
+        <div class="favorite-body">
+            <a href="{% url 'post_detail' favorite.post.id %}" class="favorite-title">{{ favorite.post.title }}</a>
+            <div class="text-muted small mt-2">
+                <a class="text-muted text-decoration-none" href="{% url 'author_profile' favorite.post.author.username %}">
+                    <i class="fas fa-user me-1"></i>{{ favorite.post.author.profile.display_name|default:favorite.post.author.username }}
+                </a>
+                <span class="mx-2">·</span>
+                <i class="fas fa-folder me-1"></i>{{ favorite.post.category_label }}
+                <span class="mx-2">·</span>
+                <i class="far fa-calendar-alt me-1"></i>{{ favorite.post.created_at|date:"Y-m-d" }}
+            </div>
+            <div class="text-muted small mt-2">
+                <i class="fas fa-bookmark me-1"></i>收藏于 {{ favorite.created_at|date:"Y-m-d H:i" }}
+            </div>
+        </div>
+    </article>
+    {% empty %}
+    <div class="favorites-empty">
+        <p class="mb-3">你还没有收藏文章。</p>
+        <a href="{% url 'index' %}" class="btn btn-success btn-sm">去首页看看</a>
+    </div>
+    {% endfor %}
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <nav aria-label="收藏分页" class="mt-3">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+            {% endif %}
+            {% for page_num in page_obj.paginator.page_range %}
+            <li class="page-item {% if page_obj.number == page_num %}active{% endif %}">
+                <a class="page-link" href="?page={{ page_num }}">{{ page_num }}</a>
+            </li>
+            {% endfor %}
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</main>
+{% endblock %}

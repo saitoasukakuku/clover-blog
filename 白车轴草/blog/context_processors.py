@@ -1,6 +1,6 @@
 from django.db.models import Q
 
-from blog.models import FriendRequest, PrivateMessage
+from blog.models import FriendRequest, Notification, PrivateMessage
 from blog.site_owner import get_site_owner_profile
 
 
@@ -24,6 +24,7 @@ def social_counts(request):
         return {
             'pending_friend_request_count': 0,
             'unread_private_message_count': 0,
+            'unread_notification_count': 0,
         }
 
     return {
@@ -38,4 +39,8 @@ def social_counts(request):
             Q(sender__friendships_as_high__user_low=request.user)
             | Q(sender__friendships_as_low__user_high=request.user)
         ).distinct().count(),
+        'unread_notification_count': Notification.objects.filter(
+            recipient=request.user,
+            is_read=False,
+        ).count(),
     }

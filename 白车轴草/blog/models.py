@@ -244,3 +244,107 @@ class PrivateMessage(models.Model):
 
     def __str__(self):
         return f'{self.sender.username} -> {self.recipient.username}: {self.content[:20]}'
+
+
+class PostFavorite(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='post_favorites',
+        verbose_name='收藏用户',
+    )
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='favorites',
+        verbose_name='收藏文章',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='收藏时间')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('user', 'post'),
+                name='unique_post_favorite',
+            ),
+        ]
+        ordering = ['-created_at']
+        verbose_name = '文章收藏'
+        verbose_name_plural = '文章收藏'
+
+    def __str__(self):
+        return f'{self.user.username} 收藏 {self.post.title}'
+
+
+class Notification(models.Model):
+    TYPE_CHOICES = (
+        ('comment_on_post', '文章评论'),
+        ('reply_to_comment', '评论回复'),
+        ('friend_request_received', '收到好友申请'),
+        ('friend_request_accepted', '好友申请通过'),
+        ('private_message', '私信'),
+    )
+
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        verbose_name='接收者',
+    )
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sent_notifications',
+        verbose_name='触发用户',
+    )
+    notification_type = models.CharField(
+        max_length=40,
+        choices=TYPE_CHOICES,
+        verbose_name='通知类型',
+    )
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notifications',
+        verbose_name='相关文章',
+    )
+    comment = models.ForeignKey(
+        Comment,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notifications',
+        verbose_name='相关评论',
+    )
+    private_message = models.ForeignKey(
+        PrivateMessage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notifications',
+        verbose_name='相关私信',
+    )
+    friend_request = models.ForeignKey(
+        FriendRequest,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notifications',
+        verbose_name='相关好友申请',
+    )
+    message = models.CharField(max_length=255, verbose_name='通知内容')
+    target_url = models.CharField(max_length=255, blank=True, verbose_name='跳转地址')
+    is_read = models.BooleanField(default=False, verbose_name='已读')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='通知时间')
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = '通知'
+        verbose_name_plural = '通知'
+
+    def __str__(self):
+        return self.message

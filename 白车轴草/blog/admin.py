@@ -4,7 +4,9 @@ from blog.models import (
     Comment,
     FriendRequest,
     Friendship,
+    Notification,
     Post,
+    PostFavorite,
     PrivateMessage,
     UserProfile,
 )
@@ -62,3 +64,18 @@ class PrivateMessageAdmin(admin.ModelAdmin):
     @admin.display(description='消息内容')
     def content_preview(self, private_message):
         return private_message.content[:40]
+
+
+@admin.register(PostFavorite)
+class PostFavoriteAdmin(admin.ModelAdmin):
+    list_display = ('user', 'post', 'created_at')
+    search_fields = ('user__username', 'post__title')
+    ordering = ('-created_at',)
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('recipient', 'actor', 'notification_type', 'is_read', 'created_at')
+    list_filter = ('notification_type', 'is_read', 'created_at')
+    search_fields = ('recipient__username', 'actor__username', 'message')
+    ordering = ('-created_at',)

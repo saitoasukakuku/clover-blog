@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import F, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.core.management.base import CommandError
 from django.utils.dateparse import parse_date
@@ -31,7 +32,9 @@ from blog.models import (
     Comment,
     FriendRequest,
     Friendship,
+    Notification,
     Post,
+    PostFavorite,
     PrivateMessage,
     UserProfile,
 )
@@ -120,6 +123,19 @@ def get_ai_cover_data(ai_cover_token):
     return cover_data
 
 
+def filter_readable_posts(posts, request_user):
+    if request_user.is_authenticated:
+        return posts.filter(
+            Q(status='published', visibility='public')
+            | Q(author=request_user, status='published')
+        ).distinct()
+
+    return posts.filter(
+        status='published',
+        visibility='public',
+    )
+
+
 def append_ai_cover_attribution(content, cover_data):
     photographer = cover_data.get('photographer', '').strip()
     photo_url = cover_data.get('photo_url', '').strip()
@@ -135,16 +151,43 @@ def append_ai_cover_attribution(content, cover_data):
 
 
 def get_readable_published_posts(request_user):
-    if request_user.is_authenticated:
-        return Post.objects.filter(
-            Q(status='published', visibility='public')
-            | Q(author=request_user, status='published')
-        ).distinct().order_by('-created_at')
-
-    return Post.objects.filter(
-        status='published',
-        visibility='public',
+    return filter_readable_posts(
+        Post.objects.all(),
+        request_user,
     ).order_by('-created_at')
+
+
+def get_user_display_name(user):
+    if hasattr(user, 'profile'):
+        return user.profile.display_name
+    return user.username
+
+
+def create_notification(
+    recipient,
+    actor,
+    notification_type,
+    message,
+    target_url='',
+    post=None,
+    comment=None,
+    private_message=None,
+    friend_request=None,
+):
+    if actor and recipient.id == actor.id:
+        return None
+
+    return Notification.objects.create(
+        recipient=recipient,
+        actor=actor,
+        notification_type=notification_type,
+        message=message[:255],
+        target_url=target_url[:255],
+        post=post,
+        comment=comment,
+        private_message=private_message,
+        friend_request=friend_request,
+    )
 
 
 def get_category_counts(posts):
@@ -353,6 +396,37 @@ def index(request):
     })
 
 
+def author_profile(request, username):
+    author = get_object_or_404(
+        User.objects.select_related('profile'),
+        username=username,
+    )
+    profile, _ = UserProfile.objects.get_or_create(user=author)
+    readable_posts = filter_readable_posts(
+        Post.objects.filter(author=author),
+        request.user,
+    ).select_related(
+        'author',
+        'author__profile',
+    ).order_by('-created_at')
+
+    paginator = Paginator(readable_posts, 6)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    page_posts = list(page_obj.object_list)
+    for post in page_posts:
+        post.card_display_tags = get_display_tags(post)[:3]
+    page_obj.object_list = page_posts
+
+    return render(request, 'author_profile.html', {
+        'author_profile_user': author,
+        'author_profile_data': profile,
+        'posts': page_obj,
+        'page_obj': page_obj,
+        'published_count': readable_posts.count(),
+        'total_views': readable_posts.aggregate(total=Sum('views_count'))['total'] or 0,
+    })
+
+
 def archive_view(request):
     posts = get_readable_published_posts(request.user).select_related(
         'author',
@@ -536,6 +610,14 @@ def send_friend_request(request, user_id):
     if not created:
         friend_request.status = 'pending'
         friend_request.save(update_fields=['status', 'updated_at'])
+    create_notification(
+        recipient=target_user,
+        actor=request.user,
+        notification_type='friend_request_received',
+        message=f'{get_user_display_name(request.user)} 向你发送了好友申请。',
+        target_url=reverse('friends'),
+        friend_request=friend_request,
+    )
     messages.success(request, '好友申请已发送。')
     return redirect('friends')
 
@@ -558,6 +640,14 @@ def accept_friend_request(request, request_id):
             receiver=friend_request.sender,
             status='pending',
         ).update(status='accepted', updated_at=timezone.now())
+    create_notification(
+        recipient=friend_request.sender,
+        actor=request.user,
+        notification_type='friend_request_accepted',
+        message=f'{get_user_display_name(request.user)} 接受了你的好友申请。',
+        target_url=reverse('friends'),
+        friend_request=friend_request,
+    )
     messages.success(request, '好友申请已接受。')
     return redirect('friends')
 
@@ -653,6 +743,14 @@ def conversation_view(request, user_id):
             private_message.sender = request.user
             private_message.recipient = friend
             private_message.save()
+            create_notification(
+                recipient=friend,
+                actor=request.user,
+                notification_type='private_message',
+                message=f'{get_user_display_name(request.user)} 给你发来一条私信。',
+                target_url=reverse('conversation', args=[request.user.id]),
+                private_message=private_message,
+            )
             return redirect('conversation', user_id=friend.id)
     else:
         message_form = PrivateMessageForm()
@@ -672,6 +770,107 @@ def conversation_view(request, user_id):
         'conversation_messages': conversation_messages,
         'message_form': message_form,
     })
+
+
+@login_required
+def favorite_posts(request):
+    readable_post_ids = filter_readable_posts(
+        Post.objects.all(),
+        request.user,
+    ).values('id')
+    favorites = PostFavorite.objects.filter(
+        user=request.user,
+        post_id__in=readable_post_ids,
+    ).select_related(
+        'post',
+        'post__author',
+        'post__author__profile',
+    ).order_by('-created_at')
+
+    paginator = Paginator(favorites, 6)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return render(request, 'favorites.html', {
+        'favorites': page_obj,
+        'page_obj': page_obj,
+    })
+
+
+@login_required
+@require_POST
+def toggle_favorite(request, post_id):
+    readable_posts = filter_readable_posts(
+        Post.objects.filter(id=post_id),
+        request.user,
+    )
+    post = get_object_or_404(readable_posts)
+    favorite = PostFavorite.objects.filter(
+        user=request.user,
+        post=post,
+    ).first()
+
+    if favorite:
+        favorite.delete()
+        messages.info(request, '已取消收藏。')
+    else:
+        PostFavorite.objects.create(user=request.user, post=post)
+        messages.success(request, '文章已加入收藏。')
+
+    fallback_url = reverse('post_detail', args=[post.id])
+    next_url = request.POST.get('next') or fallback_url
+    if not url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+    ):
+        next_url = fallback_url
+    return redirect(next_url)
+
+
+@login_required
+def notifications_view(request):
+    notifications = Notification.objects.filter(
+        recipient=request.user,
+    ).select_related(
+        'actor',
+        'actor__profile',
+    ).order_by('-created_at')
+    paginator = Paginator(notifications, 12)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return render(request, 'notifications.html', {
+        'notifications': page_obj,
+        'page_obj': page_obj,
+    })
+
+
+@login_required
+@require_POST
+def read_notification(request, notification_id):
+    notification = get_object_or_404(
+        Notification,
+        id=notification_id,
+        recipient=request.user,
+    )
+    notification.is_read = True
+    notification.save(update_fields=['is_read'])
+
+    fallback_url = reverse('notifications')
+    target_url = notification.target_url or fallback_url
+    if not url_has_allowed_host_and_scheme(
+        target_url,
+        allowed_hosts={request.get_host()},
+    ):
+        target_url = fallback_url
+    return redirect(target_url)
+
+
+@login_required
+@require_POST
+def mark_all_notifications_read(request):
+    Notification.objects.filter(
+        recipient=request.user,
+        is_read=False,
+    ).update(is_read=True)
+    messages.success(request, '所有通知已标记为已读。')
+    return redirect('notifications')
 
 
 @login_required
@@ -930,6 +1129,10 @@ def post_detail(request, post_id):
         'comment_count': comment_count,
         'comment_form': comment_form,
         'display_tags': get_display_tags(post),
+        'is_favorited': (
+            request.user.is_authenticated
+            and PostFavorite.objects.filter(user=request.user, post=post).exists()
+        ),
     }
     context.update(get_category_context(post))
     return render(request, 'post_detail.html', context)
@@ -962,9 +1165,38 @@ def add_comment(request, post_id):
         comment.author = request.user
         comment.parent = parent_comment
         comment.save()
+        notification_target_url = reverse('post_detail', args=[post.id])
         if parent_comment:
+            create_notification(
+                recipient=parent_comment.author,
+                actor=request.user,
+                notification_type='reply_to_comment',
+                message=f'{get_user_display_name(request.user)} 回复了你的评论。',
+                target_url=notification_target_url,
+                post=post,
+                comment=comment,
+            )
+            if post.author_id != parent_comment.author_id:
+                create_notification(
+                    recipient=post.author,
+                    actor=request.user,
+                    notification_type='comment_on_post',
+                    message=f'{get_user_display_name(request.user)} 回复了你文章下的评论。',
+                    target_url=notification_target_url,
+                    post=post,
+                    comment=comment,
+                )
             messages.success(request, '回复发表成功。')
         else:
+            create_notification(
+                recipient=post.author,
+                actor=request.user,
+                notification_type='comment_on_post',
+                message=f'{get_user_display_name(request.user)} 评论了你的文章《{post.title}》。',
+                target_url=notification_target_url,
+                post=post,
+                comment=comment,
+            )
             messages.success(request, '评论发表成功。')
     else:
         messages.error(request, '评论发表失败，请检查评论内容。')
