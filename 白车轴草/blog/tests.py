@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from io import StringIO
 from unittest.mock import patch
@@ -23,6 +23,7 @@ from blog.models import (
     Friendship,
     Post,
     PrivateMessage,
+    RegistrationRequest,
     UserProfile,
 )
 from blog.views import AI_COVER_TOKEN_SALT
@@ -74,6 +75,47 @@ class DeletionFormParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag == 'form' and self.is_inside_deletion_form:
             self.is_inside_deletion_form = False
+
+
+class RegistrationRequestModelTests(TestCase):
+    def test_invite_code_is_hashed_and_checkable(self):
+        registration_request = RegistrationRequest(email='Reader@Example.COM')
+        raw_invite_code = 'ABC123CODE456'
+
+        registration_request.set_invite_code(raw_invite_code)
+        registration_request.save()
+        registration_request.refresh_from_db()
+
+        self.assertEqual(registration_request.email, 'reader@example.com')
+        self.assertNotEqual(registration_request.invite_code_hash, raw_invite_code)
+        self.assertTrue(registration_request.check_invite_code(raw_invite_code))
+        self.assertFalse(registration_request.check_invite_code('WRONGCODE789'))
+
+    def test_reopen_clears_review_and_code_fields(self):
+        reviewer = User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest(
+            email='reader@example.com',
+            status=RegistrationRequest.STATUS_APPROVED,
+            approved_by=reviewer,
+            reviewed_at=timezone.now(),
+            code_expires_at=timezone.now() - timedelta(days=1),
+        )
+        registration_request.set_invite_code('ABC123CODE456')
+        registration_request.save()
+
+        registration_request.reopen()
+        registration_request.save()
+        registration_request.refresh_from_db()
+
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
+        self.assertEqual(registration_request.invite_code_hash, '')
+        self.assertIsNone(registration_request.code_expires_at)
+        self.assertIsNone(registration_request.approved_by)
+        self.assertIsNone(registration_request.reviewed_at)
 
 
 class AuthViewsTests(TestCase):

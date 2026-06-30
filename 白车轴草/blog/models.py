@@ -1,5 +1,7 @@
-from django.db import models
 from django.contrib.auth.models import User
+from django.contrib.auth.hashers import check_password, make_password
+from django.db import models
+from django.utils import timezone
 import re
 
 class Post(models.Model):
@@ -109,6 +111,91 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.display_name
+
+
+class RegistrationRequest(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_APPROVED = 'approved'
+    STATUS_REJECTED = 'rejected'
+    STATUS_USED = 'used'
+    STATUS_CHOICES = (
+        (STATUS_PENDING, '待审核'),
+        (STATUS_APPROVED, '已通过'),
+        (STATUS_REJECTED, '已拒绝'),
+        (STATUS_USED, '已使用'),
+    )
+
+    email = models.EmailField(unique=True, verbose_name='申请邮箱')
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        verbose_name='状态',
+    )
+    invite_code_hash = models.CharField(max_length=128, blank=True, verbose_name='邀请码哈希')
+    code_expires_at = models.DateTimeField(null=True, blank=True, verbose_name='邀请码过期时间')
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_registration_requests',
+        verbose_name='审核人',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='审核时间')
+    used_at = models.DateTimeField(null=True, blank=True, verbose_name='使用时间')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='申请时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        ordering = ['-updated_at']
+        verbose_name = '注册申请'
+        verbose_name_plural = '注册申请'
+
+    @staticmethod
+    def normalize_email(email):
+        stripped_email = (email or '').strip()
+        normalized_email = User.objects.normalize_email(stripped_email)
+        return normalized_email.casefold()
+
+    @property
+    def is_code_expired(self):
+        return bool(self.code_expires_at and self.code_expires_at <= timezone.now())
+
+    def set_invite_code(self, raw_invite_code):
+        self.invite_code_hash = make_password(raw_invite_code)
+
+    def check_invite_code(self, raw_invite_code):
+        if not self.invite_code_hash:
+            return False
+        return check_password(raw_invite_code, self.invite_code_hash)
+
+    def reopen(self):
+        self.status = self.STATUS_PENDING
+        self.invite_code_hash = ''
+        self.code_expires_at = None
+        self.approved_by = None
+        self.reviewed_at = None
+        self.used_at = None
+
+    def reject(self, reviewer):
+        self.status = self.STATUS_REJECTED
+        self.invite_code_hash = ''
+        self.code_expires_at = None
+        self.approved_by = reviewer
+        self.reviewed_at = timezone.now()
+        self.used_at = None
+
+    def mark_used(self):
+        self.status = self.STATUS_USED
+        self.used_at = timezone.now()
+
+    def save(self, *args, **kwargs):
+        self.email = self.normalize_email(self.email)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.email} ({self.get_status_display()})'
 
 
 class FriendRequest(models.Model):

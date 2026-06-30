@@ -8,6 +8,7 @@ from blog.models import (
     Post,
     PostFavorite,
     PrivateMessage,
+    RegistrationRequest,
     UserProfile,
 )
 
@@ -25,6 +26,15 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'nickname', 'github_url', 'weibo_url', 'updated_at')
     search_fields = ('user__username', 'nickname', 'bio')
     ordering = ('user__username',)
+
+
+@admin.register(RegistrationRequest)
+class RegistrationRequestAdmin(admin.ModelAdmin):
+    list_display = ('email', 'status', 'approved_by', 'code_expires_at', 'created_at', 'updated_at')
+    list_filter = ('status', 'created_at', 'updated_at')
+    search_fields = ('email', 'approved_by__username')
+    readonly_fields = ('invite_code_hash', 'created_at', 'updated_at')
+    ordering = ('-updated_at',)
 
 
 @admin.register(Comment)
