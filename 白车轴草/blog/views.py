@@ -769,7 +769,7 @@ def register(request):
                     and not registration_request.is_code_expired
                 ):
                     messages.info(request, '这个邮箱已经通过审核，请查看邮件里的注册码。')
-                    return redirect('complete_registration')
+                    return redirect('register')
 
                 registration_request.reopen()
                 registration_request.save()

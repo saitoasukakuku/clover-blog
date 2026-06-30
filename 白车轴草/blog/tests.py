@@ -296,6 +296,26 @@ class AuthViewsTests(TestCase):
         self.assertIsNone(registration_request.code_expires_at)
         self.assertContains(response, '注册申请已重新提交，请等待审核。')
 
+    def test_register_keeps_unexpired_approved_request_safe(self):
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+            status=RegistrationRequest.STATUS_APPROVED,
+            code_expires_at=timezone.now() + timedelta(days=7),
+        )
+        registration_request.set_invite_code('ABC123CODE456')
+        registration_request.save()
+
+        response = self.client.post(reverse('register'), {
+            'email': 'reader@example.com',
+        }, follow=True)
+
+        self.assertRedirects(response, reverse('register'))
+        self.assertEqual(RegistrationRequest.objects.count(), 1)
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
+        self.assertNotEqual(registration_request.invite_code_hash, '')
+        self.assertContains(response, '这个邮箱已经通过审核，请查看邮件里的注册码。')
+
     def test_login_accepts_existing_user(self):
         User.objects.create_user(username='writer', password='StrongPass12345')
 
