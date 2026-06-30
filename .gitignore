@@ -12,6 +12,7 @@ media/
 .codex-run/
 .vscode/
 output/
+.worktrees/
 
 # Environment files
 .env
