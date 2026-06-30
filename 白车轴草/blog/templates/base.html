@@ -501,7 +501,7 @@
 <body>
     <nav class="navbar navbar-expand-lg bg-body-tertiary">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="{% url 'index' %}">
+            <a class="navbar-brand d-flex align-items-center" href="{% url 'home' %}">
                 <img src="{% static 'img/favicon_v4.png' %}" alt="Logo" width="35" height="35"
                     class="d-inline-block align-text-top me-2 brand-logo">
                 <span class="brand-text">白车轴草</span>
@@ -543,6 +543,11 @@
                 </form> -->
 
                 <ul class="navbar-nav quick-nav ms-lg-auto me-lg-3 mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link quick-nav-link" href="{% url 'index' %}">
+                            <i class="fas fa-book-open me-1"></i>阅读
+                        </a>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link quick-nav-link" href="{% url 'archive' %}">
                             <i class="far fa-calendar-alt me-1"></i>归档
