@@ -23,6 +23,7 @@ from blog.forms import (
     ChineseUserCreationForm,
     CommentForm,
     PrivateMessageForm,
+    RegistrationRequestForm,
     UserCenterForm,
 )
 from blog.management.commands.create_startup_post import (
@@ -37,6 +38,7 @@ from blog.models import (
     Post,
     PostFavorite,
     PrivateMessage,
+    RegistrationRequest,
     UserProfile,
 )
 from blog.site_owner import get_site_owner_profile
@@ -754,22 +756,40 @@ def register(request):
         return redirect('index')
 
     if request.method == 'POST':
-        form = ChineseUserCreationForm(request.POST)
+        form = RegistrationRequestForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            messages.success(request, '注册成功，欢迎来到白车轴草。')
-            return redirect('index')
+            email = form.cleaned_data['email']
+            registration_request = RegistrationRequest.objects.filter(email=email).first()
+            if registration_request:
+                if registration_request.status == RegistrationRequest.STATUS_PENDING:
+                    messages.info(request, '这个邮箱的注册申请正在等待审核。')
+                    return redirect('register')
+                if (
+                    registration_request.status == RegistrationRequest.STATUS_APPROVED
+                    and not registration_request.is_code_expired
+                ):
+                    messages.info(request, '这个邮箱已经通过审核，请查看邮件里的注册码。')
+                    return redirect('complete_registration')
+
+                registration_request.reopen()
+                registration_request.save()
+                messages.success(request, '注册申请已重新提交，请等待审核。')
+                return redirect('register')
+
+            RegistrationRequest.objects.create(email=email)
+            messages.success(request, '注册申请已提交，请等待审核。')
+            return redirect('register')
     else:
-        form = ChineseUserCreationForm()
+        form = RegistrationRequestForm()
 
     return render(request, 'auth_form.html', {
         'form': form,
-        'page_title': '注册账号',
-        'submit_text': '注册',
-        'switch_text': '已经有账号？',
-        'switch_url_name': 'login',
-        'switch_link_text': '去登录',
+        'page_title': '申请注册',
+        'page_description': '先提交邮箱，审核通过后会收到一次性注册码。',
+        'submit_text': '提交申请',
+        'submit_icon': 'fas fa-paper-plane',
+        'switch_text': '已经收到注册码？',
+        'switch_link_text': '去完成注册',
     })
 
 def login_view(request):

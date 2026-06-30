@@ -228,33 +228,29 @@ class RegistrationApprovalEmailTests(TestCase):
 
 
 class AuthViewsTests(TestCase):
-    def test_register_creates_and_logs_in_user(self):
+    def test_register_requires_email(self):
         response = self.client.post(reverse('register'), {
-            'username': 'newuser',
-            'password1': 'StrongPass12345',
-            'password2': 'StrongPass12345',
+            'email': '',
         })
 
-        self.assertRedirects(response, reverse('index'))
-        self.assertTrue(User.objects.filter(username='newuser').exists())
-        self.assertEqual(self.client.session['_auth_user_id'], str(User.objects.get(username='newuser').id))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(RegistrationRequest.objects.exists())
+        self.assertContains(response, '请输入邮箱。')
 
-    def test_register_saves_email_and_nickname(self):
+    def test_register_creates_request_without_creating_user(self):
         response = self.client.post(reverse('register'), {
-            'username': 'newuser',
-            'email': 'newuser@example.com',
-            'nickname': '小草',
-            'password1': 'StrongPass12345',
-            'password2': 'StrongPass12345',
-        })
+            'email': 'NewReader@Example.COM',
+        }, follow=True)
 
-        self.assertRedirects(response, reverse('index'))
-        user = User.objects.get(username='newuser')
-        profile = UserProfile.objects.get(user=user)
-        self.assertEqual(user.email, 'newuser@example.com')
-        self.assertEqual(profile.nickname, '小草')
+        self.assertRedirects(response, reverse('register'))
+        registration_request = RegistrationRequest.objects.get()
+        self.assertEqual(registration_request.email, 'newreader@example.com')
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
+        self.assertFalse(User.objects.filter(email__iexact='newreader@example.com').exists())
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertContains(response, '注册申请已提交，请等待审核。')
 
-    def test_register_rejects_duplicate_email(self):
+    def test_register_rejects_duplicate_registered_email(self):
         User.objects.create_user(
             username='existing',
             email='used@example.com',
@@ -262,16 +258,43 @@ class AuthViewsTests(TestCase):
         )
 
         response = self.client.post(reverse('register'), {
-            'username': 'newuser',
             'email': 'used@example.com',
-            'nickname': '小草',
-            'password1': 'StrongPass12345',
-            'password2': 'StrongPass12345',
         })
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(User.objects.filter(username='newuser').exists())
+        self.assertFalse(RegistrationRequest.objects.exists())
         self.assertContains(response, '这个邮箱已经被注册。')
+
+    def test_register_does_not_duplicate_pending_request(self):
+        RegistrationRequest.objects.create(email='reader@example.com')
+
+        response = self.client.post(reverse('register'), {
+            'email': 'reader@example.com',
+        }, follow=True)
+
+        self.assertRedirects(response, reverse('register'))
+        self.assertEqual(RegistrationRequest.objects.count(), 1)
+        self.assertContains(response, '这个邮箱的注册申请正在等待审核。')
+
+    def test_register_reopens_expired_approved_request(self):
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+            status=RegistrationRequest.STATUS_APPROVED,
+            code_expires_at=timezone.now() - timedelta(days=1),
+        )
+        registration_request.set_invite_code('ABC123XYZ789')
+        registration_request.save()
+
+        response = self.client.post(reverse('register'), {
+            'email': 'reader@example.com',
+        }, follow=True)
+
+        self.assertRedirects(response, reverse('register'))
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
+        self.assertEqual(registration_request.invite_code_hash, '')
+        self.assertIsNone(registration_request.code_expires_at)
+        self.assertContains(response, '注册申请已重新提交，请等待审核。')
 
     def test_login_accepts_existing_user(self):
         User.objects.create_user(username='writer', password='StrongPass12345')

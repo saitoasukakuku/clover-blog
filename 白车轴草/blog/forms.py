@@ -1,7 +1,29 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
-from blog.models import Comment, PrivateMessage, UserProfile
+from blog.models import Comment, PrivateMessage, RegistrationRequest, UserProfile
+
+
+class RegistrationRequestForm(forms.Form):
+    email = forms.EmailField(
+        label='邮箱',
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': '请输入邮箱',
+            'autocomplete': 'email',
+        }),
+        error_messages={
+            'required': '请输入邮箱。',
+            'invalid': '请输入有效的邮箱地址。',
+        },
+    )
+
+    def clean_email(self):
+        email = RegistrationRequest.normalize_email(self.cleaned_data.get('email'))
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('这个邮箱已经被注册。')
+        return email
 
 
 class ChineseUserCreationForm(UserCreationForm):

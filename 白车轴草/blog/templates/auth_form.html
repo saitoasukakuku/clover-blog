@@ -105,7 +105,7 @@
 <section class="auth-page-header">
     <div class="container">
         <h1><i class="fas fa-user-circle me-2"></i>{{ page_title }}</h1>
-        <p>登录后可以创建文章、管理草稿和编辑内容</p>
+        <p>{{ page_description|default:'登录后可以创建文章、管理草稿和编辑内容' }}</p>
     </div>
 </section>
 
@@ -138,14 +138,16 @@
                     {% endfor %}
 
                     <button type="submit" class="btn btn-publish w-100 mt-2">
-                        <i class="fas fa-arrow-right-to-bracket me-1"></i>{{ submit_text }}
+                        <i class="{{ submit_icon|default:'fas fa-arrow-right-to-bracket' }} me-1"></i>{{ submit_text }}
                     </button>
                 </form>
 
+                {% if switch_url_name %}
                 <div class="auth-switch text-center mt-4">
                     {{ switch_text }}
                     <a href="{% url switch_url_name %}">{{ switch_link_text }}</a>
                 </div>
+                {% endif %}
             </div>
         </div>
     </div>
