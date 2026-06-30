@@ -2238,6 +2238,84 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, '搜索文章')
         self.assertContains(response, 'Homepage inherited post')
 
+    def test_home_uses_home_template_and_keeps_index_as_article_list(self):
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'home.html')
+        self.assertTemplateUsed(response, 'base.html')
+        self.assertContains(response, '开始阅读')
+        self.assertContains(response, reverse('index'))
+
+        index_response = self.client.get(reverse('index'))
+
+        self.assertEqual(index_response.status_code, 200)
+        self.assertTemplateUsed(index_response, 'index.html')
+        self.assertContains(index_response, '搜索文章')
+
+    def test_home_recent_posts_use_public_visibility_for_anonymous_users(self):
+        author = User.objects.create_user(username='public-home-author', password='StrongPass12345')
+        public_post = Post.objects.create(
+            author=author,
+            title='Public homepage post',
+            category='life',
+            content='Public content',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='Private homepage post',
+            category='life',
+            content='Private content',
+            status='published',
+            visibility='private',
+        )
+        Post.objects.create(
+            author=author,
+            title='Draft homepage post',
+            category='life',
+            content='Draft content',
+            status='draft',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['recent_posts']), [public_post])
+        self.assertContains(response, 'Public homepage post')
+        self.assertNotContains(response, 'Private homepage post')
+        self.assertNotContains(response, 'Draft homepage post')
+
+    def test_home_recent_posts_include_logged_in_users_private_published_posts(self):
+        current_user = User.objects.create_user(username='home-current', password='StrongPass12345')
+        other_user = User.objects.create_user(username='home-other', password='StrongPass12345')
+        own_private_post = Post.objects.create(
+            author=current_user,
+            title='Own private homepage post',
+            category='life',
+            content='Own private content',
+            status='published',
+            visibility='private',
+        )
+        Post.objects.create(
+            author=other_user,
+            title='Other private homepage post',
+            category='life',
+            content='Other private content',
+            status='published',
+            visibility='private',
+        )
+        self.client.login(username='home-current', password='StrongPass12345')
+
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(own_private_post, list(response.context['recent_posts']))
+        self.assertContains(response, 'Own private homepage post')
+        self.assertNotContains(response, 'Other private homepage post')
+
     def test_mobile_search_button_keeps_visible_icon_styling(self):
         response = self.client.get(reverse('index'))
 
