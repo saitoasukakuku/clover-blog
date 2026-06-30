@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 from io import StringIO
 from unittest.mock import patch
 
+from django import forms
 from django.contrib.auth.models import User
 from django.apps import apps
 from django.core import mail, signing
@@ -17,6 +18,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.db.models.fields.files import FieldFile
 from blog.management.commands.create_startup_post import Command
+from blog.forms import CompleteRegistrationForm
 from blog.models import (
     Comment,
     FriendRequest,
@@ -483,6 +485,27 @@ class AuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(User.objects.filter(username='newreader').count(), 1)
         self.assertContains(response, '这个用户名已经被注册。')
+
+    def test_complete_registration_save_rechecks_stale_used_request_before_creating_user(self):
+        registration_request = self.make_approved_registration_request()
+        form = CompleteRegistrationForm(data={
+            'email': 'reader@example.com',
+            'invite_code': 'ABC123CODE456',
+            'username': 'newreader',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        RegistrationRequest.objects.filter(pk=registration_request.pk).update(
+            status=RegistrationRequest.STATUS_USED,
+            used_at=timezone.now(),
+        )
+
+        with self.assertRaisesMessage(forms.ValidationError, '这个注册码不能使用。'):
+            form.save()
+
+        self.assertFalse(User.objects.filter(username='newreader').exists())
 
     def test_registration_requests_requires_superuser(self):
         User.objects.create_user(

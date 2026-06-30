@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
+from django.db import transaction
 from blog.models import Comment, PrivateMessage, RegistrationRequest, UserProfile
 
 
@@ -138,15 +139,28 @@ class CompleteRegistrationForm(UserCreationForm):
         return cleaned_data
 
     def save(self, commit=True):
-        user = super().save(commit=False)
-        user.email = self.cleaned_data['email']
-        if commit:
+        if not commit:
+            user = super().save(commit=False)
+            user.email = self.cleaned_data['email']
+            return user
+
+        with transaction.atomic():
+            locked_request = RegistrationRequest.objects.select_for_update().get(
+                pk=self.registration_request.pk,
+            )
+            raw_invite_code = self.cleaned_data['invite_code']
+            if not locked_request.can_use_invite_code(raw_invite_code):
+                raise forms.ValidationError('这个注册码不能使用。')
+
+            user = super().save(commit=False)
+            user.email = self.cleaned_data['email']
             user.save()
             user_profile, _ = UserProfile.objects.get_or_create(user=user)
             user_profile.nickname = self.cleaned_data.get('nickname', '')
             user_profile.save(update_fields=['nickname'])
-            self.registration_request.mark_used()
-            self.registration_request.save(update_fields=['status', 'used_at', 'updated_at'])
+            locked_request.mark_used()
+            locked_request.save(update_fields=['status', 'used_at', 'updated_at'])
+            self.registration_request = locked_request
         return user
 
 

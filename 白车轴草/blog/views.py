@@ -1,3 +1,4 @@
+from django import forms
 from django.shortcuts import get_object_or_404, render, redirect
 from django.core.files.base import ContentFile
 from django.core import signing
@@ -807,11 +808,14 @@ def complete_registration(request):
     if request.method == 'POST':
         form = CompleteRegistrationForm(request.POST)
         if form.is_valid():
-            with transaction.atomic():
+            try:
                 user = form.save()
-            login(request, user)
-            messages.success(request, '注册成功，欢迎来到白车轴草。')
-            return redirect('index')
+            except forms.ValidationError as validation_error:
+                form.add_error(None, validation_error)
+            else:
+                login(request, user)
+                messages.success(request, '注册成功，欢迎来到白车轴草。')
+                return redirect('index')
     else:
         form = CompleteRegistrationForm()
 
