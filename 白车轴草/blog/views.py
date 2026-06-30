@@ -41,7 +41,10 @@ from blog.models import (
     RegistrationRequest,
     UserProfile,
 )
-from blog.registration_approval import approve_registration_request as approve_registration_request_service
+from blog.registration_approval import (
+    RegistrationRequestAlreadyReviewed,
+    approve_registration_request as approve_registration_request_service,
+)
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
 from io import BytesIO, StringIO
@@ -831,7 +834,7 @@ def approve_registration_request(request, request_id):
 
     registration_request = get_object_or_404(RegistrationRequest, id=request_id)
     if registration_request.status != RegistrationRequest.STATUS_PENDING:
-        messages.error(request, '只能审核待审核的注册申请。')
+        messages.info(request, '只有待审核申请可以通过。')
         return redirect('registration_requests')
 
     completion_url = request.build_absolute_uri('/register/complete/')
@@ -841,6 +844,9 @@ def approve_registration_request(request, request_id):
             request.user,
             completion_url,
         )
+    except RegistrationRequestAlreadyReviewed:
+        messages.info(request, '只有待审核申请可以通过。')
+        return redirect('registration_requests')
     except Exception:
         messages.error(request, '邮件发送失败，申请仍保持待审核。')
         return redirect('registration_requests')

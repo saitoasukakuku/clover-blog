@@ -4,6 +4,7 @@ import secrets
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils import timezone
 
 from blog.models import RegistrationRequest
@@ -14,6 +15,10 @@ REGISTRATION_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 REGISTRATION_CODE_LENGTH = 12
 REGISTRATION_CODE_EXPIRATION_DAYS = 7
 PREFERRED_SENDER_USERNAME = '白车轴草'
+
+
+class RegistrationRequestAlreadyReviewed(Exception):
+    pass
 
 
 def generate_registration_code():
@@ -61,30 +66,38 @@ def send_registration_code_email(registration_request, raw_invite_code, completi
 
 def approve_registration_request(registration_request, reviewer, completion_url):
     raw_invite_code = generate_registration_code()
-    registration_request.set_invite_code(raw_invite_code)
-    registration_request.code_expires_at = (
-        timezone.now() + timedelta(days=REGISTRATION_CODE_EXPIRATION_DAYS)
-    )
-    registration_request.approved_by = reviewer
-    registration_request.reviewed_at = timezone.now()
-    registration_request.used_at = None
-    registration_request.status = RegistrationRequest.STATUS_APPROVED
 
-    send_registration_code_email(
-        registration_request,
-        raw_invite_code,
-        completion_url,
-    )
+    with transaction.atomic():
+        locked_request = type(registration_request).objects.select_for_update().get(
+            pk=registration_request.pk,
+        )
+        if locked_request.status != locked_request.STATUS_PENDING:
+            raise RegistrationRequestAlreadyReviewed
 
-    registration_request.save(
-        update_fields=[
-            'status',
-            'invite_code_hash',
-            'code_expires_at',
-            'approved_by',
-            'reviewed_at',
-            'used_at',
-            'updated_at',
-        ]
-    )
+        locked_request.set_invite_code(raw_invite_code)
+        locked_request.code_expires_at = (
+            timezone.now() + timedelta(days=REGISTRATION_CODE_EXPIRATION_DAYS)
+        )
+        locked_request.approved_by = reviewer
+        locked_request.reviewed_at = timezone.now()
+        locked_request.used_at = None
+        locked_request.status = RegistrationRequest.STATUS_APPROVED
+        locked_request.save(
+            update_fields=[
+                'status',
+                'invite_code_hash',
+                'code_expires_at',
+                'approved_by',
+                'reviewed_at',
+                'used_at',
+                'updated_at',
+            ]
+        )
+
+        send_registration_code_email(
+            locked_request,
+            raw_invite_code,
+            completion_url,
+        )
+
     return raw_invite_code

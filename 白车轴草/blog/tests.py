@@ -226,6 +226,34 @@ class RegistrationApprovalEmailTests(TestCase):
         self.assertTrue(raw_invite_code.isalnum())
         self.assertEqual(raw_invite_code, raw_invite_code.upper())
 
+    def test_approval_email_failure_rolls_back_registration_request(self):
+        reviewer = User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        completion_url = 'http://testserver/register/complete/'
+        from blog.registration_approval import approve_registration_request
+
+        with patch(
+            'blog.registration_approval.send_mail',
+            side_effect=RuntimeError('smtp failed'),
+        ):
+            with self.assertRaises(RuntimeError):
+                approve_registration_request(
+                    registration_request,
+                    reviewer,
+                    completion_url,
+                )
+
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
+        self.assertEqual(registration_request.invite_code_hash, '')
+        self.assertIsNone(registration_request.code_expires_at)
+
 
 class AuthViewsTests(TestCase):
     def test_register_requires_email(self):
@@ -415,6 +443,29 @@ class AuthViewsTests(TestCase):
         self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
         self.assertEqual(registration_request.invite_code_hash, '')
         self.assertContains(response, '邮件发送失败，申请仍保持待审核。')
+
+    def test_already_reviewed_approval_shows_pending_only_message(self):
+        User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        self.client.login(username='reviewer', password='StrongPass12345')
+        from blog.registration_approval import RegistrationRequestAlreadyReviewed
+
+        with patch(
+            'blog.views.approve_registration_request_service',
+            side_effect=RegistrationRequestAlreadyReviewed,
+        ):
+            response = self.client.post(reverse(
+                'approve_registration_request',
+                args=[registration_request.id],
+            ), follow=True)
+
+        self.assertContains(response, '只有待审核申请可以通过。')
 
     def test_reject_registration_request_rejects_get(self):
         User.objects.create_superuser(
