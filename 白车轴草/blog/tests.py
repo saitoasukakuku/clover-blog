@@ -507,6 +507,33 @@ class AuthViewsTests(TestCase):
         self.assertEqual(registration_request.approved_by, reviewer)
         self.assertContains(response, '已拒绝这个注册申请。')
 
+    def test_already_approved_reject_keeps_registration_request_approved(self):
+        reviewer = User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+            status=RegistrationRequest.STATUS_APPROVED,
+            code_expires_at=timezone.now() + timedelta(days=7),
+        )
+        registration_request.set_invite_code('ABC123CODE456')
+        registration_request.save()
+        original_invite_code_hash = registration_request.invite_code_hash
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        response = self.client.post(reverse(
+            'reject_registration_request',
+            args=[registration_request.id],
+        ), follow=True)
+
+        self.assertContains(response, '只有待审核申请可以拒绝。')
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
+        self.assertEqual(registration_request.invite_code_hash, original_invite_code_hash)
+        self.assertTrue(registration_request.invite_code_hash)
+
     def test_login_accepts_existing_user(self):
         User.objects.create_user(username='writer', password='StrongPass12345')
 

@@ -101,3 +101,26 @@ def approve_registration_request(registration_request, reviewer, completion_url)
         )
 
     return raw_invite_code
+
+
+def reject_registration_request(registration_request, reviewer):
+    with transaction.atomic():
+        locked_request = type(registration_request).objects.select_for_update().get(
+            pk=registration_request.pk,
+        )
+        if locked_request.status != locked_request.STATUS_PENDING:
+            raise RegistrationRequestAlreadyReviewed
+
+        locked_request.reject(reviewer)
+        locked_request.save(
+            update_fields=[
+                'status',
+                'invite_code_hash',
+                'code_expires_at',
+                'approved_by',
+                'reviewed_at',
+                'used_at',
+                'updated_at',
+            ]
+        )
+        return locked_request

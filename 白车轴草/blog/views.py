@@ -44,6 +44,7 @@ from blog.models import (
 from blog.registration_approval import (
     RegistrationRequestAlreadyReviewed,
     approve_registration_request as approve_registration_request_service,
+    reject_registration_request as reject_registration_request_service,
 )
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
@@ -864,19 +865,15 @@ def reject_registration_request(request, request_id):
 
     registration_request = get_object_or_404(RegistrationRequest, id=request_id)
     if registration_request.status != RegistrationRequest.STATUS_PENDING:
-        messages.error(request, '只能审核待审核的注册申请。')
+        messages.info(request, '只有待审核申请可以拒绝。')
         return redirect('registration_requests')
 
-    registration_request.reject(request.user)
-    registration_request.save(update_fields=[
-        'status',
-        'invite_code_hash',
-        'code_expires_at',
-        'approved_by',
-        'reviewed_at',
-        'used_at',
-        'updated_at',
-    ])
+    try:
+        reject_registration_request_service(registration_request, request.user)
+    except RegistrationRequestAlreadyReviewed:
+        messages.info(request, '只有待审核申请可以拒绝。')
+        return redirect('registration_requests')
+
     messages.success(request, '已拒绝这个注册申请。')
     return redirect('registration_requests')
 
