@@ -170,6 +170,14 @@ class RegistrationRequest(models.Model):
             return False
         return check_password(raw_invite_code, self.invite_code_hash)
 
+    def can_use_invite_code(self, raw_invite_code):
+        return (
+            self.status == self.STATUS_APPROVED
+            and self.used_at is None
+            and not self.is_code_expired
+            and self.check_invite_code(raw_invite_code)
+        )
+
     def reopen(self):
         self.status = self.STATUS_PENDING
         self.invite_code_hash = ''

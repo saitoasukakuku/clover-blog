@@ -78,6 +78,24 @@ class DeletionFormParser(HTMLParser):
 
 
 class RegistrationRequestModelTests(TestCase):
+    def create_request_with_invite_code(
+        self,
+        *,
+        status,
+        raw_invite_code='ABC123CODE456',
+        code_expires_at=None,
+        used_at=None,
+    ):
+        registration_request = RegistrationRequest(
+            email='reader@example.com',
+            status=status,
+            code_expires_at=code_expires_at,
+            used_at=used_at,
+        )
+        registration_request.set_invite_code(raw_invite_code)
+        registration_request.save()
+        return registration_request
+
     def test_invite_code_is_hashed_and_checkable(self):
         registration_request = RegistrationRequest(email='Reader@Example.COM')
         raw_invite_code = 'ABC123CODE456'
@@ -116,6 +134,56 @@ class RegistrationRequestModelTests(TestCase):
         self.assertIsNone(registration_request.code_expires_at)
         self.assertIsNone(registration_request.approved_by)
         self.assertIsNone(registration_request.reviewed_at)
+
+    def test_approved_unexpired_unused_correct_code_can_be_used(self):
+        raw_invite_code = 'ABC123CODE456'
+        registration_request = self.create_request_with_invite_code(
+            status=RegistrationRequest.STATUS_APPROVED,
+            raw_invite_code=raw_invite_code,
+            code_expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        self.assertTrue(registration_request.can_use_invite_code(raw_invite_code))
+
+    def test_pending_request_with_matching_code_cannot_be_used(self):
+        raw_invite_code = 'ABC123CODE456'
+        registration_request = self.create_request_with_invite_code(
+            status=RegistrationRequest.STATUS_PENDING,
+            raw_invite_code=raw_invite_code,
+            code_expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        self.assertFalse(registration_request.can_use_invite_code(raw_invite_code))
+
+    def test_approved_expired_request_with_matching_code_cannot_be_used(self):
+        raw_invite_code = 'ABC123CODE456'
+        registration_request = self.create_request_with_invite_code(
+            status=RegistrationRequest.STATUS_APPROVED,
+            raw_invite_code=raw_invite_code,
+            code_expires_at=timezone.now() - timedelta(days=1),
+        )
+
+        self.assertFalse(registration_request.can_use_invite_code(raw_invite_code))
+
+    def test_approved_used_request_with_matching_code_cannot_be_used(self):
+        raw_invite_code = 'ABC123CODE456'
+        registration_request = self.create_request_with_invite_code(
+            status=RegistrationRequest.STATUS_APPROVED,
+            raw_invite_code=raw_invite_code,
+            code_expires_at=timezone.now() + timedelta(days=1),
+            used_at=timezone.now(),
+        )
+
+        self.assertFalse(registration_request.can_use_invite_code(raw_invite_code))
+
+    def test_approved_unexpired_unused_wrong_code_cannot_be_used(self):
+        registration_request = self.create_request_with_invite_code(
+            status=RegistrationRequest.STATUS_APPROVED,
+            raw_invite_code='ABC123CODE456',
+            code_expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        self.assertFalse(registration_request.can_use_invite_code('WRONGCODE789'))
 
 
 class AuthViewsTests(TestCase):
