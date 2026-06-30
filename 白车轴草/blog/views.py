@@ -22,6 +22,7 @@ from blog.forms import (
     ChineseAuthenticationForm,
     ChineseUserCreationForm,
     CommentForm,
+    CompleteRegistrationForm,
     PrivateMessageForm,
     RegistrationRequestForm,
     UserCenterForm,
@@ -774,7 +775,7 @@ def register(request):
                     and not registration_request.is_code_expired
                 ):
                     messages.info(request, '这个邮箱已经通过审核，请查看邮件里的注册码。')
-                    return redirect('register')
+                    return redirect('complete_registration')
 
                 registration_request.reopen()
                 registration_request.save()
@@ -794,7 +795,35 @@ def register(request):
         'submit_text': '提交申请',
         'submit_icon': 'fas fa-paper-plane',
         'switch_text': '已经收到注册码？',
+        'switch_url_name': 'complete_registration',
         'switch_link_text': '去完成注册',
+    })
+
+
+def complete_registration(request):
+    if request.user.is_authenticated:
+        return redirect('index')
+
+    if request.method == 'POST':
+        form = CompleteRegistrationForm(request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                user = form.save()
+            login(request, user)
+            messages.success(request, '注册成功，欢迎来到白车轴草。')
+            return redirect('index')
+    else:
+        form = CompleteRegistrationForm()
+
+    return render(request, 'auth_form.html', {
+        'form': form,
+        'page_title': '完成注册',
+        'page_description': '输入邮件里的注册码，再设置账号信息。',
+        'submit_text': '完成注册',
+        'submit_icon': 'fas fa-user-check',
+        'switch_text': '还没有注册码？',
+        'switch_url_name': 'register',
+        'switch_link_text': '先申请注册',
     })
 
 
@@ -838,7 +867,7 @@ def approve_registration_request(request, request_id):
         messages.info(request, '只有待审核申请可以通过。')
         return redirect('registration_requests')
 
-    completion_url = request.build_absolute_uri('/register/complete/')
+    completion_url = request.build_absolute_uri(reverse('complete_registration'))
     try:
         approve_registration_request_service(
             registration_request,

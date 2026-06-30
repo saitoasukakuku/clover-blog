@@ -12,6 +12,7 @@ urlpatterns = [
     path('tags/', views.tags_view, name='tags'),
     path('users/<str:username>/', views.author_profile, name='author_profile'),
     path('register/', views.register, name='register'),
+    path('register/complete/', views.complete_registration, name='complete_registration'),
     path('registration-requests/', views.registration_requests, name='registration_requests'),
     path('registration-requests/<int:request_id>/approve/', views.approve_registration_request, name='approve_registration_request'),
     path('registration-requests/<int:request_id>/reject/', views.reject_registration_request, name='reject_registration_request'),

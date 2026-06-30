@@ -256,6 +256,26 @@ class RegistrationApprovalEmailTests(TestCase):
 
 
 class AuthViewsTests(TestCase):
+    def make_approved_registration_request(
+        self,
+        email='reader@example.com',
+        raw_invite_code='ABC123CODE456',
+    ):
+        reviewer = User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email=email,
+            status=RegistrationRequest.STATUS_APPROVED,
+            approved_by=reviewer,
+            code_expires_at=timezone.now() + timedelta(days=7),
+        )
+        registration_request.set_invite_code(raw_invite_code)
+        registration_request.save()
+        return registration_request
+
     def test_register_requires_email(self):
         response = self.client.post(reverse('register'), {
             'email': '',
@@ -324,7 +344,7 @@ class AuthViewsTests(TestCase):
         self.assertIsNone(registration_request.code_expires_at)
         self.assertContains(response, '注册申请已重新提交，请等待审核。')
 
-    def test_register_keeps_unexpired_approved_request_safe(self):
+    def test_register_redirects_unexpired_approved_request_to_complete_registration(self):
         registration_request = RegistrationRequest.objects.create(
             email='reader@example.com',
             status=RegistrationRequest.STATUS_APPROVED,
@@ -337,12 +357,132 @@ class AuthViewsTests(TestCase):
             'email': 'reader@example.com',
         }, follow=True)
 
-        self.assertRedirects(response, reverse('register'))
+        self.assertRedirects(response, reverse('complete_registration'))
         self.assertEqual(RegistrationRequest.objects.count(), 1)
         registration_request.refresh_from_db()
         self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
         self.assertNotEqual(registration_request.invite_code_hash, '')
         self.assertContains(response, '这个邮箱已经通过审核，请查看邮件里的注册码。')
+
+    def test_register_renders_complete_registration_link(self):
+        response = self.client.get(reverse('register'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('complete_registration'))
+
+    def test_complete_registration_with_valid_code_creates_and_logs_in_user(self):
+        registration_request = self.make_approved_registration_request()
+
+        response = self.client.post(reverse('complete_registration'), {
+            'email': 'reader@example.com',
+            'invite_code': 'ABC123CODE456',
+            'username': 'newreader',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertRedirects(response, reverse('index'))
+        created_user = User.objects.get(username='newreader')
+        self.assertEqual(created_user.email, 'reader@example.com')
+        user_profile = UserProfile.objects.get(user=created_user)
+        self.assertEqual(user_profile.nickname, '小草')
+        self.assertEqual(str(self.client.session['_auth_user_id']), str(created_user.id))
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_USED)
+        self.assertIsNotNone(registration_request.used_at)
+
+    def test_complete_registration_rejects_wrong_code(self):
+        self.make_approved_registration_request()
+
+        response = self.client.post(reverse('complete_registration'), {
+            'email': 'reader@example.com',
+            'invite_code': 'WRONGCODE789',
+            'username': 'newreader',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username='newreader').exists())
+        self.assertContains(response, '注册码不正确。')
+
+    def test_complete_registration_rejects_expired_code(self):
+        registration_request = self.make_approved_registration_request()
+        registration_request.code_expires_at = timezone.now() - timedelta(days=1)
+        registration_request.save(update_fields=['code_expires_at', 'updated_at'])
+
+        response = self.client.post(reverse('complete_registration'), {
+            'email': 'reader@example.com',
+            'invite_code': 'ABC123CODE456',
+            'username': 'newreader',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username='newreader').exists())
+        self.assertContains(response, '注册码已经过期。')
+
+    def test_complete_registration_rejects_used_request(self):
+        registration_request = self.make_approved_registration_request()
+        registration_request.status = RegistrationRequest.STATUS_USED
+        registration_request.used_at = timezone.now()
+        registration_request.save(update_fields=['status', 'used_at', 'updated_at'])
+
+        response = self.client.post(reverse('complete_registration'), {
+            'email': 'reader@example.com',
+            'invite_code': 'ABC123CODE456',
+            'username': 'newreader',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username='newreader').exists())
+        self.assertContains(response, '这个注册码不能使用。')
+
+    def test_complete_registration_rejects_rejected_request(self):
+        registration_request = self.make_approved_registration_request()
+        registration_request.status = RegistrationRequest.STATUS_REJECTED
+        registration_request.save(update_fields=['status', 'updated_at'])
+
+        response = self.client.post(reverse('complete_registration'), {
+            'email': 'reader@example.com',
+            'invite_code': 'ABC123CODE456',
+            'username': 'newreader',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username='newreader').exists())
+        self.assertContains(response, '这个注册码不能使用。')
+
+    def test_complete_registration_rejects_duplicate_username(self):
+        self.make_approved_registration_request()
+        User.objects.create_user(
+            username='newreader',
+            email='existing@example.com',
+            password='StrongPass12345',
+        )
+
+        response = self.client.post(reverse('complete_registration'), {
+            'email': 'reader@example.com',
+            'invite_code': 'ABC123CODE456',
+            'username': 'newreader',
+            'nickname': '小草',
+            'password1': 'StrongPass12345',
+            'password2': 'StrongPass12345',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.filter(username='newreader').count(), 1)
+        self.assertContains(response, '这个用户名已经被注册。')
 
     def test_registration_requests_requires_superuser(self):
         User.objects.create_user(
