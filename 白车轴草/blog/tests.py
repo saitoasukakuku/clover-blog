@@ -8,11 +8,11 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.apps import apps
-from django.core import signing
+from django.core import mail, signing
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.db.models.fields.files import FieldFile
@@ -184,6 +184,47 @@ class RegistrationRequestModelTests(TestCase):
         )
 
         self.assertFalse(registration_request.can_use_invite_code('WRONGCODE789'))
+
+
+class RegistrationApprovalEmailTests(TestCase):
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='default@example.com',
+    )
+    def test_approval_email_uses_superuser_named_site_as_sender(self):
+        User.objects.create_superuser(
+            username='白车轴草',
+            email='owner@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        raw_invite_code = 'ABC123CODE456'
+        completion_url = 'http://testserver/register/complete/'
+        from blog.registration_approval import send_registration_code_email
+
+        send_registration_code_email(
+            registration_request,
+            raw_invite_code,
+            completion_url,
+        )
+
+        self.assertEqual(len(mail.outbox), 1)
+        approval_email = mail.outbox[0]
+        self.assertEqual(approval_email.from_email, 'owner@example.com')
+        self.assertEqual(approval_email.to, ['reader@example.com'])
+        self.assertIn(raw_invite_code, approval_email.body)
+        self.assertIn(completion_url, approval_email.body)
+
+    def test_generated_registration_code_has_expected_shape(self):
+        from blog.registration_approval import generate_registration_code
+
+        raw_invite_code = generate_registration_code()
+
+        self.assertEqual(len(raw_invite_code), 12)
+        self.assertTrue(raw_invite_code.isalnum())
+        self.assertEqual(raw_invite_code, raw_invite_code.upper())
 
 
 class AuthViewsTests(TestCase):
