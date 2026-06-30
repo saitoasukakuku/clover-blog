@@ -316,6 +316,146 @@ class AuthViewsTests(TestCase):
         self.assertNotEqual(registration_request.invite_code_hash, '')
         self.assertContains(response, '这个邮箱已经通过审核，请查看邮件里的注册码。')
 
+    def test_registration_requests_requires_superuser(self):
+        User.objects.create_user(
+            username='reader',
+            password='StrongPass12345',
+        )
+        self.client.login(username='reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('registration_requests'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_superuser_can_view_registration_requests(self):
+        User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        RegistrationRequest.objects.create(email='reader@example.com')
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        response = self.client.get(reverse('registration_requests'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'reader@example.com')
+        self.assertContains(response, '注册审核')
+
+    def test_approve_registration_request_rejects_get(self):
+        User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        response = self.client.get(reverse(
+            'approve_registration_request',
+            args=[registration_request.id],
+        ))
+
+        self.assertEqual(response.status_code, 405)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='default@example.com',
+    )
+    def test_superuser_can_approve_registration_request_and_send_email(self):
+        reviewer = User.objects.create_superuser(
+            username='白车轴草',
+            email='owner@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        self.client.login(username='白车轴草', password='StrongPass12345')
+
+        response = self.client.post(reverse(
+            'approve_registration_request',
+            args=[registration_request.id],
+        ), follow=True)
+
+        self.assertRedirects(response, reverse('registration_requests'))
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
+        self.assertEqual(registration_request.approved_by, reviewer)
+        self.assertTrue(registration_request.invite_code_hash)
+        self.assertEqual(len(mail.outbox), 1)
+        approval_email = mail.outbox[0]
+        self.assertEqual(approval_email.to, ['reader@example.com'])
+        self.assertNotIn(registration_request.invite_code_hash, approval_email.body)
+        self.assertContains(response, '已通过并发送注册码。')
+
+    def test_email_failure_keeps_registration_request_pending(self):
+        User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        with patch(
+            'blog.views.approve_registration_request_service',
+            side_effect=RuntimeError('smtp failed'),
+        ):
+            response = self.client.post(reverse(
+                'approve_registration_request',
+                args=[registration_request.id],
+            ), follow=True)
+
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
+        self.assertEqual(registration_request.invite_code_hash, '')
+        self.assertContains(response, '邮件发送失败，申请仍保持待审核。')
+
+    def test_reject_registration_request_rejects_get(self):
+        User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        response = self.client.get(reverse(
+            'reject_registration_request',
+            args=[registration_request.id],
+        ))
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_superuser_can_reject_registration_request(self):
+        reviewer = User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+        )
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        response = self.client.post(reverse(
+            'reject_registration_request',
+            args=[registration_request.id],
+        ), follow=True)
+
+        self.assertRedirects(response, reverse('registration_requests'))
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_REJECTED)
+        self.assertEqual(registration_request.approved_by, reviewer)
+        self.assertContains(response, '已拒绝这个注册申请。')
+
     def test_login_accepts_existing_user(self):
         User.objects.create_user(username='writer', password='StrongPass12345')
 

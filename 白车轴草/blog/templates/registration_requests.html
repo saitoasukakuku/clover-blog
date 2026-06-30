@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% load blog_extras %}
+
+{% block title %}注册审核{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+            <h1 class="h3 mb-2">注册审核</h1>
+            <p class="text-muted mb-0">当前有 {{ pending_count }} 个注册申请等待处理。</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'index' %}">
+            <i class="fas fa-arrow-left me-1"></i>返回首页
+        </a>
+    </div>
+
+    {% for status_value, status_label in status_choices %}
+    {% with registration_requests=requests_by_status|get_item:status_value %}
+    <section class="mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h5 mb-0">{{ status_label }}</h2>
+            <span class="badge text-bg-secondary">{{ registration_requests|length }}</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle bg-white">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">邮箱</th>
+                        <th scope="col">申请时间</th>
+                        <th scope="col">审核人</th>
+                        <th scope="col">审核时间</th>
+                        <th scope="col">注册码过期时间</th>
+                        <th scope="col" class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for registration_request in registration_requests %}
+                    <tr>
+                        <td>{{ registration_request.email }}</td>
+                        <td>{{ registration_request.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>
+                            {% if registration_request.approved_by %}
+                            {{ registration_request.approved_by.username }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if registration_request.reviewed_at %}
+                            {{ registration_request.reviewed_at|date:"Y-m-d H:i" }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if registration_request.code_expires_at %}
+                            {{ registration_request.code_expires_at|date:"Y-m-d H:i" }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if status_value == 'pending' %}
+                            <div class="d-inline-flex gap-2">
+                                <form method="post" action="{% url 'approve_registration_request' registration_request.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-success">
+                                        <i class="fas fa-check me-1"></i>通过
+                                    </button>
+                                </form>
+                                <form method="post" action="{% url 'reject_registration_request' registration_request.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-times me-1"></i>拒绝
+                                    </button>
+                                </form>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">无需操作</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">暂无{{ status_label }}申请。</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endwith %}
+    {% endfor %}
+</div>
+{% endblock %}

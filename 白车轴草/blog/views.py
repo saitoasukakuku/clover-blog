@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import F, Prefetch, Q, Sum
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.core.management.base import CommandError
@@ -41,6 +41,7 @@ from blog.models import (
     RegistrationRequest,
     UserProfile,
 )
+from blog.registration_approval import approve_registration_request as approve_registration_request_service
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
 from io import BytesIO, StringIO
@@ -791,6 +792,88 @@ def register(request):
         'switch_text': '已经收到注册码？',
         'switch_link_text': '去完成注册',
     })
+
+
+def require_superuser(request):
+    if request.user.is_authenticated and request.user.is_superuser:
+        return None
+    return HttpResponseForbidden('只有超级用户可以访问注册审核。')
+
+
+@login_required
+def registration_requests(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    requests_by_status = {}
+    for status_value, _ in RegistrationRequest.STATUS_CHOICES:
+        requests_by_status[status_value] = RegistrationRequest.objects.filter(
+            status=status_value,
+        ).select_related(
+            'approved_by',
+        )
+    pending_count = requests_by_status[RegistrationRequest.STATUS_PENDING].count()
+
+    return render(request, 'registration_requests.html', {
+        'requests_by_status': requests_by_status,
+        'pending_count': pending_count,
+        'status_choices': RegistrationRequest.STATUS_CHOICES,
+    })
+
+
+@login_required
+@require_POST
+def approve_registration_request(request, request_id):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    registration_request = get_object_or_404(RegistrationRequest, id=request_id)
+    if registration_request.status != RegistrationRequest.STATUS_PENDING:
+        messages.error(request, '只能审核待审核的注册申请。')
+        return redirect('registration_requests')
+
+    completion_url = request.build_absolute_uri('/register/complete/')
+    try:
+        approve_registration_request_service(
+            registration_request,
+            request.user,
+            completion_url,
+        )
+    except Exception:
+        messages.error(request, '邮件发送失败，申请仍保持待审核。')
+        return redirect('registration_requests')
+
+    messages.success(request, '已通过并发送注册码。')
+    return redirect('registration_requests')
+
+
+@login_required
+@require_POST
+def reject_registration_request(request, request_id):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    registration_request = get_object_or_404(RegistrationRequest, id=request_id)
+    if registration_request.status != RegistrationRequest.STATUS_PENDING:
+        messages.error(request, '只能审核待审核的注册申请。')
+        return redirect('registration_requests')
+
+    registration_request.reject(request.user)
+    registration_request.save(update_fields=[
+        'status',
+        'invite_code_hash',
+        'code_expires_at',
+        'approved_by',
+        'reviewed_at',
+        'used_at',
+        'updated_at',
+    ])
+    messages.success(request, '已拒绝这个注册申请。')
+    return redirect('registration_requests')
+
 
 def login_view(request):
     if request.user.is_authenticated:

@@ -603,6 +603,9 @@
                                     {% endif %}
                                 </a>
                             </li>
+                            {% if user.is_superuser %}
+                            <li><a class="dropdown-item py-2" href="{% url 'registration_requests' %}"><i class="fas fa-user-check me-2"></i>注册审核</a></li>
+                            {% endif %}
                             <li>
                                 <hr class="dropdown-divider my-2">
                             </li>

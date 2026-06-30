@@ -8,6 +8,11 @@ from django.utils.safestring import mark_safe
 register = template.Library()
 
 
+@register.filter
+def get_item(dictionary, key):
+    return dictionary.get(key)
+
+
 @register.filter(name='post_content')
 def post_content(value):
     escaped_content = conditional_escape(value or '')
