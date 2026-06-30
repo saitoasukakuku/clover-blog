@@ -2316,6 +2316,36 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, 'Own private homepage post')
         self.assertNotContains(response, 'Other private homepage post')
 
+    def test_home_carousel_uses_allowed_images_from_media_index_img(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            with open(os.path.join(image_directory, 'first image.jpg'), 'wb') as image_file:
+                image_file.write(b'fake jpg')
+            with open(os.path.join(image_directory, 'second.png'), 'wb') as image_file:
+                image_file.write(b'fake png')
+            with open(os.path.join(image_directory, 'notes.txt'), 'wb') as text_file:
+                text_file.write(b'not an image')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        carousel_slides = response.context['carousel_slides']
+        self.assertEqual(len(carousel_slides), 2)
+        self.assertEqual(carousel_slides[0]['file_name'], 'first image.jpg')
+        self.assertEqual(carousel_slides[0]['image_url'], '/media/index_img/first%20image.jpg')
+        self.assertEqual(carousel_slides[1]['file_name'], 'second.png')
+        self.assertNotContains(response, 'notes.txt')
+
+    def test_home_carousel_handles_missing_media_index_img(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['carousel_slides'], [])
+        self.assertContains(response, 'no-carousel-images')
+
     def test_mobile_search_button_keeps_visible_icon_styling(self):
         response = self.client.get(reverse('index'))
 
