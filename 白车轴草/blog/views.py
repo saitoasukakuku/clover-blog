@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.core.files.base import ContentFile
 from django.core import signing
 from django.core.paginator import Paginator
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
@@ -46,7 +47,7 @@ import binascii
 import os
 import time
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 
 CUSTOM_CATEGORY_VALUE = '__custom__'
@@ -60,6 +61,55 @@ ALLOWED_IMAGE_EXTENSIONS = {
     'png': 'png',
     'webp': 'webp',
 }
+HOMEPAGE_IMAGE_DIR_NAME = 'index_img'
+HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
+HOMEPAGE_MAX_CAROUSEL_SLIDES = 12
+HOMEPAGE_THEME_PRESETS = [
+    {
+        'accent': '#5f8fc8',
+        'accent_strong': '#2c5f96',
+        'accent_soft': 'rgba(95, 143, 200, .18)',
+        'kicker': '晨湖 · 清透',
+        'headline': '让每次进入网站，都像翻开一张新的明信片。',
+        'lead': '首页背景从图片库轮播，文字、按钮和卡片颜色跟着图片气质变化。读者先感受到这一刻的氛围，再进入文章、归档或标签。',
+        'card_title': '湖边醒来的阅读时间',
+        'card_text': '蓝色和雪山适合清透的第一屏，按钮和标签会切换成偏冷的蓝色。',
+        'moods': ['清晨', '远山', '慢生活'],
+    },
+    {
+        'accent': '#c8893e',
+        'accent_strong': '#8a5726',
+        'accent_soft': 'rgba(200, 137, 62, .20)',
+        'kicker': '秋屋 · 温暖',
+        'headline': '先坐下来，再慢慢读几篇文章。',
+        'lead': '当背景切到木屋和秋色，首页文案可以更像邀请。整体从清透变成温暖，适合生活记录和博主介绍。',
+        'card_title': '木屋旁边的慢阅读',
+        'card_text': '暖色背景适合把“认识博主”和“最近文章”做得更有亲近感。',
+        'moods': ['秋天', '木屋', '随笔'],
+    },
+    {
+        'accent': '#d06a54',
+        'accent_strong': '#9a3e31',
+        'accent_soft': 'rgba(208, 106, 84, .20)',
+        'kicker': '夕照 · 强烈',
+        'headline': '把一天的尾声，写进新的开场。',
+        'lead': '夕阳和红叶更有戏剧感，适合让标题更短、更有画面。首页可以不是固定气质，而是随图库变化。',
+        'card_title': '夕色里的首页入口',
+        'card_text': '强色图片需要更厚的遮罩，文字保持清楚，按钮使用更深的主题色。',
+        'moods': ['夕阳', '红叶', '故事'],
+    },
+    {
+        'accent': '#8aa0b8',
+        'accent_strong': '#4f657c',
+        'accent_soft': 'rgba(138, 160, 184, .22)',
+        'kicker': '雪林 · 安静',
+        'headline': '安静一点，也能让网站更有记忆。',
+        'lead': '雪景时减少装饰和饱和度，首页会变得更平静。适合展示归档、标签和长期阅读入口。',
+        'card_title': '雪地里的安静入口',
+        'card_text': '冷色低饱和背景适合突出文章和归档，不需要太多动效。',
+        'moods': ['雪景', '安静', '归档'],
+    },
+]
 INVALID_IMAGE_DATA_MESSAGE = '图片数据无效，请重新选择图片。'
 INVALID_IMAGE_FILE_MESSAGE = '请上传有效的图片文件。'
 OVERSIZED_IMAGE_MESSAGE = '图片文件不能超过 5MB。'
@@ -444,6 +494,68 @@ def get_related_posts(post, request_user, limit=3):
         candidate_post
         for _, __, candidate_post in scored_posts[:limit]
     ]
+
+
+def get_homepage_image_file_names():
+    image_directory = os.path.join(settings.MEDIA_ROOT, HOMEPAGE_IMAGE_DIR_NAME)
+    try:
+        image_file_names = sorted(os.listdir(image_directory), key=str.lower)
+    except OSError:
+        return []
+
+    allowed_file_names = []
+    for image_file_name in image_file_names:
+        image_file_path = os.path.join(image_directory, image_file_name)
+        _, image_extension = os.path.splitext(image_file_name)
+        if image_extension.lower() not in HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS:
+            continue
+        if not os.path.isfile(image_file_path):
+            continue
+        allowed_file_names.append(image_file_name)
+        if len(allowed_file_names) >= HOMEPAGE_MAX_CAROUSEL_SLIDES:
+            break
+    return allowed_file_names
+
+
+def build_homepage_carousel_slides():
+    carousel_slides = []
+    image_file_names = get_homepage_image_file_names()
+    media_url_prefix = f"{settings.MEDIA_URL.rstrip('/')}/{HOMEPAGE_IMAGE_DIR_NAME}"
+
+    for image_index, image_file_name in enumerate(image_file_names):
+        theme_preset = HOMEPAGE_THEME_PRESETS[image_index % len(HOMEPAGE_THEME_PRESETS)]
+        carousel_slides.append({
+            'image_url': f"{media_url_prefix}/{quote(image_file_name)}",
+            'file_name': image_file_name,
+            **theme_preset,
+        })
+    return carousel_slides
+
+
+def home(request):
+    owner, owner_profile = get_site_owner_profile()
+    readable_posts = get_readable_published_posts(request.user).select_related(
+        'author',
+        'author__profile',
+    )
+    recent_posts = list(readable_posts[:3])
+    for recent_post in recent_posts:
+        recent_post.card_display_tags = get_display_tags(recent_post)[:3]
+
+    if request.user.is_authenticated:
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    else:
+        profile = owner_profile
+
+    featured_post = recent_posts[0] if recent_posts else None
+    carousel_slides = build_homepage_carousel_slides()
+    return render(request, 'home.html', {
+        'carousel_slides': carousel_slides,
+        'recent_posts': recent_posts,
+        'featured_post': featured_post,
+        'profile': profile,
+        'owner': owner,
+    })
 
 
 def index(request):
