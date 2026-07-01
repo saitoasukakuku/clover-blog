@@ -90,7 +90,7 @@ class Command(BaseCommand):
             .values_list('title', flat=True)[:20]
         )
         generated_article = self.generate_article(model, formatted_date, recent_titles)
-        title = f"{formatted_date}｜{generated_article['title']}"
+        title = generated_article['title'].strip()
         content = generated_article['content']
         status = 'draft' if should_create_draft else 'published'
         visibility = 'private' if should_create_draft else 'public'

@@ -3146,7 +3146,8 @@ class StartupPostCommandTests(TestCase):
         self.assertIn('自动发布', post.tags)
         self.assertIn('生活技巧', post.tags)
         self.assertIn(f'daily:{current_date.isoformat()}', post.tags)
-        self.assertIn(current_date.strftime('%Y-%m-%d'), post.title)
+        self.assertEqual(post.title, '给早晨留出十分钟的整理时间')
+        self.assertNotIn(current_date.strftime('%Y-%m-%d'), post.title)
         self.assertIn('Created daily article', command_output.getvalue())
 
     def test_create_startup_post_can_create_draft_when_requested(self):
