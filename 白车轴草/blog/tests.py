@@ -2476,6 +2476,92 @@ class AuthorProfileTests(TestCase):
 
         self.assertContains(response, reverse('author_profile', args=[author.username]))
 
+    def test_anonymous_author_profile_shows_login_friend_action(self):
+        author = User.objects.create_user(username='anonymous-action-author', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.context['relationship_status'], 'guest')
+        self.assertContains(response, '登录后加好友')
+        self.assertContains(response, reverse('login'))
+
+    def test_own_author_profile_hides_friend_action(self):
+        author = User.objects.create_user(username='own-profile-author', password='StrongPass12345')
+        self.client.login(username='own-profile-author', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.context['relationship_status'], 'self')
+        self.assertNotContains(response, '加好友')
+        self.assertNotContains(response, '发私信')
+
+    def test_author_profile_shows_add_friend_for_unrelated_user(self):
+        current_user = User.objects.create_user(username='profile-reader', password='StrongPass12345')
+        author = User.objects.create_user(username='unrelated-profile-author', password='StrongPass12345')
+        self.client.login(username='profile-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.context['relationship_status'], 'none')
+        self.assertContains(response, reverse('send_friend_request', args=[author.id]))
+        self.assertContains(response, '加好友')
+
+    def test_author_profile_shows_outgoing_friend_request_status(self):
+        current_user = User.objects.create_user(username='outgoing-reader', password='StrongPass12345')
+        author = User.objects.create_user(username='outgoing-author', password='StrongPass12345')
+        FriendRequest.objects.create(sender=current_user, receiver=author, status='pending')
+        self.client.login(username='outgoing-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.context['relationship_status'], 'outgoing')
+        self.assertContains(response, '申请已发送')
+        self.assertNotContains(response, '加好友')
+
+    def test_author_profile_shows_incoming_friend_request_action(self):
+        current_user = User.objects.create_user(username='incoming-reader', password='StrongPass12345')
+        author = User.objects.create_user(username='incoming-author', password='StrongPass12345')
+        FriendRequest.objects.create(sender=author, receiver=current_user, status='pending')
+        self.client.login(username='incoming-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.context['relationship_status'], 'incoming')
+        self.assertContains(response, reverse('friends'))
+        self.assertContains(response, '去处理申请')
+
+    def test_author_profile_shows_private_message_for_friend(self):
+        current_user = User.objects.create_user(username='friend-reader', password='StrongPass12345')
+        author = User.objects.create_user(username='friend-author', password='StrongPass12345')
+        Friendship.connect(current_user, author)
+        self.client.login(username='friend-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('author_profile', args=[author.username]))
+
+        self.assertEqual(response.context['relationship_status'], 'friend')
+        self.assertContains(response, reverse('conversation', args=[author.id]))
+        self.assertContains(response, '发私信')
+
+    def test_author_profile_add_friend_returns_to_author_profile(self):
+        current_user = User.objects.create_user(username='return-reader', password='StrongPass12345')
+        author = User.objects.create_user(username='return-author', password='StrongPass12345')
+        author_profile_url = reverse('author_profile', args=[author.username])
+        self.client.login(username='return-reader', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('send_friend_request', args=[author.id]),
+            {'next': author_profile_url},
+        )
+
+        self.assertRedirects(response, author_profile_url)
+        self.assertTrue(
+            FriendRequest.objects.filter(
+                sender=current_user,
+                receiver=author,
+                status='pending',
+            ).exists()
+        )
+
 
 class FavoritePostTests(TestCase):
     def get_favorite_model(self):

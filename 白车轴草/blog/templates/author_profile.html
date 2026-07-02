@@ -69,6 +69,14 @@
 
     .author-links {
         display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+    }
+
+    .author-actions {
+        display: flex;
+        flex-wrap: wrap;
         gap: 10px;
         margin-top: 14px;
     }
@@ -161,6 +169,36 @@
                 <span class="author-stat"><strong>{{ published_count }}</strong> 篇可见文章</span>
                 <span class="author-stat"><strong>{{ total_views }}</strong> 次浏览</span>
             </div>
+
+            {% if relationship_status != 'self' %}
+            <div class="author-actions">
+                {% if relationship_status == 'guest' %}
+                <a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-success">
+                    <i class="fas fa-user-plus me-1"></i>登录后加好友
+                </a>
+                {% elif relationship_status == 'friend' %}
+                <a href="{% url 'conversation' author_profile_user.id %}" class="btn btn-sm btn-success">
+                    <i class="fas fa-envelope me-1"></i>发私信
+                </a>
+                {% elif relationship_status == 'incoming' %}
+                <a href="{% url 'friends' %}" class="btn btn-sm btn-outline-success">
+                    <i class="fas fa-user-check me-1"></i>去处理申请
+                </a>
+                {% elif relationship_status == 'outgoing' %}
+                <span class="btn btn-sm btn-light disabled">
+                    <i class="fas fa-clock me-1"></i>申请已发送
+                </span>
+                {% else %}
+                <form method="post" action="{% url 'send_friend_request' author_profile_user.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="fas fa-user-plus me-1"></i>加好友
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
 
             {% if author_profile_data.github_url or author_profile_data.weibo_url %}
             <div class="author-links">

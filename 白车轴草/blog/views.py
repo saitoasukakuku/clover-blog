@@ -193,6 +193,36 @@ def are_friends(first_user, second_user):
     ).exists()
 
 
+def get_relationship_status(current_user, target_user):
+    if not current_user.is_authenticated:
+        return 'guest'
+    if current_user.id == target_user.id:
+        return 'self'
+    if are_friends(current_user, target_user):
+        return 'friend'
+
+    pending_request = FriendRequest.objects.filter(
+        Q(sender=current_user, receiver=target_user)
+        | Q(sender=target_user, receiver=current_user),
+        status='pending',
+    ).first()
+    if pending_request is None:
+        return 'none'
+    if pending_request.sender_id == current_user.id:
+        return 'outgoing'
+    return 'incoming'
+
+
+def get_safe_post_next_url(request, fallback_url):
+    next_url = request.POST.get('next') or fallback_url
+    if not url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+    ):
+        return fallback_url
+    return next_url
+
+
 def get_category_context(post=None):
     category = getattr(post, 'category', '') if post else ''
     is_custom_category = bool(category) and category not in Post.CATEGORY_LABELS
@@ -825,6 +855,7 @@ def author_profile(request, username):
     return render(request, 'author_profile.html', {
         'author_profile_user': author,
         'author_profile_data': profile,
+        'relationship_status': get_relationship_status(request.user, author),
         'posts': page_obj,
         'page_obj': page_obj,
         'published_count': readable_posts.count(),
@@ -1101,7 +1132,6 @@ def user_center(request):
 def friends_view(request):
     search_query = (request.GET.get('q') or '').strip()
     friends = get_friends_for_user(request.user)
-    friend_ids = {friend.id for friend in friends}
     incoming_requests = FriendRequest.objects.filter(
         receiver=request.user,
         status='pending',
@@ -1117,23 +1147,8 @@ def friends_view(request):
             Q(username__icontains=search_query)
             | Q(profile__nickname__icontains=search_query)
         ).exclude(id=request.user.id).select_related('profile').distinct()[:30]
-        incoming_sender_ids = {
-            friend_request.sender_id
-            for friend_request in incoming_requests
-        }
-        outgoing_receiver_ids = {
-            friend_request.receiver_id
-            for friend_request in outgoing_requests
-        }
         for matched_user in matched_users:
-            if matched_user.id in friend_ids:
-                matched_user.relationship_status = 'friend'
-            elif matched_user.id in incoming_sender_ids:
-                matched_user.relationship_status = 'incoming'
-            elif matched_user.id in outgoing_receiver_ids:
-                matched_user.relationship_status = 'outgoing'
-            else:
-                matched_user.relationship_status = 'none'
+            matched_user.relationship_status = get_relationship_status(request.user, matched_user)
             search_results.append(matched_user)
 
     return render(request, 'friends.html', {
@@ -1148,20 +1163,21 @@ def friends_view(request):
 @login_required
 @require_POST
 def send_friend_request(request, user_id):
+    redirect_url = get_safe_post_next_url(request, reverse('friends'))
     target_user = get_object_or_404(User, id=user_id)
     if target_user == request.user:
         messages.error(request, '不能添加自己为好友。')
-        return redirect('friends')
+        return redirect(redirect_url)
     if are_friends(request.user, target_user):
         messages.info(request, '你们已经是好友。')
-        return redirect('friends')
+        return redirect(redirect_url)
     if FriendRequest.objects.filter(
         sender=target_user,
         receiver=request.user,
         status='pending',
     ).exists():
         messages.info(request, '对方已向你发送好友申请，请在待处理申请中操作。')
-        return redirect('friends')
+        return redirect(redirect_url)
 
     friend_request, created = FriendRequest.objects.get_or_create(
         sender=request.user,
@@ -1180,7 +1196,7 @@ def send_friend_request(request, user_id):
         friend_request=friend_request,
     )
     messages.success(request, '好友申请已发送。')
-    return redirect('friends')
+    return redirect(redirect_url)
 
 
 @login_required
