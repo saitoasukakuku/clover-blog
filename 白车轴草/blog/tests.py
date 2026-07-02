@@ -2915,6 +2915,16 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertTemplateUsed(index_response, 'index.html')
         self.assertContains(index_response, '搜索文章')
 
+    def test_home_ambient_card_uses_compact_navigation_links(self):
+        response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'home-ambient-link')
+        self.assertContains(response, reverse('index'))
+        self.assertContains(response, reverse('archive'))
+        self.assertContains(response, reverse('tags'))
+        self.assertNotContains(response, '顺着画面进入小站')
+        self.assertNotContains(response, '先停一停，再进入文章、归档和标签。')
+
     def test_home_recent_posts_use_public_visibility_for_anonymous_users(self):
         author = User.objects.create_user(username='public-home-author', password='StrongPass12345')
         public_post = Post.objects.create(

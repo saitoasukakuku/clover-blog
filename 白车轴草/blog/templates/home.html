@@ -252,38 +252,51 @@
     }
 
     .home-ambient-card {
-        align-items: center;
         background: rgba(255, 255, 255, .62);
         border-radius: 22px;
-        display: flex;
-        gap: 14px;
-        padding: 16px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        padding: 12px;
     }
 
-    .home-ambient-icon {
+    .home-ambient-link {
+        align-items: center;
+        background: rgba(255, 255, 255, .66);
+        border: 1px solid rgba(255, 255, 255, .78);
+        border-radius: 18px;
+        color: var(--home-text);
+        display: grid;
+        gap: 7px;
+        min-height: 82px;
+        padding: 12px 8px;
+        place-items: center;
+        text-align: center;
+        text-decoration: none;
+        transition: background .2s ease, transform .2s ease;
+    }
+
+    .home-ambient-link:hover {
+        background: var(--home-paper-strong);
+        color: var(--home-accent-strong);
+        transform: translateY(-1px);
+    }
+
+    .home-ambient-link i {
         align-items: center;
         background: var(--home-accent-soft);
-        border-radius: 16px;
+        border-radius: 999px;
         color: var(--home-accent-strong);
         display: inline-flex;
-        flex: 0 0 46px;
-        font-size: 1.15rem;
-        height: 46px;
+        height: 34px;
         justify-content: center;
+        width: 34px;
     }
 
-    .home-ambient-card strong {
-        color: var(--home-text);
-        display: block;
-        font-size: .95rem;
-        margin-bottom: 3px;
-    }
-
-    .home-ambient-card span {
-        color: var(--home-muted);
-        display: block;
+    .home-ambient-link span {
         font-size: .82rem;
-        line-height: 1.5;
+        font-weight: 900;
+        line-height: 1.2;
     }
 
     .home-carousel-controls {
@@ -601,11 +614,18 @@
                     </div>
                 </article>
                 <article class="home-ambient-card">
-                    <span class="home-ambient-icon"><i class="fas fa-sparkles"></i></span>
-                    <div>
-                        <strong>顺着画面进入小站</strong>
-                        <span>先停一停，再进入文章、归档和标签。</span>
-                    </div>
+                    <a class="home-ambient-link" href="{% url 'index' %}">
+                        <i class="fas fa-book-open"></i>
+                        <span>文章</span>
+                    </a>
+                    <a class="home-ambient-link" href="{% url 'archive' %}">
+                        <i class="fas fa-clock-rotate-left"></i>
+                        <span>归档</span>
+                    </a>
+                    <a class="home-ambient-link" href="{% url 'tags' %}">
+                        <i class="fas fa-tags"></i>
+                        <span>标签</span>
+                    </a>
                 </article>
             </aside>
         </div>
