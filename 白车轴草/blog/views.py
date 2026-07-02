@@ -10,7 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import F, Prefetch, Q, Sum
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.core.management.base import CommandError
@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import strip_tags
 from django.utils.xmlutils import SimplerXMLGenerator
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from blog.forms import (
     ChineseAuthenticationForm,
     ChineseUserCreationForm,
@@ -53,7 +53,9 @@ from collections import Counter
 from io import BytesIO, StringIO
 import base64
 import binascii
+import hashlib
 import os
+import re
 import time
 import uuid
 from urllib.parse import quote, urlparse
@@ -71,8 +73,10 @@ ALLOWED_IMAGE_EXTENSIONS = {
     'webp': 'webp',
 }
 HOMEPAGE_IMAGE_DIR_NAME = 'index_img'
+HOMEPAGE_IMAGE_CACHE_DIR_NAME = 'index_img_cache'
 HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
-HOMEPAGE_MAX_CAROUSEL_SLIDES = 12
+HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
+HOMEPAGE_IMAGE_CACHE_QUALITY = 82
 HOMEPAGE_THEME_PRESETS = [
     {
         'accent': '#5f8fc8',
@@ -117,6 +121,40 @@ HOMEPAGE_THEME_PRESETS = [
         'card_title': '雪地里的安静入口',
         'card_text': '冷色低饱和背景适合突出文章和归档，不需要太多动效。',
         'moods': ['雪景', '安静', '归档'],
+    },
+]
+HOMEPAGE_COPY_PRESETS = [
+    {
+        'kicker': '今日风景',
+        'headline': '在新的画面里，慢慢打开今天的阅读。',
+        'lead': '首页会从站点图库里轮换背景，再把你带到最近文章、归档和标签。',
+        'card_title': '慢慢进入文章',
+        'card_text': '从当前画面出发，读几篇最近更新，或者按标签继续探索。',
+        'moods': ['阅读', '随笔', '片刻'],
+    },
+    {
+        'kicker': '小站入口',
+        'headline': '换一张背景，也换一种进入网站的心情。',
+        'lead': '每次停留都可以从不同画面开始，但入口保持清楚：文章、归档、标签和博主主页。',
+        'card_title': '从这里开始',
+        'card_text': '先看最近更新，再决定是继续阅读，还是回到归档慢慢翻。',
+        'moods': ['最近更新', '归档', '标签'],
+    },
+    {
+        'kicker': '白车轴草',
+        'headline': '把看到的、想到的和正在做的事，都留在这里。',
+        'lead': '背景只是开场，真正的内容仍然是生活记录、技术笔记和那些值得回看的片段。',
+        'card_title': '新的阅读开场',
+        'card_text': '从一个安静的开场进入文章，再把喜欢的主题慢慢收藏起来。',
+        'moods': ['生活', '技术', '记录'],
+    },
+    {
+        'kicker': '随手翻看',
+        'headline': '不急着搜索，也可以顺着画面随手翻一翻。',
+        'lead': '如果没有明确目标，就从首页继续往下看最近更新；如果想找主题，再进入标签页。',
+        'card_title': '顺着兴趣继续',
+        'card_text': '文章列表适合检索，首页更适合先停一下，再选一个方向进入。',
+        'moods': ['停留', '探索', '慢读'],
     },
 ]
 INVALID_IMAGE_DATA_MESSAGE = '图片数据无效，请重新选择图片。'
@@ -521,24 +559,101 @@ def get_homepage_image_file_names():
         if not os.path.isfile(image_file_path):
             continue
         allowed_file_names.append(image_file_name)
-        if len(allowed_file_names) >= HOMEPAGE_MAX_CAROUSEL_SLIDES:
-            break
     return allowed_file_names
+
+
+def is_homepage_image_file_name_allowed(image_file_name):
+    if not image_file_name:
+        return False
+    if image_file_name != os.path.basename(image_file_name):
+        return False
+    _, image_extension = os.path.splitext(image_file_name)
+    return image_extension.lower() in HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS
+
+
+def get_homepage_image_file_path(image_file_name):
+    if not is_homepage_image_file_name_allowed(image_file_name):
+        raise Http404('Homepage image was not found.')
+
+    image_file_path = os.path.join(
+        settings.MEDIA_ROOT,
+        HOMEPAGE_IMAGE_DIR_NAME,
+        image_file_name,
+    )
+    if not os.path.isfile(image_file_path):
+        raise Http404('Homepage image was not found.')
+    return image_file_path
+
+
+def build_homepage_cache_file_name(image_file_name, image_file_path):
+    image_stat = os.stat(image_file_path)
+    cache_key = f'{image_file_name}:{image_stat.st_mtime_ns}:{image_stat.st_size}'
+    cache_digest = hashlib.sha256(cache_key.encode('utf-8')).hexdigest()[:16]
+    raw_file_stem, _ = os.path.splitext(image_file_name)
+    safe_file_stem = re.sub(r'[^A-Za-z0-9._-]+', '-', raw_file_stem).strip('-._')
+    safe_file_stem = safe_file_stem[:56] or 'homepage-image'
+    return f'{safe_file_stem}-{cache_digest}.webp'
+
+
+def optimize_homepage_image(source_image_path, cached_image_path):
+    image_resampling = getattr(Image, 'Resampling', Image)
+    resampling_filter = getattr(image_resampling, 'LANCZOS', None)
+    if resampling_filter is None:
+        resampling_filter = getattr(Image, 'LANCZOS', Image.BICUBIC)
+    with Image.open(source_image_path) as source_image:
+        optimized_image = ImageOps.exif_transpose(source_image)
+        optimized_image.thumbnail(HOMEPAGE_IMAGE_CACHE_MAX_SIZE, resampling_filter)
+        if optimized_image.mode != 'RGB':
+            optimized_image = optimized_image.convert('RGB')
+        optimized_image.save(
+            cached_image_path,
+            format='WEBP',
+            quality=HOMEPAGE_IMAGE_CACHE_QUALITY,
+            method=4,
+        )
+
+
+def get_or_create_homepage_cached_image_url(image_file_name):
+    image_file_path = get_homepage_image_file_path(image_file_name)
+    cache_directory = os.path.join(settings.MEDIA_ROOT, HOMEPAGE_IMAGE_CACHE_DIR_NAME)
+    os.makedirs(cache_directory, exist_ok=True)
+
+    cache_file_name = build_homepage_cache_file_name(image_file_name, image_file_path)
+    cached_image_path = os.path.join(cache_directory, cache_file_name)
+    if not os.path.exists(cached_image_path):
+        try:
+            optimize_homepage_image(image_file_path, cached_image_path)
+        except (OSError, UnidentifiedImageError) as error:
+            raise Http404('Homepage image could not be opened.') from error
+
+    return f"{settings.MEDIA_URL.rstrip('/')}/{HOMEPAGE_IMAGE_CACHE_DIR_NAME}/{quote(cache_file_name)}"
+
+
+def build_homepage_slide_copy(image_index):
+    return HOMEPAGE_COPY_PRESETS[image_index % len(HOMEPAGE_COPY_PRESETS)]
 
 
 def build_homepage_carousel_slides():
     carousel_slides = []
     image_file_names = get_homepage_image_file_names()
-    media_url_prefix = f"{settings.MEDIA_URL.rstrip('/')}/{HOMEPAGE_IMAGE_DIR_NAME}"
 
     for image_index, image_file_name in enumerate(image_file_names):
         theme_preset = HOMEPAGE_THEME_PRESETS[image_index % len(HOMEPAGE_THEME_PRESETS)]
+        copy_preset = build_homepage_slide_copy(image_index)
         carousel_slides.append({
-            'image_url': f"{media_url_prefix}/{quote(image_file_name)}",
+            'image_url': reverse('homepage_carousel_image', args=[image_file_name]),
             'file_name': image_file_name,
-            **theme_preset,
+            'accent': theme_preset['accent'],
+            'accent_strong': theme_preset['accent_strong'],
+            'accent_soft': theme_preset['accent_soft'],
+            **copy_preset,
         })
     return carousel_slides
+
+
+def homepage_carousel_image(request, image_file_name):
+    cached_image_url = get_or_create_homepage_cached_image_url(image_file_name)
+    return HttpResponseRedirect(cached_image_url)
 
 
 def home(request):

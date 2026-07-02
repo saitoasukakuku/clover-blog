@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('homepage-image/<path:image_file_name>/', views.homepage_carousel_image, name='homepage_carousel_image'),
     path('admin/', admin.site.urls),
     path('index/', views.index, name='index'),
     path('archive/', views.archive_view, name='archive'),

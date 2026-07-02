@@ -287,6 +287,7 @@
     }
 
     .home-carousel-controls {
+        align-items: center;
         bottom: 34px;
         display: flex;
         gap: 10px;
@@ -295,21 +296,37 @@
         z-index: 5;
     }
 
-    .home-carousel-dot {
+    .home-carousel-button,
+    .home-carousel-counter {
+        align-items: center;
         background: rgba(255, 255, 255, .62);
         border: 1px solid rgba(255, 255, 255, .80);
         border-radius: 999px;
-        cursor: pointer;
-        height: 10px;
-        overflow: hidden;
-        padding: 0;
-        transition: width .25s ease, background .25s ease;
-        width: 22px;
+        color: var(--home-accent-strong);
+        display: inline-flex;
+        height: 38px;
+        justify-content: center;
+        min-width: 38px;
     }
 
-    .home-carousel-dot.active {
+    .home-carousel-button {
+        cursor: pointer;
+        padding: 0;
+        transition: background .25s ease, transform .25s ease;
+        width: 38px;
+    }
+
+    .home-carousel-button:hover {
         background: var(--home-accent-strong);
-        width: 46px;
+        color: #fff;
+        transform: translateY(-1px);
+    }
+
+    .home-carousel-counter {
+        font-size: .86rem;
+        font-weight: 800;
+        min-width: 76px;
+        padding: 0 14px;
     }
 
     .home-content-preview {
@@ -545,10 +562,10 @@
             <main class="home-copy">
                 <div class="home-kicker" id="homeKicker">
                     <i class="fas fa-compass"></i>
-                    <span>今日入口</span>
+                    <span>今日风景</span>
                 </div>
-                <h1 class="home-title" id="homeHeadline">让每次进入网站，都像翻开一张新的明信片。</h1>
-                <p class="home-lead" id="homeLead">把日常、技术和灵感收进这里。先遇见一段风景，再进入文章世界。</p>
+                <h1 class="home-title" id="homeHeadline">在新的画面里，慢慢打开今天的阅读。</h1>
+                <p class="home-lead" id="homeLead">首页会从站点图库里轮换背景，再把你带到最近文章、归档和标签。</p>
                 <div class="home-actions">
                     <a class="home-btn home-btn-primary" href="{% url 'index' %}">
                         <i class="fas fa-book-open"></i>
@@ -568,9 +585,9 @@
                     {% endif %}
                 </div>
                 <div class="home-mood-row" id="homeMoodChips" aria-label="当前首页氛围">
-                    <span class="home-mood-chip">清晨</span>
-                    <span class="home-mood-chip">远山</span>
-                    <span class="home-mood-chip">慢生活</span>
+                    <span class="home-mood-chip">阅读</span>
+                    <span class="home-mood-chip">随笔</span>
+                    <span class="home-mood-chip">片刻</span>
                 </div>
             </main>
 
@@ -579,15 +596,15 @@
                     <div class="home-feature-preview" id="homeFeaturePreview"></div>
                     <div class="home-feature-body">
                         <div class="home-eyebrow">今日推荐</div>
-                        <div class="home-card-title" id="homeCardTitle">湖边醒来的阅读时间</div>
-                        <p class="home-card-text" id="homeCardText">从一张图开始，慢慢走进几篇文章。</p>
+                        <div class="home-card-title" id="homeCardTitle">慢慢进入文章</div>
+                        <p class="home-card-text" id="homeCardText">从当前画面出发，读几篇最近更新，或者按标签继续探索。</p>
                     </div>
                 </article>
                 <article class="home-ambient-card">
                     <span class="home-ambient-icon"><i class="fas fa-sparkles"></i></span>
                     <div>
-                        <strong>随风景切换心情</strong>
-                        <span>山湖、木屋、夕照和雪林，会带来不同的阅读开场。</span>
+                        <strong>顺着画面进入小站</strong>
+                        <span>先停一停，再进入文章、归档和标签。</span>
                     </div>
                 </article>
             </aside>
@@ -675,6 +692,49 @@
     const carouselControls = document.getElementById('homeCarouselControls');
     let currentSlideIndex = 0;
     let carouselTimerId = null;
+    let pendingSlideIndex = null;
+    const loadedImageUrls = new Set();
+    const failedImageUrls = new Set();
+
+    function normalizeSlideIndex(slideIndex) {
+        return ((slideIndex % carouselSlides.length) + carouselSlides.length) % carouselSlides.length;
+    }
+
+    function preloadCarouselImage(slide) {
+        return new Promise((resolve) => {
+            if (!slide || !slide.image_url) {
+                resolve(false);
+                return;
+            }
+            if (loadedImageUrls.has(slide.image_url)) {
+                resolve(true);
+                return;
+            }
+            if (failedImageUrls.has(slide.image_url)) {
+                resolve(false);
+                return;
+            }
+
+            const preloadedImage = new Image();
+            preloadedImage.onload = () => {
+                loadedImageUrls.add(slide.image_url);
+                resolve(true);
+            };
+            preloadedImage.onerror = () => {
+                failedImageUrls.add(slide.image_url);
+                resolve(false);
+            };
+            preloadedImage.src = slide.image_url;
+        });
+    }
+
+    function preloadNearbySlides(slideIndex) {
+        if (carouselSlides.length <= 1) {
+            return;
+        }
+        const nextSlideIndex = normalizeSlideIndex(slideIndex + 1);
+        preloadCarouselImage(carouselSlides[nextSlideIndex]);
+    }
 
     function applyCarouselSlide(slide) {
         document.documentElement.style.setProperty('--home-accent', slide.accent);
@@ -696,22 +756,38 @@
         });
     }
 
-    function updateCarouselDots() {
+    function updateCarouselControls() {
         if (!carouselControls) {
             return;
         }
-        Array.from(carouselControls.children).forEach((dotButton, dotIndex) => {
-            dotButton.classList.toggle('active', dotIndex === currentSlideIndex);
-        });
+        const counter = carouselControls.querySelector('[data-carousel-counter]');
+        if (counter) {
+            counter.textContent = `${currentSlideIndex + 1} / ${carouselSlides.length}`;
+        }
     }
 
     function showCarouselSlide(slideIndex) {
         if (!carouselSlides.length) {
             return;
         }
-        currentSlideIndex = slideIndex % carouselSlides.length;
-        applyCarouselSlide(carouselSlides[currentSlideIndex]);
-        updateCarouselDots();
+        const normalizedSlideIndex = normalizeSlideIndex(slideIndex);
+        const targetSlide = carouselSlides[normalizedSlideIndex];
+        pendingSlideIndex = normalizedSlideIndex;
+
+        preloadCarouselImage(targetSlide).then((wasImageLoaded) => {
+            if (pendingSlideIndex !== normalizedSlideIndex) {
+                return;
+            }
+            if (!wasImageLoaded) {
+                preloadNearbySlides(currentSlideIndex);
+                return;
+            }
+
+            currentSlideIndex = normalizedSlideIndex;
+            applyCarouselSlide(targetSlide);
+            updateCarouselControls();
+            preloadNearbySlides(currentSlideIndex);
+        });
     }
 
     function restartCarouselTimer() {
@@ -730,17 +806,38 @@
         if (!carouselControls || !carouselSlides.length) {
             return;
         }
-        carouselSlides.forEach((slide, slideIndex) => {
-            const dotButton = document.createElement('button');
-            dotButton.className = 'home-carousel-dot';
-            dotButton.type = 'button';
-            dotButton.setAttribute('aria-label', `切换到背景 ${slideIndex + 1}`);
-            dotButton.addEventListener('click', () => {
-                showCarouselSlide(slideIndex);
-                restartCarouselTimer();
-            });
-            carouselControls.appendChild(dotButton);
+        carouselControls.innerHTML = '';
+
+        const previousButton = document.createElement('button');
+        previousButton.className = 'home-carousel-button';
+        previousButton.type = 'button';
+        previousButton.title = '上一张';
+        previousButton.setAttribute('aria-label', '上一张背景');
+        previousButton.innerHTML = '<i class="fas fa-chevron-left"></i>';
+        previousButton.addEventListener('click', () => {
+            showCarouselSlide(currentSlideIndex - 1);
+            restartCarouselTimer();
         });
+
+        const counter = document.createElement('span');
+        counter.className = 'home-carousel-counter';
+        counter.setAttribute('data-carousel-counter', '');
+        counter.textContent = `1 / ${carouselSlides.length}`;
+
+        const nextButton = document.createElement('button');
+        nextButton.className = 'home-carousel-button';
+        nextButton.type = 'button';
+        nextButton.title = '下一张';
+        nextButton.setAttribute('aria-label', '下一张背景');
+        nextButton.innerHTML = '<i class="fas fa-chevron-right"></i>';
+        nextButton.addEventListener('click', () => {
+            showCarouselSlide(currentSlideIndex + 1);
+            restartCarouselTimer();
+        });
+
+        carouselControls.appendChild(previousButton);
+        carouselControls.appendChild(counter);
+        carouselControls.appendChild(nextButton);
     }
 
     if (carouselSlides.length) {

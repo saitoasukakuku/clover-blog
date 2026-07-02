@@ -17,6 +17,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.db.models.fields.files import FieldFile
+from PIL import Image
 from blog.management.commands.create_startup_post import Command
 from blog.forms import CompleteRegistrationForm
 from blog.models import (
@@ -2908,9 +2909,66 @@ class HomepageTemplateIntegrationTests(TestCase):
         carousel_slides = response.context['carousel_slides']
         self.assertEqual(len(carousel_slides), 2)
         self.assertEqual(carousel_slides[0]['file_name'], 'first image.jpg')
-        self.assertEqual(carousel_slides[0]['image_url'], '/media/index_img/first%20image.jpg')
+        self.assertEqual(
+            carousel_slides[0]['image_url'],
+            reverse('homepage_carousel_image', args=['first image.jpg']),
+        )
         self.assertEqual(carousel_slides[1]['file_name'], 'second.png')
         self.assertNotContains(response, 'notes.txt')
+
+    def test_home_carousel_includes_every_allowed_image_from_media_index_img(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            for image_index in range(15):
+                image_file_name = f'slide-{image_index:02d}.jpg'
+                with open(os.path.join(image_directory, image_file_name), 'wb') as image_file:
+                    image_file.write(b'fake jpg')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        carousel_slides = response.context['carousel_slides']
+        self.assertEqual(len(carousel_slides), 15)
+        self.assertEqual(carousel_slides[0]['file_name'], 'slide-00.jpg')
+        self.assertEqual(carousel_slides[-1]['file_name'], 'slide-14.jpg')
+
+    def test_home_carousel_uses_optimized_image_endpoint(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            with open(os.path.join(image_directory, 'large photo.jpg'), 'wb') as image_file:
+                image_file.write(b'fake jpg')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        carousel_slides = response.context['carousel_slides']
+        self.assertEqual(
+            carousel_slides[0]['image_url'],
+            reverse('homepage_carousel_image', args=['large photo.jpg']),
+        )
+
+    def test_homepage_carousel_image_view_creates_optimized_cache_file(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            source_image_path = os.path.join(image_directory, 'wide photo.jpg')
+            Image.new('RGB', (2400, 1200), color=(120, 160, 200)).save(source_image_path, format='JPEG')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('homepage_carousel_image', args=['wide photo.jpg']))
+
+                cache_directory = os.path.join(temporary_media_root, 'index_img_cache')
+                cached_file_names = os.listdir(cache_directory)
+                cached_image_path = os.path.join(cache_directory, cached_file_names[0])
+                with Image.open(cached_image_path) as cached_image:
+                    cached_image_width = cached_image.width
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(cached_file_names), 1)
+        self.assertTrue(response['Location'].startswith('/media/index_img_cache/'))
+        self.assertLessEqual(cached_image_width, 1920)
 
     def test_home_carousel_handles_missing_media_index_img(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
