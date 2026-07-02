@@ -69,6 +69,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'blog.context_processors.footer_social',
                 'blog.context_processors.social_counts',
+                'blog.context_processors.site_music_tracks',
             ],
         },
     },

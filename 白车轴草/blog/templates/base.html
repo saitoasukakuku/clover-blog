@@ -358,6 +358,147 @@
             color: #fff;
         }
 
+        .site-music-player {
+            bottom: 22px;
+            left: 22px;
+            position: fixed;
+            z-index: 1030;
+        }
+
+        .site-music-toggle {
+            align-items: center;
+            background: #2e7d32;
+            border: 0;
+            border-radius: 999px;
+            box-shadow: 0 12px 30px rgba(27, 94, 32, .22);
+            color: #fff;
+            display: inline-flex;
+            height: 48px;
+            justify-content: center;
+            width: 48px;
+        }
+
+        .site-music-card {
+            background: rgba(255, 255, 255, .94);
+            border: 1px solid rgba(200, 230, 201, .88);
+            border-radius: 16px;
+            bottom: 58px;
+            box-shadow: 0 18px 50px rgba(24, 55, 30, .18);
+            left: 0;
+            opacity: 0;
+            overflow: hidden;
+            pointer-events: none;
+            position: absolute;
+            transform: translateY(8px) scale(.98);
+            transform-origin: bottom left;
+            transition: opacity .2s ease, transform .2s ease;
+            width: min(330px, calc(100vw - 34px));
+        }
+
+        .site-music-player:hover .site-music-card,
+        .site-music-player:focus-within .site-music-card {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+        }
+
+        .site-music-cover {
+            align-items: center;
+            aspect-ratio: 16 / 9;
+            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            color: #2e7d32;
+            display: flex;
+            font-size: 2.2rem;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .site-music-cover img {
+            height: 100%;
+            object-fit: cover;
+            width: 100%;
+        }
+
+        .site-music-body {
+            padding: 14px;
+        }
+
+        .site-music-title {
+            color: #1b5e20;
+            font-size: 1rem;
+            font-weight: 800;
+            line-height: 1.35;
+            margin-bottom: 10px;
+        }
+
+        .site-music-controls {
+            align-items: center;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .site-music-control {
+            align-items: center;
+            background: #f1f8e9;
+            border: 1px solid #d8edd5;
+            border-radius: 999px;
+            color: #2e7d32;
+            display: inline-flex;
+            height: 34px;
+            justify-content: center;
+            width: 34px;
+        }
+
+        .site-music-play {
+            background: #2e7d32;
+            border-color: #2e7d32;
+            color: #fff;
+        }
+
+        .site-music-progress {
+            accent-color: #2e7d32;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .site-music-lyrics {
+            background: #f7fbf7;
+            border: 1px solid #e2f0df;
+            border-radius: 12px;
+            color: #748078;
+            display: grid;
+            gap: 4px;
+            max-height: 92px;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding: 10px;
+        }
+
+        .site-music-lyric-line {
+            font-size: .84rem;
+            line-height: 1.45;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .site-music-lyric-line.active {
+            color: #1b5e20;
+            font-weight: 800;
+        }
+
+        @media (max-width: 576px) {
+            .site-music-player {
+                bottom: 14px;
+                left: 14px;
+            }
+
+            .site-music-card {
+                width: min(312px, calc(100vw - 28px));
+            }
+        }
+
         .footer-social a {
             display: inline-flex;
             align-items: center;
@@ -634,6 +775,38 @@
 
     {% block content %}{% endblock %}
 
+    {% if site_music_tracks %}
+    {{ site_music_tracks|json_script:"site-music-tracks" }}
+    <div class="site-music-player" aria-label="音乐播放器">
+        <button class="site-music-toggle" type="button" aria-label="展开音乐播放器">
+            <i class="fas fa-music"></i>
+        </button>
+        <section class="site-music-card">
+            <div class="site-music-cover" id="siteMusicCover">
+                <img id="siteMusicCoverImage" alt="音乐封面" hidden>
+                <i id="siteMusicCoverIcon" class="fas fa-compact-disc"></i>
+            </div>
+            <div class="site-music-body">
+                <div class="site-music-title" id="siteMusicTitle">音乐</div>
+                <div class="site-music-controls">
+                    <button class="site-music-control" type="button" id="siteMusicPrev" aria-label="上一首">
+                        <i class="fas fa-step-backward"></i>
+                    </button>
+                    <button class="site-music-control site-music-play" type="button" id="siteMusicPlay" aria-label="播放或暂停">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button class="site-music-control" type="button" id="siteMusicNext" aria-label="下一首">
+                        <i class="fas fa-step-forward"></i>
+                    </button>
+                    <input class="site-music-progress" id="siteMusicProgress" type="range" min="0" max="100" value="0" aria-label="播放进度">
+                </div>
+                <div class="site-music-lyrics" id="siteMusicLyrics" aria-live="polite"></div>
+            </div>
+            <audio id="siteMusicAudio" preload="metadata"></audio>
+        </section>
+    </div>
+    {% endif %}
+
     <!-- ========== Footer ========== -->
     <footer class="site-footer">
         <div class="container">
@@ -655,6 +828,148 @@
 
     <script src="{% static 'js/jquery-3.7.1.js' %}"></script>
     <script src="{% static 'plugins/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js' %}"></script>
+    {% if site_music_tracks %}
+    <script>
+        const siteMusicTracksElement = document.getElementById('site-music-tracks');
+        const siteMusicTracks = siteMusicTracksElement ? JSON.parse(siteMusicTracksElement.textContent) : [];
+        const siteMusicAudio = document.getElementById('siteMusicAudio');
+        const siteMusicTitle = document.getElementById('siteMusicTitle');
+        const siteMusicCoverImage = document.getElementById('siteMusicCoverImage');
+        const siteMusicCoverIcon = document.getElementById('siteMusicCoverIcon');
+        const siteMusicLyrics = document.getElementById('siteMusicLyrics');
+        const siteMusicPlay = document.getElementById('siteMusicPlay');
+        const siteMusicPrev = document.getElementById('siteMusicPrev');
+        const siteMusicNext = document.getElementById('siteMusicNext');
+        const siteMusicProgress = document.getElementById('siteMusicProgress');
+        let siteMusicCurrentIndex = 0;
+        let siteMusicCurrentLyrics = [];
+        let siteMusicActiveLyricIndex = -1;
+
+        function renderSiteMusicLyrics(activeIndex = 0) {
+            if (activeIndex === siteMusicActiveLyricIndex) {
+                return;
+            }
+            siteMusicActiveLyricIndex = activeIndex;
+            siteMusicLyrics.innerHTML = '';
+            if (!siteMusicCurrentLyrics.length) {
+                const emptyLine = document.createElement('div');
+                emptyLine.className = 'site-music-lyric-line active';
+                emptyLine.textContent = '暂无歌词';
+                siteMusicLyrics.appendChild(emptyLine);
+                return;
+            }
+
+            siteMusicCurrentLyrics.forEach((lyricLine, lyricIndex) => {
+                const lyricElement = document.createElement('div');
+                lyricElement.className = 'site-music-lyric-line';
+                lyricElement.textContent = lyricLine.text;
+                if (lyricIndex === activeIndex) {
+                    lyricElement.classList.add('active');
+                }
+                siteMusicLyrics.appendChild(lyricElement);
+            });
+            const activeElement = siteMusicLyrics.querySelector('.site-music-lyric-line.active');
+            if (activeElement) {
+                activeElement.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function getActiveLyricIndex(currentTime) {
+            let activeIndex = 0;
+            siteMusicCurrentLyrics.forEach((lyricLine, lyricIndex) => {
+                if (lyricLine.time !== null && lyricLine.time <= currentTime) {
+                    activeIndex = lyricIndex;
+                }
+            });
+            return activeIndex;
+        }
+
+        function updateSiteMusicPlayIcon() {
+            const playIcon = siteMusicPlay.querySelector('i');
+            playIcon.className = siteMusicAudio.paused ? 'fas fa-play' : 'fas fa-pause';
+        }
+
+        function loadSiteMusicTrack(trackIndex) {
+            if (!siteMusicTracks.length) {
+                return;
+            }
+            siteMusicCurrentIndex = (trackIndex + siteMusicTracks.length) % siteMusicTracks.length;
+            const currentTrack = siteMusicTracks[siteMusicCurrentIndex];
+            siteMusicTitle.textContent = currentTrack.title;
+            siteMusicAudio.src = currentTrack.audio_url;
+            siteMusicProgress.value = 0;
+            siteMusicCurrentLyrics = currentTrack.lyrics_lines || [];
+            siteMusicActiveLyricIndex = -1;
+            renderSiteMusicLyrics(0);
+
+            if (currentTrack.cover_url) {
+                siteMusicCoverImage.src = currentTrack.cover_url;
+                siteMusicCoverImage.hidden = false;
+                siteMusicCoverIcon.hidden = true;
+            } else {
+                siteMusicCoverImage.removeAttribute('src');
+                siteMusicCoverImage.hidden = true;
+                siteMusicCoverIcon.hidden = false;
+            }
+            updateSiteMusicPlayIcon();
+        }
+
+        function playSiteMusicAudio() {
+            const playPromise = siteMusicAudio.play();
+            if (playPromise) {
+                playPromise.catch(() => {});
+            }
+        }
+
+        siteMusicPlay.addEventListener('click', () => {
+            if (siteMusicAudio.paused) {
+                playSiteMusicAudio();
+            } else {
+                siteMusicAudio.pause();
+            }
+        });
+
+        siteMusicPrev.addEventListener('click', () => {
+            const wasPlaying = !siteMusicAudio.paused;
+            loadSiteMusicTrack(siteMusicCurrentIndex - 1);
+            if (wasPlaying) {
+                playSiteMusicAudio();
+            }
+        });
+
+        siteMusicNext.addEventListener('click', () => {
+            const wasPlaying = !siteMusicAudio.paused;
+            loadSiteMusicTrack(siteMusicCurrentIndex + 1);
+            if (wasPlaying) {
+                playSiteMusicAudio();
+            }
+        });
+
+        siteMusicProgress.addEventListener('input', () => {
+            if (!siteMusicAudio.duration) {
+                return;
+            }
+            siteMusicAudio.currentTime = (Number(siteMusicProgress.value) / 100) * siteMusicAudio.duration;
+        });
+
+        siteMusicAudio.addEventListener('play', updateSiteMusicPlayIcon);
+        siteMusicAudio.addEventListener('pause', updateSiteMusicPlayIcon);
+        siteMusicAudio.addEventListener('ended', () => {
+            loadSiteMusicTrack(siteMusicCurrentIndex + 1);
+            playSiteMusicAudio();
+        });
+        siteMusicAudio.addEventListener('timeupdate', () => {
+            if (siteMusicAudio.duration) {
+                siteMusicProgress.value = (siteMusicAudio.currentTime / siteMusicAudio.duration) * 100;
+            }
+            renderSiteMusicLyrics(getActiveLyricIndex(siteMusicAudio.currentTime));
+        });
+
+        if (siteMusicTracks.length) {
+            loadSiteMusicTrack(0);
+        }
+    </script>
+    {% endif %}
     {% block extra_js %}{% endblock %}
 </body>
 

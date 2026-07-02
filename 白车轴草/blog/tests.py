@@ -32,6 +32,42 @@ from blog.models import (
 from blog.views import AI_COVER_TOKEN_SALT
 
 
+def encode_id3_syncsafe_size(value):
+    return bytes([
+        (value >> 21) & 0x7F,
+        (value >> 14) & 0x7F,
+        (value >> 7) & 0x7F,
+        value & 0x7F,
+    ])
+
+
+def build_id3v23_frame(frame_id, frame_payload):
+    return (
+        frame_id.encode('ascii')
+        + len(frame_payload).to_bytes(4, 'big')
+        + b'\x00\x00'
+        + frame_payload
+    )
+
+
+def build_fake_mp3_with_id3(*, title, cover_bytes, lyrics):
+    title_frame = build_id3v23_frame(
+        'TIT2',
+        b'\x03' + title.encode('utf-8'),
+    )
+    cover_frame = build_id3v23_frame(
+        'APIC',
+        b'\x03image/jpeg\x00\x03\x00' + cover_bytes,
+    )
+    lyrics_frame = build_id3v23_frame(
+        'USLT',
+        b'\x03chi\x00' + lyrics.encode('utf-8'),
+    )
+    tag_payload = title_frame + cover_frame + lyrics_frame
+    tag_header = b'ID3\x03\x00\x00' + encode_id3_syncsafe_size(len(tag_payload))
+    return tag_header + tag_payload + b'\xff\xfb\x90\x64'
+
+
 class DeletionFormParser(HTMLParser):
     def __init__(self, deletion_url):
         super().__init__()
@@ -2877,6 +2913,82 @@ class NotificationCenterTests(TestCase):
 
         self.assertEqual(response.context['unread_notification_count'], 1)
         self.assertContains(response, '通知')
+
+
+class SiteMusicPlayerTests(TestCase):
+    def test_music_tracks_use_same_name_cover_and_lyrics_files(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, '晚风.mp3'), 'wb') as music_file:
+                music_file.write(b'fake mp3')
+            with open(os.path.join(music_directory, '晚风.jpg'), 'wb') as cover_file:
+                cover_file.write(b'fake jpg')
+            with open(os.path.join(music_directory, '晚风.lrc'), 'w', encoding='utf-8') as lyrics_file:
+                lyrics_file.write('[00:01.20]第一句歌词\n[00:03.40]第二句歌词')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                from blog.context_processors import site_music_tracks
+
+                context = site_music_tracks(None)
+
+        tracks = context['site_music_tracks']
+        self.assertEqual(len(tracks), 1)
+        self.assertEqual(tracks[0]['title'], '晚风')
+        self.assertEqual(tracks[0]['audio_url'], '/media/music/%E6%99%9A%E9%A3%8E.mp3')
+        self.assertEqual(tracks[0]['cover_url'], '/media/music/%E6%99%9A%E9%A3%8E.jpg')
+        self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': 1.2, 'text': '第一句歌词'})
+        self.assertEqual(tracks[0]['lyrics_lines'][1], {'time': 3.4, 'text': '第二句歌词'})
+
+    def test_music_tracks_fall_back_to_embedded_mp3_cover_and_lyrics(self):
+        embedded_cover_bytes = b'\xff\xd8fake-cover\xff\xd9'
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'embedded.mp3'), 'wb') as music_file:
+                music_file.write(build_fake_mp3_with_id3(
+                    title='内嵌标题',
+                    cover_bytes=embedded_cover_bytes,
+                    lyrics='内嵌第一句\n内嵌第二句',
+                ))
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                from blog.context_processors import site_music_tracks
+
+                context = site_music_tracks(None)
+                cache_directory = os.path.join(temporary_media_root, 'music_cache')
+                cached_cover_names = os.listdir(cache_directory)
+                cached_cover_path = os.path.join(cache_directory, cached_cover_names[0])
+
+                with open(cached_cover_path, 'rb') as cached_cover_file:
+                    cached_cover_bytes = cached_cover_file.read()
+
+        tracks = context['site_music_tracks']
+        self.assertEqual(len(tracks), 1)
+        self.assertEqual(tracks[0]['title'], '内嵌标题')
+        self.assertTrue(tracks[0]['cover_url'].startswith('/media/music_cache/'))
+        self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': None, 'text': '内嵌第一句'})
+        self.assertEqual(cached_cover_bytes, embedded_cover_bytes)
+
+    def test_base_template_renders_music_player_when_tracks_exist(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'site song.mp3'), 'wb') as music_file:
+                music_file.write(b'fake mp3')
+            with open(os.path.join(music_directory, 'site song.txt'), 'w', encoding='utf-8') as lyrics_file:
+                lyrics_file.write('静态歌词')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'site-music-player')
+        self.assertContains(response, 'site-music-tracks')
+        self.assertContains(response, 'site song')
+        self.assertEqual(
+            response.context['site_music_tracks'][0]['lyrics_lines'][0]['text'],
+            '静态歌词',
+        )
 
 
 class HomepageTemplateIntegrationTests(TestCase):
