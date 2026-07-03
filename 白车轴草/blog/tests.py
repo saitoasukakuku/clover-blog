@@ -3117,8 +3117,10 @@ class SiteMusicPlayerTests(TestCase):
 
         self.assertContains(response, 'site-music-control-strip')
         self.assertContains(response, 'site-music-progress-row')
-        self.assertContains(response, 'background-size: contain;')
-        self.assertContains(response, 'aspect-ratio: 1 / 1;')
+        self.assertContains(response, 'site-music-card-background')
+        self.assertContains(response, 'max-height: min(286px, calc(100vh - 112px));')
+        self.assertNotContains(response, 'background-size: contain;')
+        self.assertNotContains(response, 'aspect-ratio: 1 / 1;')
 
 
 class HomepageTemplateIntegrationTests(TestCase):

@@ -445,6 +445,7 @@
             box-shadow: 0 22px 54px rgba(18, 52, 25, .24);
             color: #19321d;
             left: 0;
+            max-height: min(286px, calc(100vh - 112px));
             opacity: 0;
             overflow: hidden;
             pointer-events: none;
@@ -456,9 +457,16 @@
         }
 
         .site-music-card.has-cover {
-            background: #152118;
+            background-color: #152118;
             border-color: rgba(255, 255, 255, .28);
             color: #fff;
+        }
+
+        .site-music-card-background.has-cover {
+            background-image: var(--site-music-cover-image);
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
         }
 
         .site-music-player:hover .site-music-card,
@@ -477,8 +485,10 @@
             filter: blur(22px) saturate(1.08);
             inset: -24px;
             opacity: .55;
+            pointer-events: none;
             position: absolute;
             transform: scale(1.08);
+            z-index: 0;
         }
 
         .site-music-card.has-cover .site-music-card-backdrop {
@@ -487,12 +497,14 @@
 
         .site-music-card::after {
             background:
-                linear-gradient(180deg, rgba(8, 13, 9, .04), rgba(8, 13, 9, .74)),
-                linear-gradient(135deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, .08));
+                linear-gradient(180deg, rgba(8, 13, 9, .10), rgba(8, 13, 9, .82)),
+                linear-gradient(135deg, rgba(255, 255, 255, .32), rgba(255, 255, 255, .08));
             content: '';
             inset: 0;
             opacity: 0;
+            pointer-events: none;
             position: absolute;
+            z-index: 1;
         }
 
         .site-music-card.has-cover::after {
@@ -500,20 +512,24 @@
         }
 
         .site-music-card-inner {
+            max-height: inherit;
+            overflow-y: auto;
             position: relative;
-            z-index: 1;
+            z-index: 2;
         }
 
         .site-music-cover {
             align-items: center;
-            aspect-ratio: 1 / 1;
             background:
                 radial-gradient(circle at 18% 16%, rgba(255, 255, 255, .72), transparent 34%),
                 linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            border-radius: 14px;
             color: #2e7d32;
             display: flex;
-            font-size: 2.2rem;
+            font-size: 1.35rem;
+            height: 64px;
             justify-content: center;
+            margin: 14px 14px 0;
             overflow: hidden;
             position: relative;
         }
@@ -533,15 +549,7 @@
         }
 
         .site-music-card.has-cover .site-music-cover {
-            background-color: #121914;
-            background-image: var(--site-music-cover-image);
-            background-position: center;
-            background-repeat: no-repeat;
-            background-size: contain;
-        }
-
-        .site-music-card.has-cover .site-music-cover::before {
-            display: block;
+            display: none;
         }
 
         .site-music-cover-icon {
@@ -552,6 +560,10 @@
 
         .site-music-body {
             padding: 14px;
+        }
+
+        .site-music-card.has-cover .site-music-body {
+            padding: 16px;
         }
 
         .site-music-heading {
@@ -580,14 +592,14 @@
 
         .site-music-controls {
             display: grid;
-            gap: 12px;
-            margin-bottom: 12px;
+            gap: 9px;
+            margin-bottom: 10px;
         }
 
         .site-music-control-strip {
             align-items: center;
             display: flex;
-            gap: 12px;
+            gap: 10px;
             justify-content: center;
         }
 
@@ -633,8 +645,8 @@
             border-color: #2e7d32;
             color: #fff;
             font-size: 1.05rem;
-            height: 48px;
-            width: 48px;
+            height: 44px;
+            width: 44px;
         }
 
         .site-music-progress-row {
@@ -692,7 +704,7 @@
             color: #748078;
             display: grid;
             gap: 4px;
-            max-height: 58px;
+            max-height: 46px;
             overflow-y: auto;
             overscroll-behavior: contain;
             padding: 9px 10px;
@@ -729,7 +741,7 @@
             display: grid;
             gap: 6px;
             margin-bottom: 8px;
-            max-height: 104px;
+            max-height: 86px;
             overflow-y: auto;
             padding: 8px;
         }
@@ -1116,7 +1128,7 @@
                 <span class="site-music-toggle-record-hole"></span>
             </span>
         </button>
-        <section class="site-music-card site-music-card-compact" id="siteMusicCard">
+        <section class="site-music-card site-music-card-compact site-music-card-background" id="siteMusicCard">
             <div class="site-music-card-backdrop" aria-hidden="true"></div>
             <div class="site-music-card-inner">
                 <div class="site-music-cover" id="siteMusicCover">
