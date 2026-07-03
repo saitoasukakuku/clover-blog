@@ -3015,6 +3015,10 @@ class SiteMusicPlayerTests(TestCase):
         self.assertContains(response, 'renderSiteMusicPlaylist')
         self.assertContains(response, 'handleSiteNavigationClick')
         self.assertContains(response, 'handleSiteNavigationSubmit')
+        self.assertContains(response, 'site-music-card-compact')
+        self.assertContains(response, 'site-music-toggle-needle')
+        self.assertContains(response, 'handleSiteMusicOutsideClick')
+        self.assertContains(response, 'removeSiteMusicDetail')
 
 
 class HomepageTemplateIntegrationTests(TestCase):
