@@ -12,7 +12,7 @@ from blog.site_owner import get_site_owner_profile
 
 MUSIC_DIR_NAME = 'music'
 MUSIC_CACHE_DIR_NAME = 'music_cache'
-MUSIC_AUDIO_EXTENSIONS = {'.mp3', '.ogg', '.wav', '.m4a'}
+MUSIC_AUDIO_EXTENSIONS = {'.mp3', '.ogg', '.wav', '.m4a', '.flac'}
 MUSIC_COVER_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 MUSIC_LYRICS_EXTENSIONS = ('.lrc', '.txt')
 

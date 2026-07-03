@@ -349,7 +349,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 
 ### 全站音乐播放
 
-- 全站音乐播放器读取 `MEDIA_ROOT/music/`，支持 `.mp3`、`.ogg`、`.wav` 和 `.m4a`。
+- 全站音乐播放器读取 `MEDIA_ROOT/music/`，支持 `.mp3`、`.ogg`、`.wav`、`.m4a` 和 `.flac`。
 - 同名封面文件优先级高于 MP3 内嵌封面，支持 `.jpg`、`.jpeg`、`.png` 和 `.webp`。
 - 同名歌词文件优先级高于 MP3 内嵌歌词，支持 `.lrc` 和 `.txt`。
 - MP3 内嵌封面会导出到 `MEDIA_ROOT/music_cache/`，避免每次请求重复解析。
@@ -453,7 +453,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 
 - 所有模板页面共享左下角音乐播放器入口。
 - 播放器曲目读取 `白车轴草/media/music/`。
-- 支持 `.mp3`、`.ogg`、`.wav` 和 `.m4a` 音频文件。
+- 支持 `.mp3`、`.ogg`、`.wav`、`.m4a` 和 `.flac` 音频文件。
 - 支持同名 `.jpg`、`.jpeg`、`.png` 和 `.webp` 封面文件。
 - 支持同名 `.lrc` 和 `.txt` 歌词文件。
 - MP3 支持读取内嵌 `TIT2` 标题、`APIC` 封面和 `USLT` 歌词。
