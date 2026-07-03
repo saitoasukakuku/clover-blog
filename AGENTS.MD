@@ -26,12 +26,13 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ## 当前交接摘要
 
 截至 2026-07-03，最新已部署功能提交为
-`c1a3d1a fix: remove music player slider`；后续如果只有 `AGENTS.md` 文档提交，不改变
+`87a001f fix: style music playlist scrollbar`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `87a001f fix: style music playlist scrollbar`
 - `c1a3d1a fix: remove music player slider`
 - `7c04836 fix: compact music player background`
 - `8efe442 fix: refine music player layout`
@@ -52,7 +53,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `c1a3d1a`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `87a001f`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -89,6 +90,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
   单独的大封面区域；线上 `Fly` 曲目已验证封面背景正常显示。
 - 音乐播放器已移除可拖动的 range 滑条和圆形滑块，只保留低调的只读细进度线；线上模板
   已验证不存在 `type="range"`、`slider-thumb` 和进度 input 监听。
+- 音乐播放器歌曲列表滚动条已改为细窄半透明样式，封面背景下使用白色透明滚动条，
+  普通浅色状态下使用绿色透明滚动条；线上模板已验证包含对应 WebKit 和 Firefox 样式。
 - 音乐播放器放在全局页面壳外，站内同源导航和常见表单提交会局部替换页面内容，从而
   尽量保持播放不中断。
 
@@ -782,7 +785,7 @@ sudo clover-blog-deploy
 Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
 截至 2026-07-03，生产服务器已通过一键部署更新到
-`c1a3d1a fix: remove music player slider`，数据库迁移检查显示无待执行迁移。部署日志
+`87a001f fix: style music playlist scrollbar`，数据库迁移检查显示无待执行迁移。部署日志
 在 Gunicorn 重启窗口可能短暂出现 `curl: (22) The requested URL returned error: 502`；
 如果随后 `clover-blog`、`nginx`、本机首页和 Cloudflare 首页检查均正常，可按部署成功处理。
 
@@ -838,7 +841,7 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 截至 2026-07-03 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `c1a3d1a fix: remove music player slider`。
+- 生产已部署到 `87a001f fix: style music playlist scrollbar`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
@@ -849,6 +852,8 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
   旧的大封面块为隐藏状态。
 - 线上模板已验证音乐播放器没有 `input[type=range]`、没有 slider thumb 样式，也没有
   进度 input 监听；当前只显示细进度线。
+- 线上模板已验证歌曲列表包含 `site-music-list::-webkit-scrollbar` 和
+  `scrollbar-width: thin`，滚动条已改为播放器内的定制细样式。
 - Django Admin 可以登录。
 - DeepSeek 和 Pexels 环境变量能被 Django 读取。
 - AI 写作入口和 Pexels 封面功能已实际生成过文章和封面。
@@ -892,6 +897,7 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - 音乐播放器当前左下角入口是旋转唱片按钮，不包含唱针、顶针或指针。
 - 音乐播放器展开卡片当前使用封面图作为紧凑背景，不要再恢复成单独的大封面块。
 - 音乐播放器当前没有可拖动滑条和圆形滑块；不要再恢复 `input type="range"` 样式。
+- 音乐播放器歌曲列表当前有单独定制滚动条；不要把它恢复为浏览器默认粗滚动条。
 
 ## 已知注意事项
 
