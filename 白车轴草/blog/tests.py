@@ -2990,6 +2990,31 @@ class SiteMusicPlayerTests(TestCase):
             '静态歌词',
         )
 
+    def test_base_template_renders_persistent_player_shell_and_playlist_controls(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'first.mp3'), 'wb') as first_music_file:
+                first_music_file.write(b'fake first mp3')
+            with open(os.path.join(music_directory, 'first.jpg'), 'wb') as first_cover_file:
+                first_cover_file.write(b'fake first cover')
+            with open(os.path.join(music_directory, 'second.mp3'), 'wb') as second_music_file:
+                second_music_file.write(b'fake second mp3')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'id="site-page-shell"')
+        self.assertContains(response, 'id="site-page-extra-js"')
+        self.assertContains(response, 'site-music-record')
+        self.assertContains(response, 'site-music-tonearm')
+        self.assertContains(response, 'id="siteMusicListToggle"')
+        self.assertContains(response, 'id="siteMusicList"')
+        self.assertContains(response, 'site-music-card-backdrop')
+        self.assertContains(response, 'renderSiteMusicPlaylist')
+        self.assertContains(response, 'handleSiteNavigationClick')
+        self.assertContains(response, 'handleSiteNavigationSubmit')
+
 
 class HomepageTemplateIntegrationTests(TestCase):
     def test_index_uses_shared_navigation_and_still_renders_search_and_posts(self):
@@ -3011,6 +3036,7 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, '标签')
         self.assertContains(response, '搜索文章')
         self.assertContains(response, 'Homepage inherited post')
+        self.assertContains(response, 'window.cloverSiteNavigate')
 
     def test_home_uses_home_template_and_keeps_index_as_article_list(self):
         response = self.client.get(reverse('home'))
@@ -3018,6 +3044,7 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'home.html')
         self.assertTemplateUsed(response, 'base.html')
+        self.assertContains(response, 'site:before-navigate')
         self.assertContains(response, '开始阅读')
         self.assertContains(response, reverse('index'))
 

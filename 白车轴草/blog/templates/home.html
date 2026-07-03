@@ -865,5 +865,11 @@
         showCarouselSlide(0);
         restartCarouselTimer();
     }
+
+    window.addEventListener('site:before-navigate', () => {
+        if (carouselTimerId) {
+            window.clearInterval(carouselTimerId);
+        }
+    }, { once: true });
 </script>
 {% endblock %}

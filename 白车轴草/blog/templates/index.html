@@ -550,7 +550,12 @@
         if (tag) params.set('tag', tag);
 
         const queryString = params.toString();
-        window.location.href = form.action + (queryString ? `?${queryString}` : '');
+        const targetUrl = form.action + (queryString ? `?${queryString}` : '');
+        if (window.cloverSiteNavigate) {
+            window.cloverSiteNavigate(targetUrl);
+            return;
+        }
+        window.location.href = targetUrl;
     }
 
     heroSearchForm?.addEventListener('submit', function (event) {
