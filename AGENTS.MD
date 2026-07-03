@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-- 状态更新时间：2026-07-01
+- 状态更新时间：2026-07-03
 - 项目名：白车轴草
 - 项目类型：Django 4.2 多用户博客
 - 本地工作区：`E:\projects\django-projects\白车轴草`
@@ -18,38 +18,39 @@
   `https://salary-undergraduate-euros-ampland.trycloudflare.com/`
 
 Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变化，不能作为稳定域名。
-截至 2026-06-26，该 HTTPS 地址已验证返回 `200 OK`。
+截至 2026-07-03，该 HTTPS 地址已验证返回 `200 OK`。
 
 仓库根目录用于 Git、依赖清单和协作文档，真正的 Django 工程位于
 `白车轴草/` 子目录。核心业务集中在单个 `blog` 应用中。
 
 ## 当前交接摘要
 
-截至 2026-07-01，本地 `main` 分支与 `origin/main` 同步，最新提交为
-`28fca64 fix: lock registration completion code use`。本地没有未提交的受 Git 跟踪
-文件改动；仍有两个无关未跟踪目录 `docs/superpowers/mockups/` 和 `promo-video/`，
-不要在无明确指令时暂存、提交或删除。
+截至 2026-07-03，最新已部署功能提交为
+`608a537 fix: remove music player tonearm`；后续如果只有 `AGENTS.md` 文档提交，不改变
+线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
+`docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
-最近已推送到 GitHub `main` 的关键提交为：
+最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
-- `28fca64 fix: lock registration completion code use`
-- `c1b51c7 feat: complete registration with invite code`
-- `1a6e0eb feat: add registration review page`
-- `3a8d947 feat: request registration by email`
-- `4ec54f9 feat: add registration request model`
-- `28b6a3a feat: add image carousel homepage template`
-- `2405dd7 feat: route root to homepage`
-- `0dc70b6 feat: prepare homepage carousel data`
+- `608a537 fix: remove music player tonearm`
+- `df813e5 fix: refine compact music player card`
+- `1a499a6 fix: move music record to player toggle`
+- `f0e5abd feat: improve persistent music player`
+- `328ac07 feat: add global music player`
+- `3ac5044 refactor: streamline homepage ambient card`
+- `155e072 feat: add author profile friend actions`
+- `b816419 feat: improve homepage image carousel`
+- `264c53d fix: avoid date prefix in startup post titles`
 
 本地已完成 Django 检查、迁移一致性检查和 `blog` 应用测试，当前测试基线为
-`136` 个测试通过。已验证 `/` 可访问新的沉浸式图片轮播欢迎页，`/index/` 保留文章
-列表；已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/`
-审核，通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
+`151` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
+已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
+通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-本次首页和注册审核功能尚未确认部署到生产服务器。2026-06-27 助手执行 SSH 批处理
-连通性检查时，`ubuntu@111.230.11.5` 返回 `Permission denied (publickey,password)`，
-因此助手无法直接运行 `sudo clover-blog-deploy`。需要服务器操作时，直接让用户在
-服务器终端执行，并根据用户贴回的输出继续判断。
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `608a537`。部署过程中在 Gunicorn
+重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
+检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
+`200 OK`。
 
 近期已完成的关键事项：
 
@@ -71,16 +72,27 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
   系统发送一次性注册码邮件，用户用邮箱、注册码、用户名、昵称和密码完成注册。
 - 邮件发送配置已支持 `.env` 中的 SMTP 环境变量；本地 `DEBUG=True` 默认使用 console
   邮件后端，生产默认使用 SMTP 后端。
+- 每日 AI 自动发文标题已修复重复日期问题；当模型返回日期前缀标题时，不再生成两个
+  日期前缀。
+- 首页轮播现在读取 `media/index_img/` 下所有合法图片，不再限制前 8 张；图片通过
+  `/homepage-image/<path:image_file_name>/` 优化后缓存到 `media/index_img_cache/`，
+  并在前端预加载相邻图片。
+- 作者主页已增加好友状态操作：未加好友时显示加好友，已加好友时显示私信入口。
+- 全站左下角已增加音乐播放器，读取 `media/music/` 下音乐，支持播放列表、封面、歌词、
+  MP3 内嵌封面/歌词、同名封面文件和同名歌词文件。当前设计没有唱针或指针。
+- 音乐播放器放在全局页面壳外，站内同源导航和常见表单提交会局部替换页面内容，从而
+  尽量保持播放不中断。
 
 当前建议的下一步可选方向：
 
-- 恢复 Codex SSH 部署权限，或由用户在服务器运行 `sudo clover-blog-deploy`，
-  部署最新 GitHub `main` 并执行迁移 `0011_registrationrequest.py`。
 - 在生产 `/opt/clover-blog/.env` 配好 SMTP，至少包含 `EMAIL_HOST`、`EMAIL_PORT`、
   `EMAIL_HOST_USER`、`EMAIL_HOST_PASSWORD`、`EMAIL_USE_TLS` 或 `EMAIL_USE_SSL`、
   `DEFAULT_FROM_EMAIL`。
-- 生产部署后验证 `/`、`/index/`、`/register/`、`/register/complete/` 和
-  `/registration-requests/`。
+- 给 `media/music/` 中的音乐补同名 `.lrc` 或 `.txt` 歌词文件；没有同名歌词或 MP3 内嵌
+  歌词时，播放器会显示“暂无歌词”。
+- 后续代码修改完成后仍按流程运行检查、提交、推送，并在服务器执行
+  `sudo clover-blog-deploy`。如果部署日志只在重启窗口出现短暂 `502`，应以后续服务状态
+  和首页 `200 OK` 为准。
 - 确认超级用户 `白车轴草` 的邮箱是否正确；注册审核邮件会优先使用该超级用户邮箱作为
   发送身份候选。
 - 后续可继续优化注册审核页，例如重发注册码、审核备注、邮件发送失败重试和管理后台筛选。
@@ -123,7 +135,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `白车轴草/blog/admin.py`：文章、用户资料、注册申请、评论、好友和私信后台配置。
 - `白车轴草/blog/registration_approval.py`：注册审核、注册码生成、邮件发送和状态变更逻辑。
 - `白车轴草/blog/site_owner.py`：站点博主账号选择逻辑。
-- `白车轴草/blog/context_processors.py`：页脚社交链接上下文。
+- `白车轴草/blog/context_processors.py`：页脚社交链接、社交未读数量和全站音乐播放器
+  曲目上下文。
 - `白车轴草/blog/templates/`：全部 Django 模板。
 - `白车轴草/blog/templates/home.html`：沉浸式图片轮播欢迎页模板。
 - `白车轴草/blog/templates/index.html`：文章列表页模板。
@@ -134,6 +147,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
   `0011_registrationrequest.py`。
 - `白车轴草/media/`：本地上传文件，已被 Git 忽略。
 - `白车轴草/media/index_img/`：沉浸式首页背景轮播图片目录，已被 Git 忽略。
+- `白车轴草/media/index_img_cache/`：首页轮播优化图缓存目录，运行时生成，已被 Git 忽略。
+- `白车轴草/media/music/`：全站音乐播放器音乐目录，已被 Git 忽略。
+- `白车轴草/media/music_cache/`：MP3 内嵌封面导出的缓存目录，运行时生成，已被 Git 忽略。
 - `白车轴草/db.sqlite3`：本地开发数据库，已被 Git 忽略。
 
 ## 数据模型
@@ -267,8 +283,10 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 
 - `/` 是沉浸式图片轮播欢迎页，面向游客和登录用户展示站点入口、今日推荐、最近更新和
   归档/标签等探索入口。
-- `/` 的背景图从 `MEDIA_ROOT/index_img/` 读取，最多取前 8 张合法图片文件，并按预设
-  主题自动切换文案、点缀色和氛围标签。
+- `/` 的背景图从 `MEDIA_ROOT/index_img/` 读取全部合法图片文件，并按预设主题自动切换
+  文案、点缀色和氛围标签。
+- 首页轮播图片通过 `homepage_carousel_image` 视图生成优化缓存后返回，缓存位于
+  `MEDIA_ROOT/index_img_cache/`。
 - `/index/` 是原文章列表页，继续承载搜索、分类、作者、标签和“只看我的文章”等筛选。
 
 - 游客只能看到 `published + public` 的文章。
@@ -313,6 +331,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ### 好友与私信
 
 - 登录用户可以搜索和查看其他用户。
+- 作者主页会根据当前登录用户与作者的关系展示好友操作；已是好友时显示私信入口。
 - 支持发送、接受、拒绝和取消好友申请。
 - 支持解除好友关系。
 - 只有好友之间可以发送私信。
@@ -328,12 +347,23 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 通知中心只展示当前登录用户自己的通知。
 - 标记单条通知或全部通知为已读都需要登录，并进行接收者校验。
 
+### 全站音乐播放
+
+- 全站音乐播放器读取 `MEDIA_ROOT/music/`，支持 `.mp3`、`.ogg`、`.wav` 和 `.m4a`。
+- 同名封面文件优先级高于 MP3 内嵌封面，支持 `.jpg`、`.jpeg`、`.png` 和 `.webp`。
+- 同名歌词文件优先级高于 MP3 内嵌歌词，支持 `.lrc` 和 `.txt`。
+- MP3 内嵌封面会导出到 `MEDIA_ROOT/music_cache/`，避免每次请求重复解析。
+- 播放器有播放列表、歌词显示、进度条和上一首/下一首；当前没有唱针或指针设计。
+- 播放器状态保存在浏览器 `sessionStorage`，站内局部导航时尽量保持播放不中断。
+
 ## 已实现功能
 
 ### 首页欢迎页
 
 - `/` 是沉浸式图片轮播欢迎页，不再直接进入文章列表。
-- 背景轮播读取 `白车轴草/media/index_img/` 下的图片。
+- 背景轮播读取 `白车轴草/media/index_img/` 下的全部合法图片。
+- 轮播图通过优化端点生成缓存图，缓存到 `白车轴草/media/index_img_cache/`。
+- 前端会预加载相邻轮播图，减少切换时的等待。
 - 首页主题色、首屏文案、推荐卡片和氛围标签会随轮播图切换。
 - 首屏提供进入文章列表、查看博主主页和阅读推荐文章的入口。
 - 下方展示最近更新，并提供全部文章、归档、标签和关于博主入口。
@@ -350,6 +380,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 昵称、简介、邮箱、GitHub、微博资料。
 - 页脚社交链接使用站点博主账号资料。
 - 作者主页，按用户展示头像、昵称、简介、文章列表、文章数量和总浏览量。
+- 作者主页支持根据好友状态展示加好友或私信入口。
 
 ### 文章
 
@@ -398,6 +429,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 解除好友。
 - 好友私信会话列表。
 - 私信发送、展示和已读状态。
+- 作者主页好友操作入口。
 - 导航栏好友申请和未读私信数量提示。
 - Django Admin 好友关系、好友申请和私信管理。
 
@@ -416,6 +448,20 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 一键标记全部通知为已读。
 - 评论、回复、好友申请、好友申请通过和私信自动生成通知。
 - Django Admin 通知管理。
+
+### 全站音乐播放器
+
+- 所有模板页面共享左下角音乐播放器入口。
+- 播放器曲目读取 `白车轴草/media/music/`。
+- 支持 `.mp3`、`.ogg`、`.wav` 和 `.m4a` 音频文件。
+- 支持同名 `.jpg`、`.jpeg`、`.png` 和 `.webp` 封面文件。
+- 支持同名 `.lrc` 和 `.txt` 歌词文件。
+- MP3 支持读取内嵌 `TIT2` 标题、`APIC` 封面和 `USLT` 歌词。
+- MP3 内嵌封面会缓存到 `白车轴草/media/music_cache/`。
+- 播放器支持播放列表、封面背景、歌词、进度条、上一首、下一首和播放状态保存。
+- 站内同源链接和常见表单提交会通过全局页面壳局部导航，减少切换页面或收藏操作时的
+  播放中断。
+- 左下角折叠按钮是旋转唱片样式；当前没有唱针、顶针或指针元素。
 
 ### AI 写作
 
@@ -452,6 +498,7 @@ python .\白车轴草\manage.py create_startup_post
 - 使用 DeepSeek 生成每日文章。
 - 默认创建公开且已发布的文章。
 - 使用 `daily:YYYY-MM-DD` 标签防止当天重复生成。
+- 当 DeepSeek 返回带日期前缀的标题时，命令会清理前缀，避免页面显示两个日期。
 - 根据文章内容从 Pexels 获取封面。
 - `--draft`：生成仅自己可见的草稿。
 - `--skip-cover`：跳过 Pexels 封面。
@@ -503,6 +550,7 @@ sudo systemctl enable --now clover-blog-startup-post.timer
 主要路由位于 `白车轴草/白车轴草/urls.py`：
 
 - `/`：沉浸式图片轮播欢迎页。
+- `/homepage-image/<path:image_file_name>/`：首页轮播图片优化缓存跳转端点。
 - `/admin/`：Django Admin。
 - `/index/`：文章列表页。
 - `/archive/`：文章归档页。
@@ -605,15 +653,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 136 test(s)`
-- `Ran 136 tests`
+- `Found 151 test(s)`
+- `Ran 151 tests`
 - `OK`
 
-2026-07-01 已重新运行：
+2026-07-03 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 136 tests
+Ran 151 tests
 OK
 ```
 
@@ -723,9 +771,10 @@ sudo clover-blog-deploy
 
 Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
-当前服务器已知成功执行迁移到 `0009`，并已创建超级用户。GitHub `main` 和本地
-SQLite 已验证到 `0011_registrationrequest.py`；生产服务器是否已执行 `0010` 和
-`0011`，需要用户在服务器运行一键部署后通过输出确认。
+截至 2026-07-03，生产服务器已通过一键部署更新到
+`608a537 fix: remove music player tonearm`，数据库迁移检查显示无待执行迁移。部署日志
+在 Gunicorn 重启窗口可能短暂出现 `curl: (22) The requested URL returned error: 502`；
+如果随后 `clover-blog`、`nginx`、本机首页和 Cloudflare 首页检查均正常，可按部署成功处理。
 
 当前 Cloudflare Quick Tunnel 使用：
 
@@ -776,27 +825,29 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 
 ## 当前线上验证状态
 
-截至 2026-06-27 已确认：
+截至 2026-07-03 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- HTTP 根路径当时返回 `302` 并跳转到 `/index/`；2026-07-01 本地代码已把 `/` 改为
-  沉浸式欢迎页，生产是否已更新需以一键部署后的验证为准。
+- 生产已部署到 `608a537 fix: remove music player tonearm`。
+- HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
+- 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
+- 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `聖誕星_spotdown.org.mp3`；
+  如果没有同名歌词文件或 MP3 内嵌歌词，播放器会显示“暂无歌词”。
 - Django Admin 可以登录。
 - DeepSeek 和 Pexels 环境变量能被 Django 读取。
 - AI 写作入口和 Pexels 封面功能已实际生成过文章和封面。
 - 每日 AI 自动发文定时器已启用，下一次自动运行由 systemd timer 管理。
-- 数据库迁移在线上已知执行到 `0009`；本地和 GitHub `main` 最新迁移为 `0011`，
-  生产执行状态待一键部署确认。
+- 数据库迁移在线上检查显示无待执行迁移；当前仓库最新迁移仍为
+  `0011_registrationrequest.py`。
 - 管理员账号已创建。
 
 ## 尚未完成的生产事项
 
-- 恢复 Codex SSH 部署公钥或由用户手动登录服务器运行 `sudo clover-blog-deploy`，
-  部署最新 GitHub `main` 并确认迁移 `0010` 和 `0011` 已执行。
 - 在生产 `/opt/clover-blog/.env` 配置 SMTP 邮件变量，并确认注册审核通过后能发送
   注册码邮件。
+- 给生产 `media/music/` 中的音乐补齐同名歌词文件，或确认 MP3 内嵌歌词可被正确读取。
 - Quick Tunnel 地址不稳定；长期使用应配置自有域名和 Cloudflare Named Tunnel。
 - 腾讯云公网 `80` 端口仍可直接访问，后续使用稳定 Tunnel 后可评估关闭。
 - Ubuntu `ufw` 当前未启用，腾讯云防火墙规则仍需在控制台单独管理。
@@ -816,6 +867,15 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - `/index/` 文章列表封面使用稳定宽高比，避免固定低分辨率拉伸造成锯齿。
 - `/index/` 搜索框不再包含日期输入；不要重新添加按日期筛选，除非重新设计完整筛选体验。
 - 评论和回复当前使用一层嵌套布局，不要未经设计改成无限层级。
+- 全站音乐播放器位于 `base.html` 中，播放器 DOM 必须保持在 `#site-page-shell` 外，否则
+  局部导航会打断播放。
+- 站内局部导航依赖 `window.cloverSiteNavigate`、`site:before-navigate`、
+  `#site-page-shell` 和 `#site-page-extra-js`；修改基础模板或页面级脚本时必须保留这些
+  协议。
+- 页面级额外 CSS 通过 `data-site-extra-css-boundary` 标记替换，新增页面内联 CSS 时要
+  避免破坏该边界。
+- 首页轮播脚本会监听 `site:before-navigate` 清理定时器，修改轮播时要继续避免重复定时器。
+- 音乐播放器当前左下角入口是旋转唱片按钮，不包含唱针、顶针或指针。
 
 ## 已知注意事项
 
@@ -840,9 +900,10 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - Quick Tunnel 的 URL 不能写死到业务代码、数据库或长期文档入口中。
 - 当前 `ALLOWED_HOSTS` 允许 `.trycloudflare.com` 和公网 IP。
 - 当前 `CSRF_TRUSTED_ORIGINS` 允许 `https://*.trycloudflare.com`。
-- 2026-06-27 当前 Codex SSH 批处理检查返回
-  `Permission denied (publickey,password)`；在部署公钥或认证恢复前，助手无法直接 SSH
-  登录服务器部署。
+- 生产部署日志在服务重启瞬间可能出现短暂 `502`；必须结合后续 systemd、Nginx、本机
+  首页和 Cloudflare 首页检查判断是否真正失败。
+- 音乐播放器读取 `media/music/`，该目录和 `media/music_cache/` 都不能提交到 Git。
+- 首页轮播读取 `media/index_img/`，优化缓存目录 `media/index_img_cache/` 不能提交到 Git。
 
 ## 协作与安全规则
 
