@@ -3006,8 +3006,9 @@ class SiteMusicPlayerTests(TestCase):
 
         self.assertContains(response, 'id="site-page-shell"')
         self.assertContains(response, 'id="site-page-extra-js"')
-        self.assertContains(response, 'site-music-record')
-        self.assertContains(response, 'site-music-tonearm')
+        self.assertContains(response, 'site-music-toggle-record')
+        self.assertContains(response, 'site-music-toggle-tonearm')
+        self.assertContains(response, 'id="siteMusicToggleImage"')
         self.assertContains(response, 'id="siteMusicListToggle"')
         self.assertContains(response, 'id="siteMusicList"')
         self.assertContains(response, 'site-music-card-backdrop')
