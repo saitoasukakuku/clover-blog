@@ -26,12 +26,13 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ## 当前交接摘要
 
 截至 2026-07-03，最新已部署功能提交为
-`ce4c557 feat: support flac music tracks`；后续如果只有 `AGENTS.md` 文档提交，不改变
+`78fe0e4 fix: read embedded flac covers`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `78fe0e4 fix: read embedded flac covers`
 - `ce4c557 feat: support flac music tracks`
 - `608a537 fix: remove music player tonearm`
 - `df813e5 fix: refine compact music player card`
@@ -48,7 +49,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `ce4c557`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `78fe0e4`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -774,7 +775,7 @@ sudo clover-blog-deploy
 Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
 截至 2026-07-03，生产服务器已通过一键部署更新到
-`ce4c557 feat: support flac music tracks`，数据库迁移检查显示无待执行迁移。部署日志
+`78fe0e4 fix: read embedded flac covers`，数据库迁移检查显示无待执行迁移。部署日志
 在 Gunicorn 重启窗口可能短暂出现 `curl: (22) The requested URL returned error: 502`；
 如果随后 `clover-blog`、`nginx`、本机首页和 Cloudflare 首页检查均正常，可按部署成功处理。
 
@@ -830,7 +831,7 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 截至 2026-07-03 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `ce4c557 feat: support flac music tracks`。
+- 生产已部署到 `78fe0e4 fix: read embedded flac covers`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
