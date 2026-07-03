@@ -26,12 +26,13 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ## 当前交接摘要
 
 截至 2026-07-03，最新已部署功能提交为
-`8efe442 fix: refine music player layout`；后续如果只有 `AGENTS.md` 文档提交，不改变
+`7c04836 fix: compact music player background`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `7c04836 fix: compact music player background`
 - `8efe442 fix: refine music player layout`
 - `78fe0e4 fix: read embedded flac covers`
 - `ce4c557 feat: support flac music tracks`
@@ -50,7 +51,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `8efe442`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `7c04836`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -83,6 +84,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 作者主页已增加好友状态操作：未加好友时显示加好友，已加好友时显示私信入口。
 - 全站左下角已增加音乐播放器，读取 `media/music/` 下音乐，支持播放列表、封面、歌词、
   MP3 内嵌封面/歌词、FLAC 内嵌封面、同名封面文件和同名歌词文件。当前设计没有唱针或指针。
+- 音乐播放器展开卡片已改为紧凑背景式布局：有封面时卡片自身使用封面做背景，不再拉出
+  单独的大封面区域；线上 `Fly` 曲目已验证封面背景正常显示。
 - 音乐播放器放在全局页面壳外，站内同源导航和常见表单提交会局部替换页面内容，从而
   尽量保持播放不中断。
 
@@ -462,7 +465,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - MP3 支持读取内嵌 `TIT2` 标题、`APIC` 封面和 `USLT` 歌词。
 - FLAC 支持读取内嵌 `PICTURE` 封面。
 - MP3 和 FLAC 内嵌封面会缓存到 `白车轴草/media/music_cache/`。
-- 播放器支持播放列表、完整封面显示、封面背景、歌词、独立进度条、上一首、下一首和播放状态保存。
+- 播放器支持播放列表、紧凑背景式封面、歌词、独立进度条、上一首、下一首和播放状态保存。
 - 站内同源链接和常见表单提交会通过全局页面壳局部导航，减少切换页面或收藏操作时的
   播放中断。
 - 左下角折叠按钮是旋转唱片样式；当前没有唱针、顶针或指针元素。
@@ -776,7 +779,7 @@ sudo clover-blog-deploy
 Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
 截至 2026-07-03，生产服务器已通过一键部署更新到
-`8efe442 fix: refine music player layout`，数据库迁移检查显示无待执行迁移。部署日志
+`7c04836 fix: compact music player background`，数据库迁移检查显示无待执行迁移。部署日志
 在 Gunicorn 重启窗口可能短暂出现 `curl: (22) The requested URL returned error: 502`；
 如果随后 `clover-blog`、`nginx`、本机首页和 Cloudflare 首页检查均正常，可按部署成功处理。
 
@@ -832,13 +835,15 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 截至 2026-07-03 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `8efe442 fix: refine music player layout`。
+- 生产已部署到 `7c04836 fix: compact music player background`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
 - 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
-- 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `聖誕星_spotdown.org.mp3`；
+- 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `Fly.flac` 等曲目；
   如果没有同名歌词文件或 MP3 内嵌歌词，播放器会显示“暂无歌词”。
+- 线上 599×698 视口已验证音乐播放器展开卡片约 202px 高，封面作为卡片背景显示，
+  旧的大封面块为隐藏状态。
 - Django Admin 可以登录。
 - DeepSeek 和 Pexels 环境变量能被 Django 读取。
 - AI 写作入口和 Pexels 封面功能已实际生成过文章和封面。
@@ -880,6 +885,7 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
   避免破坏该边界。
 - 首页轮播脚本会监听 `site:before-navigate` 清理定时器，修改轮播时要继续避免重复定时器。
 - 音乐播放器当前左下角入口是旋转唱片按钮，不包含唱针、顶针或指针。
+- 音乐播放器展开卡片当前使用封面图作为紧凑背景，不要再恢复成单独的大封面块。
 
 ## 已知注意事项
 
