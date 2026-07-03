@@ -3117,6 +3117,8 @@ class SiteMusicPlayerTests(TestCase):
 
         self.assertContains(response, 'site-music-control-strip')
         self.assertContains(response, 'site-music-progress-meter')
+        self.assertContains(response, 'scrollbar-width: thin;')
+        self.assertContains(response, '.site-music-list::-webkit-scrollbar')
         self.assertContains(response, 'site-music-card-background')
         self.assertContains(response, 'max-height: min(286px, calc(100vh - 112px));')
         self.assertNotContains(response, 'type="range"')

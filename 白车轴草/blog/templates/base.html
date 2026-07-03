@@ -748,15 +748,49 @@
             max-height: 86px;
             overflow-y: auto;
             padding: 8px;
+            scrollbar-color: rgba(46, 125, 50, .42) transparent;
+            scrollbar-width: thin;
         }
 
         .site-music-card.has-cover .site-music-list {
             background: rgba(255, 255, 255, .14);
             border-color: rgba(255, 255, 255, .2);
+            scrollbar-color: rgba(255, 255, 255, .46) transparent;
         }
 
         .site-music-list[hidden] {
             display: none;
+        }
+
+        .site-music-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .site-music-list::-webkit-scrollbar-track {
+            background: transparent;
+            border-radius: 999px;
+        }
+
+        .site-music-list::-webkit-scrollbar-thumb {
+            background: rgba(46, 125, 50, .34);
+            border: 2px solid transparent;
+            border-radius: 999px;
+            background-clip: padding-box;
+        }
+
+        .site-music-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(46, 125, 50, .58);
+            background-clip: padding-box;
+        }
+
+        .site-music-card.has-cover .site-music-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, .34);
+            background-clip: padding-box;
+        }
+
+        .site-music-card.has-cover .site-music-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, .58);
+            background-clip: padding-box;
         }
 
         .site-music-track-item {
