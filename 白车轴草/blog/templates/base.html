@@ -437,50 +437,6 @@
             z-index: 2;
         }
 
-        .site-music-toggle-tonearm {
-            background: rgba(255, 255, 255, .95);
-            border: 2px solid rgba(220, 228, 221, .95);
-            border-radius: 50%;
-            box-shadow: 0 5px 12px rgba(0, 0, 0, .22);
-            height: 18px;
-            pointer-events: none;
-            position: absolute;
-            right: -5px;
-            top: 4px;
-            width: 18px;
-            z-index: 3;
-        }
-
-        .site-music-toggle-needle {
-            background: linear-gradient(90deg, #f8fbf8, #aab6ad);
-            border-radius: 999px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, .22);
-            height: 4px;
-            left: -40px;
-            position: absolute;
-            top: 6px;
-            transform: rotate(32deg);
-            transform-origin: right center;
-            transition: transform .22s ease;
-            width: 46px;
-        }
-
-        .site-music-player.is-playing .site-music-toggle-needle {
-            transform: rotate(42deg);
-        }
-
-        .site-music-toggle-needle::after {
-            background: #1d221f;
-            border-radius: 0 0 5px 5px;
-            content: '';
-            height: 10px;
-            left: -4px;
-            position: absolute;
-            top: 1px;
-            transform: rotate(-18deg);
-            width: 5px;
-        }
-
         .site-music-card {
             background: rgba(255, 255, 255, .95);
             border: 1px solid rgba(200, 230, 201, .88);
@@ -1079,9 +1035,6 @@
             <span class="site-music-toggle-record" aria-hidden="true">
                 <img id="siteMusicToggleImage" alt="" hidden>
                 <span class="site-music-toggle-record-hole"></span>
-            </span>
-            <span class="site-music-toggle-tonearm" aria-hidden="true">
-                <span class="site-music-toggle-needle"></span>
             </span>
         </button>
         <section class="site-music-card site-music-card-compact" id="siteMusicCard">

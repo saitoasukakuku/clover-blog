@@ -3007,7 +3007,6 @@ class SiteMusicPlayerTests(TestCase):
         self.assertContains(response, 'id="site-page-shell"')
         self.assertContains(response, 'id="site-page-extra-js"')
         self.assertContains(response, 'site-music-toggle-record')
-        self.assertContains(response, 'site-music-toggle-tonearm')
         self.assertContains(response, 'id="siteMusicToggleImage"')
         self.assertContains(response, 'id="siteMusicListToggle"')
         self.assertContains(response, 'id="siteMusicList"')
@@ -3016,7 +3015,8 @@ class SiteMusicPlayerTests(TestCase):
         self.assertContains(response, 'handleSiteNavigationClick')
         self.assertContains(response, 'handleSiteNavigationSubmit')
         self.assertContains(response, 'site-music-card-compact')
-        self.assertContains(response, 'site-music-toggle-needle')
+        self.assertNotContains(response, 'site-music-toggle-tonearm')
+        self.assertNotContains(response, 'site-music-toggle-needle')
         self.assertContains(response, 'handleSiteMusicOutsideClick')
         self.assertContains(response, 'removeSiteMusicDetail')
 
