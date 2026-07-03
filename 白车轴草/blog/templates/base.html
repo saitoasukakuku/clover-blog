@@ -438,11 +438,11 @@
         }
 
         .site-music-card {
-            background: rgba(255, 255, 255, .95);
-            border: 1px solid rgba(200, 230, 201, .88);
-            border-radius: 22px;
+            background: rgba(250, 253, 250, .96);
+            border: 1px solid rgba(196, 220, 197, .84);
+            border-radius: 18px;
             bottom: 84px;
-            box-shadow: 0 22px 54px rgba(18, 52, 25, .22);
+            box-shadow: 0 22px 54px rgba(18, 52, 25, .24);
             color: #19321d;
             left: 0;
             opacity: 0;
@@ -452,7 +452,7 @@
             transform: translateY(10px) scale(.98);
             transform-origin: bottom left;
             transition: opacity .2s ease, transform .2s ease;
-            width: min(330px, calc(100vw - 34px));
+            width: min(336px, calc(100vw - 34px));
         }
 
         .site-music-card.has-cover {
@@ -487,8 +487,8 @@
 
         .site-music-card::after {
             background:
-                linear-gradient(180deg, rgba(9, 17, 10, .08), rgba(9, 17, 10, .78)),
-                linear-gradient(135deg, rgba(255, 255, 255, .52), rgba(255, 255, 255, .08));
+                linear-gradient(180deg, rgba(8, 13, 9, .04), rgba(8, 13, 9, .74)),
+                linear-gradient(135deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, .08));
             content: '';
             inset: 0;
             opacity: 0;
@@ -506,7 +506,7 @@
 
         .site-music-cover {
             align-items: center;
-            aspect-ratio: 2.35 / 1;
+            aspect-ratio: 1 / 1;
             background:
                 radial-gradient(circle at 18% 16%, rgba(255, 255, 255, .72), transparent 34%),
                 linear-gradient(135deg, #e8f5e9, #c8e6c9);
@@ -518,20 +518,40 @@
             position: relative;
         }
 
-        .site-music-card.has-cover .site-music-cover {
-            background-image:
-                linear-gradient(180deg, rgba(0, 0, 0, .08), rgba(0, 0, 0, .56)),
-                var(--site-music-cover-image);
+        .site-music-cover::before {
+            background-image: var(--site-music-cover-image);
             background-position: center;
+            background-repeat: no-repeat;
             background-size: cover;
+            content: '';
+            display: none;
+            filter: blur(18px) saturate(1.05);
+            inset: -18px;
+            opacity: .48;
+            position: absolute;
+            transform: scale(1.08);
+        }
+
+        .site-music-card.has-cover .site-music-cover {
+            background-color: #121914;
+            background-image: var(--site-music-cover-image);
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: contain;
+        }
+
+        .site-music-card.has-cover .site-music-cover::before {
+            display: block;
         }
 
         .site-music-cover-icon {
             opacity: .78;
+            position: relative;
+            z-index: 1;
         }
 
         .site-music-body {
-            padding: 12px;
+            padding: 14px;
         }
 
         .site-music-heading {
@@ -544,7 +564,7 @@
 
         .site-music-title {
             color: #1b5e20;
-            font-size: 1rem;
+            font-size: 1.04rem;
             font-weight: 800;
             line-height: 1.35;
             min-width: 0;
@@ -559,29 +579,47 @@
         }
 
         .site-music-controls {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .site-music-control-strip {
             align-items: center;
             display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
+            gap: 12px;
+            justify-content: center;
         }
 
         .site-music-control {
             align-items: center;
-            background: rgba(241, 248, 233, .95);
-            border: 1px solid rgba(216, 237, 213, .9);
+            background: rgba(241, 248, 233, .9);
+            border: 1px solid rgba(203, 224, 203, .9);
             border-radius: 999px;
+            box-shadow: 0 7px 18px rgba(23, 58, 28, .1);
             color: #2e7d32;
             display: inline-flex;
             flex: 0 0 auto;
-            height: 34px;
+            height: 38px;
             justify-content: center;
-            width: 34px;
+            transition: background .18s ease, box-shadow .18s ease, transform .18s ease;
+            width: 38px;
+        }
+
+        .site-music-control:hover {
+            background: #fff;
+            box-shadow: 0 9px 24px rgba(23, 58, 28, .16);
+            transform: translateY(-1px);
         }
 
         .site-music-card.has-cover .site-music-control {
-            background: rgba(255, 255, 255, .18);
+            background: rgba(255, 255, 255, .16);
             border-color: rgba(255, 255, 255, .28);
             color: #fff;
+        }
+
+        .site-music-card.has-cover .site-music-control:hover {
+            background: rgba(255, 255, 255, .26);
         }
 
         .site-music-control.active {
@@ -594,35 +632,76 @@
             background: #2e7d32;
             border-color: #2e7d32;
             color: #fff;
+            font-size: 1.05rem;
+            height: 48px;
+            width: 48px;
+        }
+
+        .site-music-progress-row {
+            align-items: center;
+            display: flex;
+            min-height: 18px;
+            padding: 0 2px;
         }
 
         .site-music-progress {
-            accent-color: #2e7d32;
+            appearance: none;
+            background: rgba(46, 125, 50, .18);
+            border-radius: 999px;
             flex: 1;
+            height: 6px;
             min-width: 0;
+            outline: none;
+        }
+
+        .site-music-progress::-webkit-slider-thumb {
+            appearance: none;
+            background: #fff;
+            border: 3px solid #2e7d32;
+            border-radius: 999px;
+            box-shadow: 0 3px 10px rgba(23, 58, 28, .22);
+            height: 18px;
+            width: 18px;
+        }
+
+        .site-music-progress::-moz-range-thumb {
+            background: #fff;
+            border: 3px solid #2e7d32;
+            border-radius: 999px;
+            box-shadow: 0 3px 10px rgba(23, 58, 28, .22);
+            height: 14px;
+            width: 14px;
         }
 
         .site-music-card.has-cover .site-music-progress {
-            accent-color: #fff;
+            background: rgba(255, 255, 255, .28);
+        }
+
+        .site-music-card.has-cover .site-music-progress::-webkit-slider-thumb {
+            border-color: #fff;
+        }
+
+        .site-music-card.has-cover .site-music-progress::-moz-range-thumb {
+            border-color: #fff;
         }
 
         .site-music-lyrics {
-            background: rgba(247, 251, 247, .88);
-            border: 1px solid rgba(226, 240, 223, .86);
-            border-radius: 12px;
+            background: rgba(247, 251, 247, .72);
+            border: 1px solid rgba(226, 240, 223, .72);
+            border-radius: 14px;
             color: #748078;
             display: grid;
             gap: 4px;
-            max-height: 64px;
+            max-height: 58px;
             overflow-y: auto;
             overscroll-behavior: contain;
-            padding: 10px;
+            padding: 9px 10px;
         }
 
         .site-music-card.has-cover .site-music-lyrics {
-            background: rgba(255, 255, 255, .15);
-            border-color: rgba(255, 255, 255, .2);
-            color: rgba(255, 255, 255, .78);
+            background: rgba(255, 255, 255, .12);
+            border-color: rgba(255, 255, 255, .18);
+            color: rgba(255, 255, 255, .72);
         }
 
         .site-music-lyric-line {
@@ -1051,16 +1130,20 @@
                         </button>
                     </div>
                     <div class="site-music-controls">
-                        <button class="site-music-control" type="button" id="siteMusicPrev" aria-label="上一首">
-                            <i class="fas fa-step-backward"></i>
-                        </button>
-                        <button class="site-music-control site-music-play" type="button" id="siteMusicPlay" aria-label="播放或暂停">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <button class="site-music-control" type="button" id="siteMusicNext" aria-label="下一首">
-                            <i class="fas fa-step-forward"></i>
-                        </button>
-                        <input class="site-music-progress" id="siteMusicProgress" type="range" min="0" max="100" value="0" aria-label="播放进度">
+                        <div class="site-music-control-strip">
+                            <button class="site-music-control" type="button" id="siteMusicPrev" aria-label="上一首">
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button class="site-music-control site-music-play" type="button" id="siteMusicPlay" aria-label="播放或暂停">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button class="site-music-control" type="button" id="siteMusicNext" aria-label="下一首">
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
+                        <div class="site-music-progress-row">
+                            <input class="site-music-progress" id="siteMusicProgress" type="range" min="0" max="100" value="0" aria-label="播放进度">
+                        </div>
                     </div>
                     <div class="site-music-list" id="siteMusicList" hidden></div>
                     <div class="site-music-lyrics" id="siteMusicLyrics" aria-live="polite"></div>

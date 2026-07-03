@@ -45,7 +45,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `264c53d fix: avoid date prefix in startup post titles`
 
 本地已完成 Django 检查、迁移一致性检查和 `blog` 应用测试，当前测试基线为
-`153` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
+`154` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
@@ -461,7 +461,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - MP3 支持读取内嵌 `TIT2` 标题、`APIC` 封面和 `USLT` 歌词。
 - FLAC 支持读取内嵌 `PICTURE` 封面。
 - MP3 和 FLAC 内嵌封面会缓存到 `白车轴草/media/music_cache/`。
-- 播放器支持播放列表、封面背景、歌词、进度条、上一首、下一首和播放状态保存。
+- 播放器支持播放列表、完整封面显示、封面背景、歌词、独立进度条、上一首、下一首和播放状态保存。
 - 站内同源链接和常见表单提交会通过全局页面壳局部导航，减少切换页面或收藏操作时的
   播放中断。
 - 左下角折叠按钮是旋转唱片样式；当前没有唱针、顶针或指针元素。
@@ -656,15 +656,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 153 test(s)`
-- `Ran 153 tests`
+- `Found 154 test(s)`
+- `Ran 154 tests`
 - `OK`
 
 2026-07-03 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 153 tests
+Ran 154 tests
 OK
 ```
 

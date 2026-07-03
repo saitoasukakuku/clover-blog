@@ -3103,6 +3103,23 @@ class SiteMusicPlayerTests(TestCase):
         self.assertContains(response, 'handleSiteMusicOutsideClick')
         self.assertContains(response, 'removeSiteMusicDetail')
 
+    def test_base_template_renders_refined_music_player_layout(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'full cover.flac'), 'wb') as music_file:
+                music_file.write(b'fLaC fake audio')
+            with open(os.path.join(music_directory, 'full cover.jpg'), 'wb') as cover_file:
+                cover_file.write(b'fake cover')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'site-music-control-strip')
+        self.assertContains(response, 'site-music-progress-row')
+        self.assertContains(response, 'background-size: contain;')
+        self.assertContains(response, 'aspect-ratio: 1 / 1;')
+
 
 class HomepageTemplateIntegrationTests(TestCase):
     def test_index_uses_shared_navigation_and_still_renders_search_and_posts(self):
