@@ -3116,9 +3116,12 @@ class SiteMusicPlayerTests(TestCase):
                 response = self.client.get(reverse('home'))
 
         self.assertContains(response, 'site-music-control-strip')
-        self.assertContains(response, 'site-music-progress-row')
+        self.assertContains(response, 'site-music-progress-meter')
         self.assertContains(response, 'site-music-card-background')
         self.assertContains(response, 'max-height: min(286px, calc(100vh - 112px));')
+        self.assertNotContains(response, 'type="range"')
+        self.assertNotContains(response, '::-webkit-slider-thumb')
+        self.assertNotContains(response, '::-moz-range-thumb')
         self.assertNotContains(response, 'background-size: contain;')
         self.assertNotContains(response, 'aspect-ratio: 1 / 1;')
 
