@@ -68,6 +68,40 @@ def build_fake_mp3_with_id3(*, title, cover_bytes, lyrics):
     return tag_header + tag_payload + b'\xff\xfb\x90\x64'
 
 
+def build_flac_metadata_block(block_type, block_payload, is_last=False):
+    block_header_byte = (0x80 if is_last else 0) | block_type
+    return bytes([block_header_byte]) + len(block_payload).to_bytes(3, 'big') + block_payload
+
+
+def build_flac_picture_payload(cover_bytes, mime_type='image/jpeg'):
+    mime_type_bytes = mime_type.encode('ascii')
+    description_bytes = b''
+    return (
+        (3).to_bytes(4, 'big')
+        + len(mime_type_bytes).to_bytes(4, 'big')
+        + mime_type_bytes
+        + len(description_bytes).to_bytes(4, 'big')
+        + description_bytes
+        + (1).to_bytes(4, 'big')
+        + (1).to_bytes(4, 'big')
+        + (24).to_bytes(4, 'big')
+        + (0).to_bytes(4, 'big')
+        + len(cover_bytes).to_bytes(4, 'big')
+        + cover_bytes
+    )
+
+
+def build_fake_flac_with_picture(cover_bytes):
+    streaminfo_payload = b'\x00' * 34
+    picture_payload = build_flac_picture_payload(cover_bytes)
+    return (
+        b'fLaC'
+        + build_flac_metadata_block(0, streaminfo_payload)
+        + build_flac_metadata_block(6, picture_payload, is_last=True)
+        + b'\xff\xf8fake audio'
+    )
+
+
 class DeletionFormParser(HTMLParser):
     def __init__(self, deletion_url):
         super().__init__()
@@ -2962,6 +2996,32 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(tracks[0]['audio_url'], '/media/music/%E6%97%A0%E6%8D%9F%E6%AD%8C%E6%9B%B2.flac')
         self.assertEqual(tracks[0]['cover_url'], '/media/music/%E6%97%A0%E6%8D%9F%E6%AD%8C%E6%9B%B2.webp')
         self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': None, 'text': '无损歌词'})
+
+    def test_music_tracks_fall_back_to_embedded_flac_cover(self):
+        embedded_cover_bytes = b'\xff\xd8fake-flac-cover\xff\xd9'
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'embedded-flac.flac'), 'wb') as music_file:
+                music_file.write(build_fake_flac_with_picture(embedded_cover_bytes))
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                from blog.context_processors import site_music_tracks
+
+                context = site_music_tracks(None)
+                cache_directory = os.path.join(temporary_media_root, 'music_cache')
+                self.assertTrue(os.path.isdir(cache_directory))
+                cached_cover_names = os.listdir(cache_directory)
+                cached_cover_path = os.path.join(cache_directory, cached_cover_names[0])
+
+                with open(cached_cover_path, 'rb') as cached_cover_file:
+                    cached_cover_bytes = cached_cover_file.read()
+
+        tracks = context['site_music_tracks']
+        self.assertEqual(len(tracks), 1)
+        self.assertEqual(tracks[0]['title'], 'embedded-flac')
+        self.assertTrue(tracks[0]['cover_url'].startswith('/media/music_cache/'))
+        self.assertEqual(cached_cover_bytes, embedded_cover_bytes)
 
     def test_music_tracks_fall_back_to_embedded_mp3_cover_and_lyrics(self):
         embedded_cover_bytes = b'\xff\xd8fake-cover\xff\xd9'

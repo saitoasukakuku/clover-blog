@@ -148,6 +148,46 @@ def extract_id3_uslt_frame(frame_payload):
     return decode_id3_text(encoding_byte, lyrics_bytes)
 
 
+def read_binary_uint32(raw_bytes, offset):
+    if offset + 4 > len(raw_bytes):
+        return None, offset
+    return int.from_bytes(raw_bytes[offset:offset + 4], 'big'), offset + 4
+
+
+def extract_flac_picture_block(block_payload):
+    offset = 0
+    _, offset = read_binary_uint32(block_payload, offset)
+
+    mime_type_length, offset = read_binary_uint32(block_payload, offset)
+    if mime_type_length is None or offset + mime_type_length > len(block_payload):
+        return None
+    mime_type = block_payload[offset:offset + mime_type_length].decode('ascii', errors='replace')
+    offset += mime_type_length
+    if mime_type == '-->':
+        return None
+
+    description_length, offset = read_binary_uint32(block_payload, offset)
+    if description_length is None or offset + description_length > len(block_payload):
+        return None
+    offset += description_length
+
+    for _ in range(4):
+        _, offset = read_binary_uint32(block_payload, offset)
+
+    image_data_length, offset = read_binary_uint32(block_payload, offset)
+    if image_data_length is None or offset + image_data_length > len(block_payload):
+        return None
+
+    image_bytes = block_payload[offset:offset + image_data_length]
+    if not image_bytes:
+        return None
+
+    return {
+        'extension': get_cover_extension_from_mime_type(mime_type),
+        'bytes': image_bytes,
+    }
+
+
 def read_mp3_id3_metadata(audio_file_path):
     metadata = {
         'title': '',
@@ -197,6 +237,47 @@ def read_mp3_id3_metadata(audio_file_path):
         frame_offset = frame_payload_end
 
     return metadata
+
+
+def read_flac_metadata(audio_file_path):
+    metadata = {
+        'title': '',
+        'embedded_cover': None,
+        'embedded_lyrics': '',
+    }
+
+    try:
+        with open(audio_file_path, 'rb') as audio_file:
+            if audio_file.read(4) != b'fLaC':
+                return metadata
+
+            while True:
+                block_header = audio_file.read(4)
+                if len(block_header) != 4:
+                    break
+
+                is_last_block = bool(block_header[0] & 0x80)
+                block_type = block_header[0] & 0x7F
+                block_size = int.from_bytes(block_header[1:4], 'big')
+                block_payload = audio_file.read(block_size)
+                if len(block_payload) != block_size:
+                    break
+
+                if block_type == 6 and metadata['embedded_cover'] is None:
+                    metadata['embedded_cover'] = extract_flac_picture_block(block_payload)
+
+                if is_last_block:
+                    break
+    except OSError:
+        return metadata
+
+    return metadata
+
+
+def read_audio_metadata(audio_file_path, audio_extension):
+    if audio_extension.lower() == '.flac':
+        return read_flac_metadata(audio_file_path)
+    return read_mp3_id3_metadata(audio_file_path)
 
 
 def find_same_name_file(directory_path, file_stem, extensions):
@@ -311,8 +392,8 @@ def read_text_file(file_path):
 
 def build_music_track(music_directory, audio_file_name):
     audio_file_path = os.path.join(music_directory, audio_file_name)
-    file_stem, _ = os.path.splitext(audio_file_name)
-    mp3_metadata = read_mp3_id3_metadata(audio_file_path)
+    file_stem, audio_extension = os.path.splitext(audio_file_name)
+    audio_metadata = read_audio_metadata(audio_file_path, audio_extension)
 
     cover_file_name, _ = find_same_name_file(
         music_directory,
@@ -328,21 +409,21 @@ def build_music_track(music_directory, audio_file_name):
     cover_url = ''
     if cover_file_name:
         cover_url = build_media_file_url(MUSIC_DIR_NAME, cover_file_name)
-    elif mp3_metadata['embedded_cover']:
+    elif audio_metadata['embedded_cover']:
         cover_url = write_embedded_cover_cache(
             audio_file_name,
             audio_file_path,
-            mp3_metadata['embedded_cover'],
+            audio_metadata['embedded_cover'],
         )
 
     raw_lyrics = ''
     if lyrics_file_name:
         raw_lyrics = read_text_file(lyrics_file_path)
-    elif mp3_metadata['embedded_lyrics']:
-        raw_lyrics = mp3_metadata['embedded_lyrics']
+    elif audio_metadata['embedded_lyrics']:
+        raw_lyrics = audio_metadata['embedded_lyrics']
 
     return {
-        'title': mp3_metadata['title'] or file_stem,
+        'title': audio_metadata['title'] or file_stem,
         'audio_url': build_media_file_url(MUSIC_DIR_NAME, audio_file_name),
         'cover_url': cover_url,
         'lyrics_lines': parse_lyrics_lines(raw_lyrics),
