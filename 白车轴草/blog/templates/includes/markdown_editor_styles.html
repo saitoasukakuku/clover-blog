@@ -1,24 +1,76 @@
 <style>
-    .markdown-editor-panel {
-        border: 1px solid #dcebdc;
-        border-radius: 8px;
+    .markdown-mode-entry {
+        display: flex;
+        justify-content: flex-start;
         margin-bottom: 10px;
+    }
+
+    .markdown-mode-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #cfe4cf;
+        border-radius: 999px;
+        padding: 9px 16px;
+        background: #f7fcf7;
+        color: #246b2c;
+        font-weight: 700;
+        line-height: 1;
+        transition: border-color .2s ease, background-color .2s ease, color .2s ease;
+    }
+
+    .markdown-mode-button:hover {
+        border-color: #4caf50;
+        background: #edf8ed;
+        color: #174d1f;
+    }
+
+    .markdown-editor-modal .modal-content {
+        border: 0;
+        border-radius: 12px;
         overflow: hidden;
+    }
+
+    .markdown-editor-modal .modal-header {
+        border-bottom: 1px solid #e4eee5;
         background: #fbfffb;
+    }
+
+    .markdown-editor-modal .modal-body {
+        padding: 0;
+        background: #f4f7f4;
+    }
+
+    .markdown-modal-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.12fr) minmax(320px, .88fr);
+        min-height: 66vh;
+    }
+
+    .markdown-modal-editor-pane,
+    .markdown-modal-preview-pane {
+        min-width: 0;
+    }
+
+    .markdown-modal-editor-pane {
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid #e0e9e1;
+        background: #fff;
     }
 
     .markdown-toolbar {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
-        padding: 8px;
-        border-bottom: 1px solid #e4f1e4;
-        background: #f3faf3;
+        gap: 8px;
+        padding: 10px;
+        border-bottom: 1px solid #e4eee5;
+        background: #fbfffb;
     }
 
     .markdown-tool-btn {
-        width: 36px;
-        height: 36px;
+        width: 38px;
+        height: 38px;
         border: 1px solid #cfe4cf;
         border-radius: 8px;
         display: inline-flex;
@@ -30,45 +82,108 @@
         transition: background-color .2s ease, border-color .2s ease, color .2s ease;
     }
 
-    .markdown-tool-btn:hover {
+    .markdown-tool-btn:hover,
+    .markdown-tool-btn.is-active {
         border-color: #4caf50;
         background: #eaf7ea;
         color: #1b5e20;
     }
 
-    .markdown-upload-status {
-        min-height: 20px;
-        padding: 0 10px 8px;
-        color: #6f7d71;
-        font-size: .82rem;
-    }
-
-    .markdown-preview {
-        max-height: 360px;
-        overflow: auto;
-        padding: 16px;
-        border-top: 1px solid #e4f1e4;
+    .markdown-modal-textarea {
+        flex: 1;
+        min-height: 58vh;
+        border: 0;
+        border-radius: 0;
+        resize: none;
+        font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+        font-size: .95rem;
+        line-height: 1.75;
+        padding: 18px;
         background: #fff;
-        color: #243126;
-        line-height: 1.8;
     }
 
-    .markdown-preview h2,
-    .markdown-preview h3,
-    .markdown-preview h4 {
-        color: #1d2b20;
+    .markdown-modal-textarea:focus {
+        box-shadow: none;
+    }
+
+    .markdown-modal-preview-pane {
+        display: flex;
+        flex-direction: column;
+        background: #f9fbf9;
+    }
+
+    .markdown-modal-preview-title {
+        padding: 14px 18px 10px;
+        color: #53705a;
+        font-size: .82rem;
         font-weight: 800;
-        margin: 0 0 12px;
+        letter-spacing: 0;
     }
 
-    .markdown-preview p {
+    .markdown-modal-preview {
+        flex: 1;
+        overflow: auto;
+        padding: 0 20px 22px;
+        color: #243126;
+        line-height: 1.85;
+    }
+
+    .markdown-modal-preview h2,
+    .markdown-modal-preview h3,
+    .markdown-modal-preview h4 {
+        color: #17241b;
+        font-weight: 800;
+        margin: 18px 0 12px;
+    }
+
+    .markdown-modal-preview p {
         margin-bottom: 1rem;
     }
 
-    .markdown-preview img {
+    .markdown-modal-preview a {
+        color: #2e7d32;
+        font-weight: 700;
+    }
+
+    .markdown-modal-preview img {
         max-width: 100%;
         border-radius: 8px;
         display: block;
-        margin: 12px 0;
+        margin: 14px 0;
+    }
+
+    .markdown-modal-footer {
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .markdown-upload-status {
+        min-height: 22px;
+        color: #65766a;
+        font-size: .86rem;
+    }
+
+    .markdown-upload-status.is-error {
+        color: #b42318;
+    }
+
+    @media (max-width: 991.98px) {
+        .markdown-modal-grid {
+            grid-template-columns: 1fr;
+            min-height: auto;
+        }
+
+        .markdown-modal-editor-pane {
+            border-right: 0;
+            border-bottom: 1px solid #e0e9e1;
+        }
+
+        .markdown-modal-textarea {
+            min-height: 46vh;
+        }
+
+        .markdown-modal-preview {
+            max-height: 42vh;
+        }
     }
 </style>

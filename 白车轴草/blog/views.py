@@ -349,7 +349,12 @@ def upload_post_image(request):
     image_file_name = f'post_images/{uuid.uuid4().hex[:16]}.{image_extension}'
     saved_image_path = default_storage.save(image_file_name, validated_image)
     image_url = f"{settings.MEDIA_URL.rstrip('/')}/{quote(saved_image_path)}"
-    return JsonResponse({'url': image_url})
+    raw_alt_text = os.path.splitext(os.path.basename(uploaded_image.name))[0].strip()
+    image_alt_text = re.sub(r'[\[\]\r\n]+', ' ', raw_alt_text).strip() or '图片'
+    return JsonResponse({
+        'url': image_url,
+        'markdown': f'![{image_alt_text}]({image_url})',
+    })
 
 
 def build_post_form_context(title, category, tags, content, visibility):

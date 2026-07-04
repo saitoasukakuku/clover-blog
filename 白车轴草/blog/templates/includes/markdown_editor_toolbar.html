@@ -1,25 +1,62 @@
-<div class="markdown-editor-panel" data-markdown-editor-for="{{ textarea_id }}" data-markdown-upload-url="{% url 'upload_post_image' %}">
-    <div class="markdown-toolbar" role="toolbar" aria-label="Markdown 工具栏">
-        <button type="button" class="markdown-tool-btn" data-markdown-action="heading" title="标题">
-            <i class="fas fa-heading"></i>
-        </button>
-        <button type="button" class="markdown-tool-btn" data-markdown-action="bold" title="加粗">
-            <i class="fas fa-bold"></i>
-        </button>
-        <button type="button" class="markdown-tool-btn" data-markdown-action="link" title="插入链接">
-            <i class="fas fa-link"></i>
-        </button>
-        <button type="button" class="markdown-tool-btn" data-markdown-action="image-url" title="插入图片链接">
-            <i class="fas fa-image"></i>
-        </button>
-        <label class="markdown-tool-btn" title="上传图片">
-            <i class="fas fa-upload"></i>
-            <input type="file" class="d-none" data-markdown-image-upload accept="image/*">
-        </label>
-        <button type="button" class="markdown-tool-btn" data-markdown-action="preview" title="预览">
-            <i class="fas fa-eye"></i>
-        </button>
+<div class="markdown-mode-entry">
+    <button type="button" class="markdown-mode-button" data-markdown-launcher-for="{{ textarea_id }}"
+        data-bs-toggle="modal" data-bs-target="#markdownEditorModal-{{ textarea_id }}">
+        <i class="fas fa-code"></i>
+        <span>Markdown 写入模式</span>
+    </button>
+</div>
+
+<div class="modal fade markdown-editor-modal" id="markdownEditorModal-{{ textarea_id }}" tabindex="-1"
+    aria-labelledby="markdownEditorModalLabel-{{ textarea_id }}" aria-hidden="true"
+    data-markdown-modal-for="{{ textarea_id }}" data-markdown-upload-url="{% url 'upload_post_image' %}">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-lg-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="markdownEditorModalLabel-{{ textarea_id }}">
+                    <i class="fas fa-code me-2"></i>Markdown 写入模式
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="markdown-modal-grid">
+                    <section class="markdown-modal-editor-pane">
+                        <div class="markdown-toolbar" role="toolbar" aria-label="Markdown 工具栏">
+                            <button type="button" class="markdown-tool-btn" data-markdown-action="heading" title="标题">
+                                <i class="fas fa-heading"></i>
+                            </button>
+                            <button type="button" class="markdown-tool-btn" data-markdown-action="bold" title="加粗">
+                                <i class="fas fa-bold"></i>
+                            </button>
+                            <button type="button" class="markdown-tool-btn" data-markdown-action="link" title="插入链接">
+                                <i class="fas fa-link"></i>
+                            </button>
+                            <button type="button" class="markdown-tool-btn" data-markdown-action="image-url" title="插入图片链接">
+                                <i class="fas fa-image"></i>
+                            </button>
+                            <button type="button" class="markdown-tool-btn" data-markdown-image-trigger title="上传图片">
+                                <i class="fas fa-upload"></i>
+                            </button>
+                            <button type="button" class="markdown-tool-btn" data-markdown-action="preview" title="显示或隐藏预览">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <input type="file" class="d-none" data-markdown-image-upload accept="image/*">
+                        </div>
+                        <label class="visually-hidden" for="markdownModalTextarea-{{ textarea_id }}">Markdown 正文</label>
+                        <textarea class="form-control markdown-modal-textarea" id="markdownModalTextarea-{{ textarea_id }}"
+                            data-markdown-modal-textarea spellcheck="false"></textarea>
+                    </section>
+                    <section class="markdown-modal-preview-pane" data-markdown-preview-pane>
+                        <div class="markdown-modal-preview-title">预览</div>
+                        <div class="markdown-modal-preview" data-markdown-preview></div>
+                    </section>
+                </div>
+            </div>
+            <div class="modal-footer markdown-modal-footer">
+                <div class="markdown-upload-status" data-markdown-status></div>
+                <button type="button" class="btn btn-success rounded-pill px-4" data-markdown-commit data-bs-dismiss="modal">
+                    完成
+                </button>
+            </div>
+        </div>
     </div>
-    <div class="markdown-upload-status" data-markdown-status></div>
-    <div class="markdown-preview d-none" data-markdown-preview></div>
 </div>

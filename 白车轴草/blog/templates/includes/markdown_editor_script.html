@@ -1,31 +1,90 @@
 <script>
     (function () {
-        if (window.cloverMarkdownEditorBound) {
-            return;
-        }
-        window.cloverMarkdownEditorBound = true;
-
-        function getPanelChild(panel, selector) {
-            return panel ? panel.querySelector(selector) : null;
+        if (window.cloverMarkdownEditorController && typeof window.cloverMarkdownEditorController.destroy === 'function') {
+            window.cloverMarkdownEditorController.destroy();
         }
 
-        function getTextarea(panel) {
-            var textareaId = panel.getAttribute('data-markdown-editor-for');
-            return document.getElementById(textareaId);
+        function closestElement(target, selector) {
+            return target && target.closest ? target.closest(selector) : null;
+        }
+
+        function getSourceTextarea(modal) {
+            var textareaId = modal ? modal.getAttribute('data-markdown-modal-for') : '';
+            return textareaId ? document.getElementById(textareaId) : null;
+        }
+
+        function getModalTextarea(modal) {
+            return modal ? modal.querySelector('[data-markdown-modal-textarea]') : null;
+        }
+
+        function getPreview(modal) {
+            return modal ? modal.querySelector('[data-markdown-preview]') : null;
+        }
+
+        function getStatus(modal) {
+            return modal ? modal.querySelector('[data-markdown-status]') : null;
+        }
+
+        function setStatus(modal, message, isError) {
+            var status = getStatus(modal);
+            if (!status) {
+                return;
+            }
+            status.textContent = message || '';
+            status.classList.toggle('is-error', Boolean(isError));
+        }
+
+        function saveSelection(textarea) {
+            if (!textarea || typeof textarea.selectionStart !== 'number') {
+                return;
+            }
+            textarea.dataset.markdownSelectionStart = String(textarea.selectionStart);
+            textarea.dataset.markdownSelectionEnd = String(textarea.selectionEnd);
+        }
+
+        function getSavedSelection(textarea) {
+            var selectionStart = parseInt(textarea.dataset.markdownSelectionStart || '', 10);
+            var selectionEnd = parseInt(textarea.dataset.markdownSelectionEnd || '', 10);
+            if (Number.isNaN(selectionStart) || Number.isNaN(selectionEnd)) {
+                selectionStart = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : textarea.value.length;
+                selectionEnd = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : selectionStart;
+            }
+            selectionStart = Math.max(0, Math.min(selectionStart, textarea.value.length));
+            selectionEnd = Math.max(selectionStart, Math.min(selectionEnd, textarea.value.length));
+            return { start: selectionStart, end: selectionEnd };
+        }
+
+        function dispatchTextareaInput(textarea) {
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
         function insertMarkdown(textarea, beforeText, selectedFallback, afterText) {
-            var selectionStart = textarea.selectionStart || 0;
-            var selectionEnd = textarea.selectionEnd || selectionStart;
+            var selection = getSavedSelection(textarea);
             var currentValue = textarea.value;
-            var selectedText = currentValue.slice(selectionStart, selectionEnd) || selectedFallback;
+            var selectedText = currentValue.slice(selection.start, selection.end) || selectedFallback;
             var insertedText = beforeText + selectedText + afterText;
-            textarea.value = currentValue.slice(0, selectionStart) + insertedText + currentValue.slice(selectionEnd);
+            textarea.value = currentValue.slice(0, selection.start) + insertedText + currentValue.slice(selection.end);
             textarea.focus();
             textarea.setSelectionRange(
-                selectionStart + beforeText.length,
-                selectionStart + beforeText.length + selectedText.length
+                selection.start + beforeText.length,
+                selection.start + beforeText.length + selectedText.length
             );
+            saveSelection(textarea);
+            dispatchTextareaInput(textarea);
+        }
+
+        function insertMarkdownBlock(textarea, markdownText) {
+            var selection = getSavedSelection(textarea);
+            var currentValue = textarea.value;
+            var needsLeadingNewline = selection.start > 0 && currentValue.charAt(selection.start - 1) !== '\n';
+            var needsTrailingNewline = selection.end < currentValue.length && currentValue.charAt(selection.end) !== '\n';
+            var insertedText = (needsLeadingNewline ? '\n' : '') + markdownText + (needsTrailingNewline ? '\n' : '');
+            textarea.value = currentValue.slice(0, selection.start) + insertedText + currentValue.slice(selection.end);
+            var cursorPosition = selection.start + insertedText.length;
+            textarea.focus();
+            textarea.setSelectionRange(cursorPosition, cursorPosition);
+            saveSelection(textarea);
+            dispatchTextareaInput(textarea);
         }
 
         function escapeMarkdownPreview(rawText) {
@@ -95,19 +154,76 @@
             }).filter(Boolean).join('\n\n');
         }
 
-        document.addEventListener('click', function (event) {
-            var actionButton = event.target.closest('[data-markdown-action]');
+        function updatePreview(modal) {
+            var textarea = getModalTextarea(modal);
+            var preview = getPreview(modal);
+            if (textarea && preview) {
+                preview.innerHTML = renderMarkdownPreview(textarea.value);
+            }
+        }
+
+        function syncModalFromSource(modal) {
+            var sourceTextarea = getSourceTextarea(modal);
+            var modalTextarea = getModalTextarea(modal);
+            if (!sourceTextarea || !modalTextarea) {
+                return;
+            }
+            modalTextarea.value = sourceTextarea.value;
+            saveSelection(modalTextarea);
+            setStatus(modal, '', false);
+            updatePreview(modal);
+        }
+
+        function syncSourceFromModal(modal) {
+            var sourceTextarea = getSourceTextarea(modal);
+            var modalTextarea = getModalTextarea(modal);
+            if (!sourceTextarea || !modalTextarea) {
+                return;
+            }
+            sourceTextarea.value = modalTextarea.value;
+            sourceTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function handleClick(event) {
+            var launcher = closestElement(event.target, '[data-markdown-launcher-for]');
+            if (launcher) {
+                var modalId = launcher.getAttribute('data-bs-target');
+                var modal = modalId ? document.querySelector(modalId) : null;
+                if (modal) {
+                    syncModalFromSource(modal);
+                }
+                return;
+            }
+
+            var imageTrigger = closestElement(event.target, '[data-markdown-image-trigger]');
+            if (imageTrigger) {
+                event.preventDefault();
+                var triggerModal = closestElement(imageTrigger, '[data-markdown-modal-for]');
+                var triggerTextarea = getModalTextarea(triggerModal);
+                var uploadInput = triggerModal ? triggerModal.querySelector('[data-markdown-image-upload]') : null;
+                if (triggerTextarea) {
+                    saveSelection(triggerTextarea);
+                }
+                if (uploadInput) {
+                    uploadInput.click();
+                }
+                return;
+            }
+
+            var actionButton = closestElement(event.target, '[data-markdown-action]');
             if (!actionButton) {
                 return;
             }
 
-            var panel = actionButton.closest('[data-markdown-editor-for]');
-            var textarea = getTextarea(panel);
+            var modal = closestElement(actionButton, '[data-markdown-modal-for]');
+            var textarea = getModalTextarea(modal);
             var action = actionButton.getAttribute('data-markdown-action');
-            var preview = getPanelChild(panel, '[data-markdown-preview]');
             if (!textarea) {
                 return;
             }
+
+            event.preventDefault();
+            saveSelection(textarea);
 
             if (action === 'heading') {
                 insertMarkdown(textarea, '## ', '小标题', '');
@@ -116,29 +232,54 @@
             } else if (action === 'link') {
                 insertMarkdown(textarea, '[', '链接文字', '](https://example.com)');
             } else if (action === 'image-url') {
-                insertMarkdown(textarea, '![', '图片说明', '](https://example.com/image.jpg)');
-            } else if (action === 'preview' && preview) {
-                preview.innerHTML = renderMarkdownPreview(textarea.value);
-                preview.classList.toggle('d-none');
+                insertMarkdownBlock(textarea, '![图片说明](https://example.com/image.jpg)');
+            } else if (action === 'preview') {
+                var previewPane = modal ? modal.querySelector('[data-markdown-preview-pane]') : null;
+                if (previewPane) {
+                    previewPane.classList.toggle('d-none');
+                    actionButton.classList.toggle('is-active', !previewPane.classList.contains('d-none'));
+                }
+                updatePreview(modal);
             }
-        });
+        }
 
-        document.addEventListener('change', function (event) {
-            var uploadInput = event.target.closest('[data-markdown-image-upload]');
+        function handleInput(event) {
+            var textarea = closestElement(event.target, '[data-markdown-modal-textarea]');
+            if (!textarea) {
+                return;
+            }
+            var modal = closestElement(textarea, '[data-markdown-modal-for]');
+            saveSelection(textarea);
+            syncSourceFromModal(modal);
+            updatePreview(modal);
+        }
+
+        function handleSelectionEvent(event) {
+            var textarea = closestElement(event.target, '[data-markdown-modal-textarea]');
+            if (textarea) {
+                saveSelection(textarea);
+            }
+        }
+
+        function handleUploadChange(event) {
+            var uploadInput = closestElement(event.target, '[data-markdown-image-upload]');
             if (!uploadInput || !uploadInput.files || !uploadInput.files.length) {
                 return;
             }
 
-            var panel = uploadInput.closest('[data-markdown-editor-for]');
-            var textarea = getTextarea(panel);
-            var status = getPanelChild(panel, '[data-markdown-status]');
-            var uploadUrl = panel.getAttribute('data-markdown-upload-url');
+            var modal = closestElement(uploadInput, '[data-markdown-modal-for]');
+            var textarea = getModalTextarea(modal);
+            var uploadUrl = modal ? modal.getAttribute('data-markdown-upload-url') : '';
             var csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
             var formData = new FormData();
             formData.append('image', uploadInput.files[0]);
-            if (status) {
-                status.textContent = '图片上传中...';
+
+            if (!textarea || !uploadUrl) {
+                uploadInput.value = '';
+                return;
             }
+
+            setStatus(modal, '图片上传中...', false);
 
             fetch(uploadUrl, {
                 method: 'POST',
@@ -157,21 +298,45 @@
                     });
                 })
                 .then(function (responseData) {
-                    if (textarea) {
-                        insertMarkdown(textarea, '![', uploadInput.files[0].name.replace(/\.[^.]+$/, ''), '](' + responseData.url + ')');
-                    }
-                    if (status) {
-                        status.textContent = '图片已插入正文。';
-                    }
+                    var insertedMarkdown = responseData.markdown || ('![' + uploadInput.files[0].name.replace(/\.[^.]+$/, '') + '](' + responseData.url + ')');
+                    insertMarkdownBlock(textarea, insertedMarkdown);
+                    setStatus(modal, '图片已插入正文。', false);
                 })
                 .catch(function (error) {
-                    if (status) {
-                        status.textContent = error.message;
-                    }
+                    setStatus(modal, error.message, true);
                 })
                 .finally(function () {
                     uploadInput.value = '';
                 });
-        });
+        }
+
+        function handleShownModal(event) {
+            var modal = closestElement(event.target, '[data-markdown-modal-for]');
+            var textarea = getModalTextarea(modal);
+            if (textarea) {
+                textarea.focus();
+                saveSelection(textarea);
+            }
+        }
+
+        document.addEventListener('click', handleClick);
+        document.addEventListener('input', handleInput);
+        document.addEventListener('change', handleUploadChange);
+        document.addEventListener('keyup', handleSelectionEvent);
+        document.addEventListener('mouseup', handleSelectionEvent);
+        document.addEventListener('select', handleSelectionEvent);
+        document.addEventListener('shown.bs.modal', handleShownModal);
+
+        window.cloverMarkdownEditorController = {
+            destroy: function () {
+                document.removeEventListener('click', handleClick);
+                document.removeEventListener('input', handleInput);
+                document.removeEventListener('change', handleUploadChange);
+                document.removeEventListener('keyup', handleSelectionEvent);
+                document.removeEventListener('mouseup', handleSelectionEvent);
+                document.removeEventListener('select', handleSelectionEvent);
+                document.removeEventListener('shown.bs.modal', handleShownModal);
+            }
+        };
     })();
 </script>

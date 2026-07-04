@@ -846,21 +846,26 @@ class AuthViewsTests(TestCase):
         self.assertEqual(post.author, user)
         self.assertEqual(post.tags, '生活,记录')
 
-    def test_create_post_shows_markdown_editor_toolbar(self):
+    def test_create_post_shows_markdown_editor_modal(self):
         User.objects.create_user(username='markdown-writer', password='StrongPass12345')
         self.client.login(username='markdown-writer', password='StrongPass12345')
 
         response = self.client.get(reverse('create_post'))
 
-        self.assertContains(response, 'data-markdown-editor-for="postContent"')
+        self.assertContains(response, 'data-markdown-launcher-for="postContent"')
+        self.assertContains(response, 'Markdown 写入模式')
+        self.assertContains(response, 'data-markdown-modal-for="postContent"')
+        self.assertContains(response, 'data-markdown-modal-textarea')
         self.assertContains(response, 'data-markdown-action="heading"')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-image-trigger')
         self.assertContains(response, 'data-markdown-image-upload')
         self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
-        self.assertContains(response, 'markdown-preview')
+        self.assertContains(response, 'markdown-modal-preview')
+        self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
 
-    def test_post_detail_edit_form_shows_markdown_editor_toolbar(self):
+    def test_post_detail_edit_form_shows_markdown_editor_modal(self):
         author = User.objects.create_user(username='markdown-editor', password='StrongPass12345')
         post = Post.objects.create(
             author=author,
@@ -874,13 +879,18 @@ class AuthViewsTests(TestCase):
 
         response = self.client.get(reverse('post_detail', args=[post.id]))
 
-        self.assertContains(response, 'data-markdown-editor-for="postContent"')
+        self.assertContains(response, 'data-markdown-launcher-for="postContent"')
+        self.assertContains(response, 'Markdown 写入模式')
+        self.assertContains(response, 'data-markdown-modal-for="postContent"')
+        self.assertContains(response, 'data-markdown-modal-textarea')
         self.assertContains(response, 'data-markdown-action="heading"')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-image-trigger')
         self.assertContains(response, 'data-markdown-image-upload')
         self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
-        self.assertContains(response, 'markdown-preview')
+        self.assertContains(response, 'markdown-modal-preview')
+        self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
 
     def test_upload_post_image_requires_login(self):
         response = self.client.post(reverse('upload_post_image'), {
@@ -909,6 +919,7 @@ class AuthViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response_data['url'].startswith('/media/post_images/'))
+        self.assertEqual(response_data['markdown'], f"![body-photo]({response_data['url']})")
         self.assertTrue(saved_file_exists)
 
     def test_upload_post_image_rejects_invalid_file(self):
