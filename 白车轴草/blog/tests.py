@@ -869,6 +869,9 @@ class AuthViewsTests(TestCase):
         self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
         self.assertNotContains(response, 'class="d-none" data-markdown-image-upload')
         self.assertNotContains(response, 'uploadInput.click();')
+        self.assertContains(response, 'compressMarkdownImage')
+        self.assertContains(response, '正在压缩图片...')
+        self.assertContains(response, 'canvas.toBlob')
 
     def test_post_detail_edit_form_shows_markdown_editor_modal(self):
         author = User.objects.create_user(username='markdown-editor', password='StrongPass12345')

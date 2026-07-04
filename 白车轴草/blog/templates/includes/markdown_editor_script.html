@@ -257,6 +257,70 @@
             }
         }
 
+        function buildCompressedImageName(fileName) {
+            var baseName = (fileName || 'image').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'image';
+            return baseName + '.jpg';
+        }
+
+        function compressMarkdownImage(imageFile) {
+            var maxImageEdge = 1600;
+            var jpegQuality = 0.82;
+            var skipCompressionBytes = 700 * 1024;
+
+            if (!imageFile || imageFile.size <= skipCompressionBytes || !/^image\//.test(imageFile.type) || imageFile.type === 'image/gif') {
+                return Promise.resolve(imageFile);
+            }
+
+            if (!window.FileReader || !window.Image || !document.createElement('canvas').toBlob) {
+                return Promise.resolve(imageFile);
+            }
+
+            return new Promise(function (resolve) {
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var image = new Image();
+                    image.onload = function () {
+                        var width = image.naturalWidth || image.width;
+                        var height = image.naturalHeight || image.height;
+                        var scale = Math.min(1, maxImageEdge / Math.max(width, height));
+                        var targetWidth = Math.max(1, Math.round(width * scale));
+                        var targetHeight = Math.max(1, Math.round(height * scale));
+                        var canvas = document.createElement('canvas');
+                        var context = canvas.getContext('2d');
+
+                        if (!context) {
+                            resolve(imageFile);
+                            return;
+                        }
+
+                        canvas.width = targetWidth;
+                        canvas.height = targetHeight;
+                        context.fillStyle = '#ffffff';
+                        context.fillRect(0, 0, targetWidth, targetHeight);
+                        context.drawImage(image, 0, 0, targetWidth, targetHeight);
+                        canvas.toBlob(function (imageBlob) {
+                            if (!imageBlob || imageBlob.size >= imageFile.size) {
+                                resolve(imageFile);
+                                return;
+                            }
+                            resolve(new File([imageBlob], buildCompressedImageName(imageFile.name), {
+                                type: 'image/jpeg',
+                                lastModified: Date.now(),
+                            }));
+                        }, 'image/jpeg', jpegQuality);
+                    };
+                    image.onerror = function () {
+                        resolve(imageFile);
+                    };
+                    image.src = reader.result;
+                };
+                reader.onerror = function () {
+                    resolve(imageFile);
+                };
+                reader.readAsDataURL(imageFile);
+            });
+        }
+
         function handleUploadChange(event) {
             var uploadInput = closestElement(event.target, '[data-markdown-image-upload]');
             if (!uploadInput || !uploadInput.files || !uploadInput.files.length) {
@@ -267,24 +331,34 @@
             var textarea = getModalTextarea(modal);
             var uploadUrl = modal ? modal.getAttribute('data-markdown-upload-url') : '';
             var csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
-            var formData = new FormData();
-            formData.append('image', uploadInput.files[0]);
+            var originalImageFile = uploadInput.files[0];
 
             if (!textarea || !uploadUrl) {
                 uploadInput.value = '';
                 return;
             }
 
-            setStatus(modal, '图片上传中...', false);
+            setStatus(modal, '正在压缩图片...', false);
 
-            fetch(uploadUrl, {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin',
-                headers: {
-                    'X-CSRFToken': csrfInput ? csrfInput.value : '',
-                },
-            })
+            compressMarkdownImage(originalImageFile)
+                .then(function (imageFileForUpload) {
+                    var formData = new FormData();
+                    formData.append('image', imageFileForUpload);
+                    if (imageFileForUpload.size < originalImageFile.size) {
+                        setStatus(modal, '图片已压缩，正在上传...', false);
+                    } else {
+                        setStatus(modal, '图片上传中...', false);
+                    }
+
+                    return fetch(uploadUrl, {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin',
+                        headers: {
+                            'X-CSRFToken': csrfInput ? csrfInput.value : '',
+                        },
+                    });
+                })
                 .then(function (response) {
                     return response.json().then(function (responseData) {
                         if (!response.ok) {
@@ -294,7 +368,7 @@
                     });
                 })
                 .then(function (responseData) {
-                    var insertedMarkdown = responseData.markdown || ('![' + uploadInput.files[0].name.replace(/\.[^.]+$/, '') + '](' + responseData.url + ')');
+                    var insertedMarkdown = responseData.markdown || ('![' + originalImageFile.name.replace(/\.[^.]+$/, '') + '](' + responseData.url + ')');
                     insertMarkdownBlock(textarea, insertedMarkdown);
                     setStatus(modal, '图片已插入正文。', false);
                 })
