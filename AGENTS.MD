@@ -26,12 +26,13 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ## 当前交接摘要
 
 截至 2026-07-04，最新已部署功能提交为
-`aec6702 feat: add markdown editor for posts`；后续如果只有 `AGENTS.md` 文档提交，不改变
+`5c2dbcf feat: add modal markdown editor`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `5c2dbcf feat: add modal markdown editor`
 - `aec6702 feat: add markdown editor for posts`
 - `f377a34 feat: add vision analysis for homepage copy`
 - `f590e4e fix: stabilize homepage copy generation`
@@ -59,7 +60,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `aec6702`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `5c2dbcf`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -74,9 +75,10 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 已新增归档页 `/archive/` 和标签页 `/tags/`，导航栏使用右侧快捷入口。
 - 文章详情页和首页文章卡片已展示可点击标签；标签点击进入首页 `?tag=` 精确标签筛选，
   不再复用关键词搜索；内部 `daily:*` 标签不展示。
-- 文章正文已支持轻量 Markdown 写作：创建页和编辑页都有工具栏，可插入标题、加粗、
-  链接、图片 URL、上传正文图片和本地预览；详情页渲染时会转义原始 HTML，并只允许安全
-  链接和安全图片地址。
+- 文章正文已支持轻量 Markdown 写作：创建页和编辑页都有“Markdown 写入模式”入口，
+  点击后打开大弹窗，可插入标题、加粗、链接、图片 URL、上传正文图片和本地预览；弹窗
+  输入会实时同步回原正文 textarea，详情页渲染时会转义原始 HTML，并只允许安全链接和
+  安全图片地址。
 - 已新增作者主页、文章收藏、收藏列表和通知中心；评论、回复、好友申请通过和私信会
   生成站内通知。
 - `/index/` 文章列表搜索框已移除按日期搜索；后端会忽略旧的 `date` 查询参数，
@@ -443,7 +445,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 预设分类和自定义分类。
 - 标签。
 - 封面上传、裁剪、移除和替换。
-- 正文 Markdown 工具栏，支持标题、加粗、链接、图片 URL、正文图片上传和本地预览。
+- 正文 Markdown 写入模式，点击后打开大弹窗，支持标题、加粗、链接、图片 URL、正文图片
+  上传和本地预览。
 - 正文图片上传保存到 `media/post_images/`，后端复用图片大小和格式校验。
 - `/index/` 文章列表关键词搜索。
 - 分类、作者和标签筛选。
@@ -902,7 +905,7 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 截至 2026-07-04 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `aec6702 feat: add markdown editor for posts`。
+- 生产已部署到 `5c2dbcf feat: add modal markdown editor`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 线上首页 HTML 已验证只有 1 个 `home-explore-panel`、1 个 `home-explore-grid`、
@@ -915,8 +918,10 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - 线上 `generate_homepage_copy --help` 已验证包含 `--vision-model` 和 `--skip-vision` 参数；
   未配置 `HOMEPAGE_VISION_API_KEY` 时不会调用视觉 API，会继续使用元数据降级路径。
 - Cloudflare 首页 HTML 已验证不再包含旧的“清爽一点的首页”固定文案。
-- 线上创建文章页和编辑文章页模板已验证引用共享 Markdown 工具栏，正文图片上传路由
-  `/index/create_post/image/` 已部署；共享工具栏包含本地预览容器和上传 URL。
+- 线上创建文章页已验证有 1 个 `data-markdown-launcher-for="postContent"`、1 个
+  `data-markdown-modal-for="postContent"`、1 个弹窗 textarea 和 1 个图片上传触发按钮。
+  正文图片上传路由 `/index/create_post/image/` 已部署，接口返回 `url` 和可直接插入的
+  `markdown` 字段。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
 - 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
 - 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `Fly.flac` 等曲目；
@@ -958,8 +963,9 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - `/` 欢迎页背景图来自 `media/index_img/`，不要把该媒体目录提交到 Git。
 - `/index/` 文章列表封面使用稳定宽高比，避免固定低分辨率拉伸造成锯齿。
 - `/index/` 搜索框不再包含日期输入；不要重新添加按日期筛选，除非重新设计完整筛选体验。
-- 创建和编辑文章正文使用共享 Markdown 工具栏 include；详情页正文通过 `post_content`
-  过滤器渲染，扩展格式时必须同步更新前端预览和后端安全过滤测试。
+- 创建和编辑文章正文使用共享 Markdown 写入模式 include；页面上只放入口按钮，实际编辑
+  在大弹窗内完成。详情页正文通过 `post_content` 过滤器渲染，扩展格式时必须同步更新
+  前端预览和后端安全过滤测试。
 - 评论和回复当前使用一层嵌套布局，不要未经设计改成无限层级。
 - 全站音乐播放器位于 `base.html` 中，播放器 DOM 必须保持在 `#site-page-shell` 外，否则
   局部导航会打断播放。
