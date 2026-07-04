@@ -26,12 +26,15 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ## 当前交接摘要
 
 截至 2026-07-04，最新已部署功能提交为
-`c5c8015 fix: streamline homepage exploration`；后续如果只有 `AGENTS.md` 文档提交，不改变
+`f590e4e fix: stabilize homepage copy generation`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `f590e4e fix: stabilize homepage copy generation`
+- `6dae2ec fix: batch homepage copy generation`
+- `8d08204 fix: stabilize homepage scroll and ai copy`
 - `c5c8015 fix: streamline homepage exploration`
 - `87a001f fix: style music playlist scrollbar`
 - `c1a3d1a fix: remove music player slider`
@@ -50,11 +53,11 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `264c53d fix: avoid date prefix in startup post titles`
 
 本地已完成 Django 检查、迁移一致性检查和 `blog` 应用测试，当前测试基线为
-`154` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
+`157` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `c5c8015`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `f590e4e`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -78,6 +81,12 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 首页重复入口已收口：首屏不再放“文章/归档/标签”三入口卡片，下方只保留一套
   “探索路径”面板；线上 HTML 已验证只有 1 个探索面板、1 个探索网格，旧
   `home-ambient-*` 入口为 0。
+- 首页“看最近更新”已从 `href="#home-latest"` 改为脚本滚动按钮，点击时用
+  `history.replaceState()` 更新 hash，再调用 `scrollIntoView()`，避免跳到最近更新后又被
+  原生 hash/focus 行为弹回。
+- 首页轮播文案支持通过 DeepSeek 生成缓存：`generate_homepage_copy` 命令根据图片文件名、
+  尺寸、色调和亮度描述批量生成文案，写入 `media/index_img_copy.json`。生产已为 136 张
+  首页图生成缓存，旧的固定“当前画面/清爽一点的首页”文案已不再出现在首页 HTML 中。
 - 注册流程已改为邮箱申请制：用户先填写邮箱，超级用户在站内审核页批准或拒绝；批准后
   系统发送一次性注册码邮件，用户用邮箱、注册码、用户名、昵称和密码完成注册。
 - 邮件发送配置已支持 `.env` 中的 SMTP 环境变量；本地 `DEBUG=True` 默认使用 console
@@ -159,11 +168,15 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `白车轴草/blog/templates/registration_requests.html`：超级用户注册审核页模板。
 - `白车轴草/blog/static/`：本地 JS、Bootstrap、Font Awesome 等资源。
 - `白车轴草/blog/management/commands/create_startup_post.py`：AI 自动发文命令。
+- `白车轴草/blog/management/commands/generate_homepage_copy.py`：按首页轮播图片描述批量调用
+  DeepSeek，生成首页轮播文案缓存。
 - `白车轴草/blog/migrations/`：数据库迁移，当前 GitHub `main` 最新为
   `0011_registrationrequest.py`。
 - `白车轴草/media/`：本地上传文件，已被 Git 忽略。
 - `白车轴草/media/index_img/`：沉浸式首页背景轮播图片目录，已被 Git 忽略。
 - `白车轴草/media/index_img_cache/`：首页轮播优化图缓存目录，运行时生成，已被 Git 忽略。
+- `白车轴草/media/index_img_copy.json`：首页轮播 DeepSeek 文案缓存文件，运行命令生成，已被
+  Git 忽略。
 - `白车轴草/media/music/`：全站音乐播放器音乐目录，已被 Git 忽略。
 - `白车轴草/media/music_cache/`：MP3 和 FLAC 内嵌封面导出的缓存目录，运行时生成，已被 Git 忽略。
 - `白车轴草/db.sqlite3`：本地开发数据库，已被 Git 忽略。
@@ -380,8 +393,10 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 背景轮播读取 `白车轴草/media/index_img/` 下的全部合法图片。
 - 轮播图通过优化端点生成缓存图，缓存到 `白车轴草/media/index_img_cache/`。
 - 前端会预加载相邻轮播图，减少切换时的等待。
-- 首页主题色、首屏文案、推荐卡片和氛围标签会随轮播图切换。
-- 首屏提供跳到最近更新和阅读推荐文章的入口，不再重复展示固定导航入口。
+- 首页主题色、首屏文案、推荐卡片和氛围标签会随轮播图切换；存在
+  `media/index_img_copy.json` 时优先使用 DeepSeek 生成的缓存文案，缺失时使用内置降级文案。
+- 首屏提供跳到最近更新和阅读推荐文章的入口，不再重复展示固定导航入口；“看最近更新”
+  使用脚本滚动按钮，不再直接使用 hash 链接。
 - 下方展示最近更新，并通过唯一的“探索路径”面板提供全部文章、归档、标签和关于博主入口。
 - 缺少轮播图片时有降级背景，不会阻断页面访问。
 
@@ -670,15 +685,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 154 test(s)`
-- `Ran 154 tests`
+- `Found 157 test(s)`
+- `Ran 157 tests`
 - `OK`
 
-2026-07-03 已重新运行：
+2026-07-04 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 154 tests
+Ran 157 tests
 OK
 ```
 
@@ -789,7 +804,7 @@ sudo clover-blog-deploy
 Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
 截至 2026-07-04，生产服务器已通过一键部署更新到
-`c5c8015 fix: streamline homepage exploration`，数据库迁移检查显示无待执行迁移。部署日志
+`f590e4e fix: stabilize homepage copy generation`，数据库迁移检查显示无待执行迁移。部署日志
 在 Gunicorn 重启窗口可能短暂出现 `curl: (22) The requested URL returned error: 502`；
 如果随后 `clover-blog`、`nginx`、本机首页和 Cloudflare 首页检查均正常，可按部署成功处理。
 
@@ -845,11 +860,17 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 截至 2026-07-04 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `c5c8015 fix: streamline homepage exploration`。
+- 生产已部署到 `f590e4e fix: stabilize homepage copy generation`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 线上首页 HTML 已验证只有 1 个 `home-explore-panel`、1 个 `home-explore-grid`、
   4 个 `home-explore-item`，旧 `home-ambient-card` 和 `home-ambient-link` 均为 0。
+- 线上首页 HTML 已验证不再包含 `href="#home-latest"`，包含
+  `data-home-scroll-target="home-latest"` 和 `scrollToHomeSection`，用于避免点击“看最近更新”
+  后滚动位置反弹。
+- 生产已运行 `generate_homepage_copy --batch-size 8`，为 136 张首页轮播图生成
+  `media/index_img_copy.json`；Django 读取检查显示 `images 136`、`cached_copy 136`。
+- Cloudflare 首页 HTML 已验证不再包含旧的“清爽一点的首页”固定文案。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
 - 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
 - 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `Fly.flac` 等曲目；
