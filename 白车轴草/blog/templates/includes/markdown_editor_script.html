@@ -87,6 +87,14 @@
             dispatchTextareaInput(textarea);
         }
 
+        function promptMarkdownImageUrl() {
+            var imageUrl = window.prompt('请输入图片地址');
+            if (!imageUrl) {
+                return '';
+            }
+            return imageUrl.trim();
+        }
+
         function escapeMarkdownPreview(rawText) {
             return rawText
                 .replace(/&/g, '&amp;')
@@ -228,7 +236,10 @@
             } else if (action === 'link') {
                 insertMarkdown(textarea, '[', '链接文字', '](https://example.com)');
             } else if (action === 'image-url') {
-                insertMarkdownBlock(textarea, '![图片说明](https://example.com/image.jpg)');
+                var imageUrl = promptMarkdownImageUrl();
+                if (imageUrl) {
+                    insertMarkdownBlock(textarea, '![图片说明](' + imageUrl + ')');
+                }
             } else if (action === 'preview') {
                 var previewPane = modal ? modal.querySelector('[data-markdown-preview-pane]') : null;
                 if (previewPane) {
@@ -321,26 +332,17 @@
             });
         }
 
-        function handleUploadChange(event) {
-            var uploadInput = closestElement(event.target, '[data-markdown-image-upload]');
-            if (!uploadInput || !uploadInput.files || !uploadInput.files.length) {
-                return;
-            }
-
-            var modal = closestElement(uploadInput, '[data-markdown-modal-for]');
-            var textarea = getModalTextarea(modal);
+        function uploadMarkdownImageFile(modal, textarea, originalImageFile, statusText) {
             var uploadUrl = modal ? modal.getAttribute('data-markdown-upload-url') : '';
             var csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
-            var originalImageFile = uploadInput.files[0];
 
-            if (!textarea || !uploadUrl) {
-                uploadInput.value = '';
-                return;
+            if (!textarea || !uploadUrl || !originalImageFile) {
+                return Promise.resolve();
             }
 
-            setStatus(modal, '正在压缩图片...', false);
+            setStatus(modal, statusText || '正在压缩图片...', false);
 
-            compressMarkdownImage(originalImageFile)
+            return compressMarkdownImage(originalImageFile)
                 .then(function (imageFileForUpload) {
                     var formData = new FormData();
                     formData.append('image', imageFileForUpload);
@@ -368,16 +370,65 @@
                     });
                 })
                 .then(function (responseData) {
-                    var insertedMarkdown = responseData.markdown || ('![' + originalImageFile.name.replace(/\.[^.]+$/, '') + '](' + responseData.url + ')');
+                    var fallbackAltText = (originalImageFile.name || '图片').replace(/\.[^.]+$/, '');
+                    var insertedMarkdown = responseData.markdown || ('![' + fallbackAltText + '](' + responseData.url + ')');
                     insertMarkdownBlock(textarea, insertedMarkdown);
                     setStatus(modal, '图片已插入正文。', false);
                 })
                 .catch(function (error) {
                     setStatus(modal, error.message, true);
-                })
+                });
+        }
+
+        function handleUploadChange(event) {
+            var uploadInput = closestElement(event.target, '[data-markdown-image-upload]');
+            if (!uploadInput || !uploadInput.files || !uploadInput.files.length) {
+                return;
+            }
+
+            var modal = closestElement(uploadInput, '[data-markdown-modal-for]');
+            var textarea = getModalTextarea(modal);
+            var originalImageFile = uploadInput.files[0];
+
+            if (!textarea) {
+                uploadInput.value = '';
+                return;
+            }
+
+            uploadMarkdownImageFile(modal, textarea, originalImageFile, '正在压缩图片...')
                 .finally(function () {
                     uploadInput.value = '';
                 });
+        }
+
+        function findPastedImageFile(clipboardData) {
+            if (!clipboardData || !clipboardData.items) {
+                return null;
+            }
+            for (var itemIndex = 0; itemIndex < clipboardData.items.length; itemIndex += 1) {
+                var clipboardItem = clipboardData.items[itemIndex];
+                if (clipboardItem.kind === 'file' && /^image\//.test(clipboardItem.type)) {
+                    return clipboardItem.getAsFile();
+                }
+            }
+            return null;
+        }
+
+        function handlePaste(event) {
+            var textarea = closestElement(event.target, '[data-markdown-modal-textarea]');
+            if (!textarea) {
+                return;
+            }
+
+            var pastedImageFile = findPastedImageFile(event.clipboardData);
+            if (!pastedImageFile) {
+                return;
+            }
+
+            event.preventDefault();
+            var modal = closestElement(textarea, '[data-markdown-modal-for]');
+            saveSelection(textarea);
+            uploadMarkdownImageFile(modal, textarea, pastedImageFile, '粘贴图片上传中...');
         }
 
         function handleShownModal(event) {
@@ -392,6 +443,7 @@
         document.addEventListener('click', handleClick);
         document.addEventListener('input', handleInput);
         document.addEventListener('change', handleUploadChange);
+        document.addEventListener('paste', handlePaste);
         document.addEventListener('keyup', handleSelectionEvent);
         document.addEventListener('mouseup', handleSelectionEvent);
         document.addEventListener('select', handleSelectionEvent);
@@ -402,6 +454,7 @@
                 document.removeEventListener('click', handleClick);
                 document.removeEventListener('input', handleInput);
                 document.removeEventListener('change', handleUploadChange);
+                document.removeEventListener('paste', handlePaste);
                 document.removeEventListener('keyup', handleSelectionEvent);
                 document.removeEventListener('mouseup', handleSelectionEvent);
                 document.removeEventListener('select', handleSelectionEvent);

@@ -872,6 +872,13 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'compressMarkdownImage')
         self.assertContains(response, '正在压缩图片...')
         self.assertContains(response, 'canvas.toBlob')
+        self.assertContains(response, 'position: sticky')
+        self.assertContains(response, 'top: 0')
+        self.assertContains(response, 'handlePaste')
+        self.assertContains(response, 'clipboardData.items')
+        self.assertContains(response, '粘贴图片上传中...')
+        self.assertContains(response, '请输入图片地址')
+        self.assertNotContains(response, 'https://example.com/image.jpg')
 
     def test_post_detail_edit_form_shows_markdown_editor_modal(self):
         author = User.objects.create_user(username='markdown-editor', password='StrongPass12345')
@@ -903,6 +910,28 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'markdown-modal-preview')
         self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
         self.assertNotContains(response, 'class="d-none" data-markdown-image-upload')
+        self.assertContains(response, 'position: sticky')
+        self.assertContains(response, 'handlePaste')
+        self.assertContains(response, 'clipboardData.items')
+        self.assertNotContains(response, 'https://example.com/image.jpg')
+
+    def test_post_detail_constrains_markdown_body_images(self):
+        author = User.objects.create_user(username='image-post-author', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='正文图片文章',
+            category='life',
+            content='正文前\n\n![图片说明](/media/post_images/example.jpg)\n\n正文后',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertContains(response, '.post-content img')
+        self.assertContains(response, 'max-width: 100%')
+        self.assertContains(response, 'height: auto')
+        self.assertContains(response, 'object-fit: contain')
 
     def test_upload_post_image_requires_login(self):
         response = self.client.post(reverse('upload_post_image'), {
