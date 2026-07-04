@@ -3157,7 +3157,7 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertTemplateUsed(response, 'home.html')
         self.assertTemplateUsed(response, 'base.html')
         self.assertContains(response, 'site:before-navigate')
-        self.assertContains(response, '开始阅读')
+        self.assertContains(response, '看最近更新')
         self.assertContains(response, reverse('index'))
 
         index_response = self.client.get(reverse('index'))
@@ -3166,15 +3166,28 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertTemplateUsed(index_response, 'index.html')
         self.assertContains(index_response, '搜索文章')
 
-    def test_home_ambient_card_uses_compact_navigation_links(self):
+    def test_home_keeps_exploration_links_in_single_dedicated_panel(self):
         response = self.client.get(reverse('home'))
 
-        self.assertContains(response, 'home-ambient-link')
+        self.assertNotContains(response, 'home-ambient-card')
+        self.assertNotContains(response, 'home-ambient-link')
+        self.assertContains(response, 'home-explore-panel')
+        self.assertContains(response, 'class="home-explore-panel"', count=1)
+        self.assertContains(response, 'class="home-explore-grid"', count=1)
+        self.assertContains(response, 'class="home-explore-item"', count=3)
+        self.assertContains(response, f'class="home-explore-item" href="{reverse("index")}"', count=1)
+        self.assertContains(response, f'class="home-explore-item" href="{reverse("archive")}"', count=1)
+        self.assertContains(response, f'class="home-explore-item" href="{reverse("tags")}"', count=1)
+        self.assertContains(response, '探索路径')
+        self.assertContains(response, '全部文章')
+        self.assertContains(response, '搜索、分类和作者筛选')
         self.assertContains(response, reverse('index'))
         self.assertContains(response, reverse('archive'))
         self.assertContains(response, reverse('tags'))
         self.assertNotContains(response, '顺着画面进入小站')
         self.assertNotContains(response, '先停一停，再进入文章、归档和标签。')
+        self.assertNotContains(response, '按心情进入，而不只是按条件筛选。')
+        self.assertNotContains(response, '想直接看全部内容，就进入阅读页')
 
     def test_home_recent_posts_use_public_visibility_for_anonymous_users(self):
         author = User.objects.create_user(username='public-home-author', password='StrongPass12345')

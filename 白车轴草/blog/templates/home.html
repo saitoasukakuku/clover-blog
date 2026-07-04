@@ -201,7 +201,6 @@
     }
 
     .home-feature-card,
-    .home-ambient-card,
     .home-post-card,
     .home-explore-panel {
         backdrop-filter: blur(20px);
@@ -249,54 +248,6 @@
         font-size: .94rem;
         line-height: 1.75;
         margin: 0;
-    }
-
-    .home-ambient-card {
-        background: rgba(255, 255, 255, .62);
-        border-radius: 22px;
-        display: grid;
-        gap: 10px;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        padding: 12px;
-    }
-
-    .home-ambient-link {
-        align-items: center;
-        background: rgba(255, 255, 255, .66);
-        border: 1px solid rgba(255, 255, 255, .78);
-        border-radius: 18px;
-        color: var(--home-text);
-        display: grid;
-        gap: 7px;
-        min-height: 82px;
-        padding: 12px 8px;
-        place-items: center;
-        text-align: center;
-        text-decoration: none;
-        transition: background .2s ease, transform .2s ease;
-    }
-
-    .home-ambient-link:hover {
-        background: var(--home-paper-strong);
-        color: var(--home-accent-strong);
-        transform: translateY(-1px);
-    }
-
-    .home-ambient-link i {
-        align-items: center;
-        background: var(--home-accent-soft);
-        border-radius: 999px;
-        color: var(--home-accent-strong);
-        display: inline-flex;
-        height: 34px;
-        justify-content: center;
-        width: 34px;
-    }
-
-    .home-ambient-link span {
-        font-size: .82rem;
-        font-weight: 900;
-        line-height: 1.2;
     }
 
     .home-carousel-controls {
@@ -373,14 +324,6 @@
         font-size: 1.45rem;
         font-weight: 900;
         margin: 0;
-    }
-
-    .home-section-head a {
-        color: var(--home-accent-strong);
-        font-size: .88rem;
-        font-weight: 900;
-        text-decoration: none;
-        white-space: nowrap;
     }
 
     .home-post-list {
@@ -578,22 +521,16 @@
                     <span>今日风景</span>
                 </div>
                 <h1 class="home-title" id="homeHeadline">在新的画面里，慢慢打开今天的阅读。</h1>
-                <p class="home-lead" id="homeLead">首页会从站点图库里轮换背景，再把你带到最近文章、归档和标签。</p>
+                <p class="home-lead" id="homeLead">首页会从站点图库里轮换背景，先给今天的阅读留出一个安静开场。</p>
                 <div class="home-actions">
-                    <a class="home-btn home-btn-primary" href="{% url 'index' %}">
-                        <i class="fas fa-book-open"></i>
-                        <span>开始阅读</span>
+                    <a class="home-btn home-btn-primary" href="#home-latest">
+                        <i class="fas fa-arrow-down"></i>
+                        <span>看最近更新</span>
                     </a>
-                    {% if owner %}
-                    <a class="home-btn" href="{% url 'author_profile' owner.username %}">
-                        <i class="fas fa-user-pen"></i>
-                        <span>认识博主</span>
-                    </a>
-                    {% endif %}
                     {% if featured_post %}
                     <a class="home-btn" href="{% url 'post_detail' featured_post.id %}">
-                        <i class="fas fa-shuffle"></i>
-                        <span>随机一篇</span>
+                        <i class="fas fa-bookmark"></i>
+                        <span>推荐一篇</span>
                     </a>
                     {% endif %}
                 </div>
@@ -608,24 +545,10 @@
                 <article class="home-feature-card">
                     <div class="home-feature-preview" id="homeFeaturePreview"></div>
                     <div class="home-feature-body">
-                        <div class="home-eyebrow">今日推荐</div>
-                        <div class="home-card-title" id="homeCardTitle">慢慢进入文章</div>
-                        <p class="home-card-text" id="homeCardText">从当前画面出发，读几篇最近更新，或者按标签继续探索。</p>
+                        <div class="home-eyebrow">当前画面</div>
+                        <div class="home-card-title" id="homeCardTitle">今天的阅读氛围</div>
+                        <p class="home-card-text" id="homeCardText">背景负责定调，最近更新和探索入口集中放在下方。</p>
                     </div>
-                </article>
-                <article class="home-ambient-card">
-                    <a class="home-ambient-link" href="{% url 'index' %}">
-                        <i class="fas fa-book-open"></i>
-                        <span>文章</span>
-                    </a>
-                    <a class="home-ambient-link" href="{% url 'archive' %}">
-                        <i class="fas fa-clock-rotate-left"></i>
-                        <span>归档</span>
-                    </a>
-                    <a class="home-ambient-link" href="{% url 'tags' %}">
-                        <i class="fas fa-tags"></i>
-                        <span>标签</span>
-                    </a>
                 </article>
             </aside>
         </div>
@@ -634,12 +557,11 @@
         {% endif %}
     </section>
 
-    <section class="home-content-preview" aria-label="最近更新和探索入口">
+    <section class="home-content-preview" id="home-latest" aria-label="最近更新和探索入口">
         <div class="home-preview-shell">
             <div>
                 <div class="home-section-head">
                     <h2>最近更新</h2>
-                    <a href="{% url 'index' %}">查看全部文章</a>
                 </div>
                 <div class="home-post-list">
                     {% for recent_post in recent_posts %}
@@ -668,24 +590,24 @@
 
             <aside class="home-explore-panel">
                 <div>
-                    <h2>按心情进入，而不只是按条件筛选。</h2>
-                    <p>想直接看全部内容，就进入阅读页；想慢慢翻，可以从归档、标签和最近更新开始。</p>
+                    <h2>探索路径</h2>
+                    <p>从最近更新继续，或者换一种方式回到旧文、主题和作者主页。</p>
                     <div class="home-explore-grid">
                         <a class="home-explore-item" href="{% url 'index' %}">
-                            <strong>阅读</strong>
-                            <span>进入完整文章列表</span>
+                            <strong>全部文章</strong>
+                            <span>搜索、分类和作者筛选</span>
                         </a>
                         <a class="home-explore-item" href="{% url 'archive' %}">
-                            <strong>归档</strong>
+                            <strong>时间归档</strong>
                             <span>按年月回看</span>
                         </a>
                         <a class="home-explore-item" href="{% url 'tags' %}">
-                            <strong>标签</strong>
+                            <strong>主题标签</strong>
                             <span>按兴趣浏览</span>
                         </a>
                         {% if profile %}
                         <a class="home-explore-item" href="{% if owner %}{% url 'author_profile' owner.username %}{% else %}{% url 'index' %}{% endif %}">
-                            <strong>{{ profile.display_name }}</strong>
+                            <strong>作者主页</strong>
                             <span>认识这个小站</span>
                         </a>
                         {% endif %}
