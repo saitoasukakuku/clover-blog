@@ -149,6 +149,9 @@ class Command(BaseCommand):
         image_descriptions_json = json.dumps(image_description_batch, ensure_ascii=False)
         request_body = {
             'model': model,
+            'thinking': {
+                'type': 'disabled',
+            },
             'messages': [
                 {
                     'role': 'system',
@@ -178,7 +181,7 @@ class Command(BaseCommand):
             'response_format': {
                 'type': 'json_object',
             },
-            'max_tokens': 700,
+            'max_tokens': max(1200, len(image_description_batch) * 420),
         }
         response_body = deepseek_client.send_deepseek_request(api_key, request_body)
         output_text = deepseek_client.extract_message_content(response_body)
