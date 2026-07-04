@@ -40,6 +40,7 @@
             }
             textarea.dataset.markdownSelectionStart = String(textarea.selectionStart);
             textarea.dataset.markdownSelectionEnd = String(textarea.selectionEnd);
+            textarea.dataset.markdownScrollTop = String(textarea.scrollTop || 0);
         }
 
         function getSavedSelection(textarea) {
@@ -54,37 +55,68 @@
             return { start: selectionStart, end: selectionEnd };
         }
 
+        function getSavedScrollTop(textarea) {
+            var savedScrollTop = parseInt(textarea.dataset.markdownScrollTop || '', 10);
+            if (Number.isNaN(savedScrollTop)) {
+                return textarea.scrollTop || 0;
+            }
+            return Math.max(0, savedScrollTop);
+        }
+
+        function focusTextareaWithoutPageJump(textarea) {
+            try {
+                textarea.focus({ preventScroll: true });
+            } catch (error) {
+                textarea.focus();
+            }
+        }
+
+        function restoreTextareaScroll(textarea, scrollTop) {
+            textarea.scrollTop = scrollTop;
+            textarea.dataset.markdownScrollTop = String(scrollTop);
+            window.requestAnimationFrame(function () {
+                textarea.scrollTop = scrollTop;
+                textarea.dataset.markdownScrollTop = String(scrollTop);
+            });
+        }
+
         function dispatchTextareaInput(textarea) {
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
         function insertMarkdown(textarea, beforeText, selectedFallback, afterText) {
             var selection = getSavedSelection(textarea);
+            var savedScrollTop = getSavedScrollTop(textarea);
             var currentValue = textarea.value;
             var selectedText = currentValue.slice(selection.start, selection.end) || selectedFallback;
             var insertedText = beforeText + selectedText + afterText;
             textarea.value = currentValue.slice(0, selection.start) + insertedText + currentValue.slice(selection.end);
-            textarea.focus();
+            focusTextareaWithoutPageJump(textarea);
             textarea.setSelectionRange(
                 selection.start + beforeText.length,
                 selection.start + beforeText.length + selectedText.length
             );
+            restoreTextareaScroll(textarea, savedScrollTop);
             saveSelection(textarea);
             dispatchTextareaInput(textarea);
+            restoreTextareaScroll(textarea, savedScrollTop);
         }
 
         function insertMarkdownBlock(textarea, markdownText) {
             var selection = getSavedSelection(textarea);
+            var savedScrollTop = getSavedScrollTop(textarea);
             var currentValue = textarea.value;
             var needsLeadingNewline = selection.start > 0 && currentValue.charAt(selection.start - 1) !== '\n';
             var needsTrailingNewline = selection.end < currentValue.length && currentValue.charAt(selection.end) !== '\n';
             var insertedText = (needsLeadingNewline ? '\n' : '') + markdownText + (needsTrailingNewline ? '\n' : '');
             textarea.value = currentValue.slice(0, selection.start) + insertedText + currentValue.slice(selection.end);
             var cursorPosition = selection.start + insertedText.length;
-            textarea.focus();
+            focusTextareaWithoutPageJump(textarea);
             textarea.setSelectionRange(cursorPosition, cursorPosition);
+            restoreTextareaScroll(textarea, savedScrollTop);
             saveSelection(textarea);
             dispatchTextareaInput(textarea);
+            restoreTextareaScroll(textarea, savedScrollTop);
         }
 
         function promptMarkdownImageUrl() {
@@ -166,7 +198,9 @@
             var textarea = getModalTextarea(modal);
             var preview = getPreview(modal);
             if (textarea && preview) {
+                var previewScrollTop = preview.scrollTop || 0;
                 preview.innerHTML = renderMarkdownPreview(textarea.value);
+                preview.scrollTop = previewScrollTop;
             }
         }
 
