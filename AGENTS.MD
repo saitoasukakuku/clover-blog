@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-- 状态更新时间：2026-07-03
+- 状态更新时间：2026-07-04
 - 项目名：白车轴草
 - 项目类型：Django 4.2 多用户博客
 - 本地工作区：`E:\projects\django-projects\白车轴草`
@@ -18,20 +18,21 @@
   `https://salary-undergraduate-euros-ampland.trycloudflare.com/`
 
 Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变化，不能作为稳定域名。
-截至 2026-07-03，该 HTTPS 地址已验证返回 `200 OK`。
+截至 2026-07-04，该 HTTPS 地址已验证返回 `200 OK`。
 
 仓库根目录用于 Git、依赖清单和协作文档，真正的 Django 工程位于
 `白车轴草/` 子目录。核心业务集中在单个 `blog` 应用中。
 
 ## 当前交接摘要
 
-截至 2026-07-03，最新已部署功能提交为
-`87a001f fix: style music playlist scrollbar`；后续如果只有 `AGENTS.md` 文档提交，不改变
+截至 2026-07-04，最新已部署功能提交为
+`c5c8015 fix: streamline homepage exploration`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `c5c8015 fix: streamline homepage exploration`
 - `87a001f fix: style music playlist scrollbar`
 - `c1a3d1a fix: remove music player slider`
 - `7c04836 fix: compact music player background`
@@ -53,7 +54,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `87a001f`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `c5c8015`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -74,6 +75,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
   文章卡片发布日期只作展示，不再作为筛选入口。
 - `/` 已改为沉浸式欢迎页，背景轮播读取 `白车轴草/media/index_img/` 下的图片；
   `/index/` 继续作为原文章列表页。
+- 首页重复入口已收口：首屏不再放“文章/归档/标签”三入口卡片，下方只保留一套
+  “探索路径”面板；线上 HTML 已验证只有 1 个探索面板、1 个探索网格，旧
+  `home-ambient-*` 入口为 0。
 - 注册流程已改为邮箱申请制：用户先填写邮箱，超级用户在站内审核页批准或拒绝；批准后
   系统发送一次性注册码邮件，用户用邮箱、注册码、用户名、昵称和密码完成注册。
 - 邮件发送配置已支持 `.env` 中的 SMTP 环境变量；本地 `DEBUG=True` 默认使用 console
@@ -377,8 +381,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 轮播图通过优化端点生成缓存图，缓存到 `白车轴草/media/index_img_cache/`。
 - 前端会预加载相邻轮播图，减少切换时的等待。
 - 首页主题色、首屏文案、推荐卡片和氛围标签会随轮播图切换。
-- 首屏提供进入文章列表、查看博主主页和阅读推荐文章的入口。
-- 下方展示最近更新，并提供全部文章、归档、标签和关于博主入口。
+- 首屏提供跳到最近更新和阅读推荐文章的入口，不再重复展示固定导航入口。
+- 下方展示最近更新，并通过唯一的“探索路径”面板提供全部文章、归档、标签和关于博主入口。
 - 缺少轮播图片时有降级背景，不会阻断页面访问。
 
 ### 账号与资料
@@ -784,8 +788,8 @@ sudo clover-blog-deploy
 
 Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
-截至 2026-07-03，生产服务器已通过一键部署更新到
-`87a001f fix: style music playlist scrollbar`，数据库迁移检查显示无待执行迁移。部署日志
+截至 2026-07-04，生产服务器已通过一键部署更新到
+`c5c8015 fix: streamline homepage exploration`，数据库迁移检查显示无待执行迁移。部署日志
 在 Gunicorn 重启窗口可能短暂出现 `curl: (22) The requested URL returned error: 502`；
 如果随后 `clover-blog`、`nginx`、本机首页和 Cloudflare 首页检查均正常，可按部署成功处理。
 
@@ -838,12 +842,14 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 
 ## 当前线上验证状态
 
-截至 2026-07-03 已确认：
+截至 2026-07-04 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `87a001f fix: style music playlist scrollbar`。
+- 生产已部署到 `c5c8015 fix: streamline homepage exploration`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
+- 线上首页 HTML 已验证只有 1 个 `home-explore-panel`、1 个 `home-explore-grid`、
+  4 个 `home-explore-item`，旧 `home-ambient-card` 和 `home-ambient-link` 均为 0。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
 - 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
 - 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `Fly.flac` 等曲目；
