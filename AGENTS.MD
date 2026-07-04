@@ -717,15 +717,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 159 test(s)`
-- `Ran 159 tests`
+- `Found 160 test(s)`
+- `Ran 160 tests`
 - `OK`
 
 2026-07-04 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 159 tests
+Ran 160 tests
 OK
 ```
 

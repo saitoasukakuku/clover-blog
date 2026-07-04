@@ -3174,6 +3174,12 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, 'history.replaceState')
         self.assertNotContains(response, 'href="#home-latest"')
 
+    def test_home_feature_card_does_not_show_current_image_eyebrow(self):
+        response = self.client.get(reverse('home'))
+
+        self.assertNotContains(response, '当前画面')
+        self.assertNotContains(response, 'home-eyebrow')
+
     def test_home_keeps_exploration_links_in_single_dedicated_panel(self):
         response = self.client.get(reverse('home'))
 
