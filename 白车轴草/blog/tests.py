@@ -3404,7 +3404,7 @@ class HomepageCopyGenerationCommandTests(TestCase):
             )
 
             with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
-                with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+                with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}, clear=True):
                     with patch(
                         'blog.management.commands.create_startup_post.Command.send_deepseek_request',
                         return_value={'choices': [{'message': {'content': json.dumps(generated_copy, ensure_ascii=False)}}]},
@@ -3418,6 +3418,109 @@ class HomepageCopyGenerationCommandTests(TestCase):
         self.assertEqual(cached_copy['valley.jpg']['card_title'], '山谷里的阅读邀请')
         self.assertEqual(cached_copy['valley.jpg']['moods'], ['山谷', '晴天', '慢读'])
         self.assertEqual(send_deepseek_request.call_count, 1)
+
+    def test_generate_homepage_copy_sends_visual_analysis_to_deepseek(self):
+        generated_copy = {
+            'kicker': '动漫 · 午后',
+            'headline': '她停在画面里，像一段夏天回声。',
+            'lead': '识别到动漫人物和街景后，首页文案不再只写颜色。',
+            'card_title': '角色与夏日街景',
+            'card_text': '用画面主体做开场，保留轻一点的阅读氛围。',
+            'moods': ['动漫', '夏日', '街景'],
+        }
+        vision_analysis = {
+            'subjects': ['少女', '街道', '校服'],
+            'scene': '夏日街道',
+            'style': '动漫截图',
+            'character_candidates': ['本间芽衣子'],
+            'concise_description': '疑似本间芽衣子站在夏日街道上，画面是柔和动漫风格。',
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            Image.new('RGB', (900, 1200), color=(180, 210, 230)).save(
+                os.path.join(image_directory, 'anime-scene.jpg'),
+                format='JPEG',
+            )
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                with patch.dict(
+                    os.environ,
+                    {
+                        'DEEPSEEK_API_KEY': 'test-key',
+                        'HOMEPAGE_VISION_API_KEY': 'vision-key',
+                    },
+                    clear=True,
+                ):
+                    with patch(
+                        'blog.management.commands.generate_homepage_copy.Command.send_openai_response_request',
+                        return_value={'output_text': json.dumps(vision_analysis, ensure_ascii=False)},
+                    ) as send_openai_request:
+                        with patch(
+                            'blog.management.commands.create_startup_post.Command.send_deepseek_request',
+                            return_value={'choices': [{'message': {'content': json.dumps(generated_copy, ensure_ascii=False)}}]},
+                        ) as send_deepseek_request:
+                            call_command('generate_homepage_copy', stdout=StringIO())
+
+            copy_file_path = os.path.join(temporary_media_root, 'index_img_copy.json')
+            with open(copy_file_path, 'r', encoding='utf-8') as copy_file:
+                cached_copy = json.load(copy_file)
+
+        openai_request_body = send_openai_request.call_args[0][1]
+        openai_user_content = openai_request_body['input'][0]['content']
+        openai_image_items = [
+            content_item for content_item in openai_user_content
+            if content_item.get('type') == 'input_image'
+        ]
+        deepseek_request_body = send_deepseek_request.call_args[0][1]
+        deepseek_request_json = json.dumps(deepseek_request_body, ensure_ascii=False)
+
+        self.assertEqual(send_openai_request.call_args[0][0], 'vision-key')
+        self.assertEqual(len(openai_image_items), 1)
+        self.assertTrue(openai_image_items[0]['image_url'].startswith('data:image/jpeg;base64,'))
+        self.assertIn('本间芽衣子', deepseek_request_json)
+        self.assertIn('动漫截图', deepseek_request_json)
+        self.assertEqual(cached_copy['anime-scene.jpg']['card_title'], '角色与夏日街景')
+
+    def test_generate_homepage_copy_skip_vision_avoids_visual_request(self):
+        generated_copy = {
+            'kicker': '山谷 · 清亮',
+            'headline': '把山风放进今天的首页。',
+            'lead': '即使配置了视觉 key，也可以临时跳过视觉识别。',
+            'card_title': '跳过视觉识别',
+            'card_text': '命令退回到元数据描述，再生成首页短文案。',
+            'moods': ['跳过', '缓存', '首页'],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            Image.new('RGB', (1200, 700), color=(80, 150, 110)).save(
+                os.path.join(image_directory, 'skip-vision.jpg'),
+                format='JPEG',
+            )
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                with patch.dict(
+                    os.environ,
+                    {
+                        'DEEPSEEK_API_KEY': 'test-key',
+                        'HOMEPAGE_VISION_API_KEY': 'vision-key',
+                    },
+                    clear=True,
+                ):
+                    with patch(
+                        'blog.management.commands.generate_homepage_copy.Command.send_openai_response_request',
+                        create=True,
+                    ) as send_openai_request:
+                        with patch(
+                            'blog.management.commands.create_startup_post.Command.send_deepseek_request',
+                            return_value={'choices': [{'message': {'content': json.dumps(generated_copy, ensure_ascii=False)}}]},
+                        ):
+                            call_command('generate_homepage_copy', '--skip-vision', stdout=StringIO())
+
+        self.assertFalse(send_openai_request.called)
 
 
 class PostDeletionTests(TestCase):

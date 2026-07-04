@@ -84,9 +84,11 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 首页“看最近更新”已从 `href="#home-latest"` 改为脚本滚动按钮，点击时用
   `history.replaceState()` 更新 hash，再调用 `scrollIntoView()`，避免跳到最近更新后又被
   原生 hash/focus 行为弹回。
-- 首页轮播文案支持通过 DeepSeek 生成缓存：`generate_homepage_copy` 命令根据图片文件名、
-  尺寸、色调和亮度描述批量生成文案，写入 `media/index_img_copy.json`。生产已为 136 张
-  首页图生成缓存，旧的固定“当前画面/清爽一点的首页”文案已不再出现在首页 HTML 中。
+- 首页轮播文案支持通过视觉识别和 DeepSeek 生成缓存：`generate_homepage_copy` 命令可先用
+  `HOMEPAGE_VISION_API_KEY` 配置的视觉模型分析图片主体、场景、风格和角色候选，再交给
+  DeepSeek 生成短文案，写入 `media/index_img_copy.json`。未配置视觉 key 或使用
+  `--skip-vision` 时会回退到图片文件名、尺寸、色调和亮度描述。生产已为 136 张首页图生成
+  旧版缓存，旧的固定“当前画面/清爽一点的首页”文案已不再出现在首页 HTML 中。
 - 注册流程已改为邮箱申请制：用户先填写邮箱，超级用户在站内审核页批准或拒绝；批准后
   系统发送一次性注册码邮件，用户用邮箱、注册码、用户名、昵称和密码完成注册。
 - 邮件发送配置已支持 `.env` 中的 SMTP 环境变量；本地 `DEBUG=True` 默认使用 console
@@ -113,6 +115,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 在生产 `/opt/clover-blog/.env` 配好 SMTP，至少包含 `EMAIL_HOST`、`EMAIL_PORT`、
   `EMAIL_HOST_USER`、`EMAIL_HOST_PASSWORD`、`EMAIL_USE_TLS` 或 `EMAIL_USE_SSL`、
   `DEFAULT_FROM_EMAIL`。
+- 如果希望首页新增图片自动识别画面主体、场景和动漫角色，应在生产 `.env` 配置
+  `HOMEPAGE_VISION_API_KEY`，可选配置 `HOMEPAGE_VISION_MODEL`；新增图片后重新运行
+  `.venv/bin/python 白车轴草/manage.py generate_homepage_copy --batch-size 8`。
 - 给 `media/music/` 中的音乐补同名 `.lrc` 或 `.txt` 歌词文件；没有同名歌词或 MP3 内嵌
   歌词时，播放器会显示“暂无歌词”。
 - 后续代码修改完成后仍按流程运行检查、提交、推送，并在服务器执行
@@ -139,6 +144,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - Font Awesome
 - Cropper.js
 - DeepSeek API
+- OpenAI Responses API（可选，用于首页图片视觉识别）
 - Pexels API
 - Cloudflare Tunnel
 
@@ -169,7 +175,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `白车轴草/blog/static/`：本地 JS、Bootstrap、Font Awesome 等资源。
 - `白车轴草/blog/management/commands/create_startup_post.py`：AI 自动发文命令。
 - `白车轴草/blog/management/commands/generate_homepage_copy.py`：按首页轮播图片描述批量调用
-  DeepSeek，生成首页轮播文案缓存。
+  DeepSeek，生成首页轮播文案缓存；配置 `HOMEPAGE_VISION_API_KEY` 后会先调用视觉模型识别
+  图片内容。
 - `白车轴草/blog/migrations/`：数据库迁移，当前 GitHub `main` 最新为
   `0011_registrationrequest.py`。
 - `白车轴草/media/`：本地上传文件，已被 Git 忽略。
@@ -394,7 +401,10 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 轮播图通过优化端点生成缓存图，缓存到 `白车轴草/media/index_img_cache/`。
 - 前端会预加载相邻轮播图，减少切换时的等待。
 - 首页主题色、首屏文案、推荐卡片和氛围标签会随轮播图切换；存在
-  `media/index_img_copy.json` 时优先使用 DeepSeek 生成的缓存文案，缺失时使用内置降级文案。
+  `media/index_img_copy.json` 时优先使用生成缓存文案，缺失时使用内置降级文案。
+- 首页文案缓存命令支持可选视觉识别：配置 `HOMEPAGE_VISION_API_KEY` 后会先把图片压缩为
+  data URL，调用 OpenAI Responses API 识别主体、场景、风格和角色候选，再交给 DeepSeek
+  写简洁中文文案；未配置时仍使用文件名、尺寸、亮度和平均色调作为降级描述。
 - 首屏提供跳到最近更新和阅读推荐文章的入口，不再重复展示固定导航入口；“看最近更新”
   使用脚本滚动按钮，不再直接使用 hash 链接。
 - 下方展示最近更新，并通过唯一的“探索路径”面板提供全部文章、归档、标签和关于博主入口。
@@ -577,6 +587,24 @@ sudo systemctl enable --now clover-blog-startup-post.timer
 - 第六行：暂停每日自动发文。
 - 第七行：恢复每日自动发文。
 
+### 首页轮播文案生成
+
+新增首页图片后，在服务器项目目录运行：
+
+```bash
+.venv/bin/python 白车轴草/manage.py generate_homepage_copy --batch-size 8
+```
+
+命令行为：
+
+- 默认只为没有缓存文案的新图片生成 `media/index_img_copy.json` 条目，已有条目会跳过。
+- 如果生产 `.env` 配置了 `HOMEPAGE_VISION_API_KEY`，命令会先调用视觉模型识别画面主体、
+  场景、风格和角色候选，再交给 DeepSeek 写首页短文案。
+- 如果没有配置 `HOMEPAGE_VISION_API_KEY`，命令会回退到文件名、尺寸、亮度和平均色调描述。
+- `--skip-vision`：即使配置了视觉 key，也跳过视觉识别。
+- `--force`：重新生成所有图片文案，会覆盖已有缓存。
+- `--vision-model 模型名`：覆盖 `.env` 中的 `HOMEPAGE_VISION_MODEL`。
+
 ## 路由
 
 主要路由位于 `白车轴草/白车轴草/urls.py`：
@@ -646,6 +674,9 @@ API Key、数据库密码、Django Secret Key 或其他凭据提交到 Git。
 - `DB_PORT`
 - `DEEPSEEK_API_KEY`
 - `DEEPSEEK_MODEL`
+- `DEEPSEEK_HOMEPAGE_COPY_MODEL`
+- `HOMEPAGE_VISION_API_KEY`
+- `HOMEPAGE_VISION_MODEL`
 - `PEXELS_API_KEY`
 - `STARTUP_POST_USERNAME`
 - `EMAIL_BACKEND`
@@ -685,15 +716,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 157 test(s)`
-- `Ran 157 tests`
+- `Found 159 test(s)`
+- `Ran 159 tests`
 - `OK`
 
 2026-07-04 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 157 tests
+Ran 159 tests
 OK
 ```
 
