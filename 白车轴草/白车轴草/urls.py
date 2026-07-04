@@ -34,6 +34,7 @@ urlpatterns = [
     path('notifications/read_all/', views.mark_all_notifications_read, name='mark_all_notifications_read'),
     path('index/create_post/', views.create_post, name='create_post'),
     path('index/create_post/ai/', views.generate_ai_post, name='generate_ai_post'),
+    path('index/create_post/image/', views.upload_post_image, name='upload_post_image'),
     path('drafts/', views.drafts_list, name='drafts'),
     path('edit_post/<int:post_id>/', views.edit_post, name='edit_post'),
     path('delete_draft/<int:post_id>/', views.delete_draft, name='delete_draft'),

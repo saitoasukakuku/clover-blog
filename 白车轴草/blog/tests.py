@@ -3,7 +3,7 @@ import os
 import tempfile
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
-from io import StringIO
+from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django import forms
@@ -29,6 +29,7 @@ from blog.models import (
     RegistrationRequest,
     UserProfile,
 )
+from blog.templatetags.blog_extras import post_content
 from blog.views import AI_COVER_TOKEN_SALT
 
 
@@ -66,6 +67,16 @@ def build_fake_mp3_with_id3(*, title, cover_bytes, lyrics):
     tag_payload = title_frame + cover_frame + lyrics_frame
     tag_header = b'ID3\x03\x00\x00' + encode_id3_syncsafe_size(len(tag_payload))
     return tag_header + tag_payload + b'\xff\xfb\x90\x64'
+
+
+def build_uploaded_test_image(file_name='post-image.jpg', color=(80, 150, 110)):
+    image_bytes = BytesIO()
+    Image.new('RGB', (32, 32), color=color).save(image_bytes, format='JPEG')
+    return SimpleUploadedFile(
+        file_name,
+        image_bytes.getvalue(),
+        content_type='image/jpeg',
+    )
 
 
 def build_flac_metadata_block(block_type, block_payload, is_last=False):
@@ -148,6 +159,40 @@ class DeletionFormParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag == 'form' and self.is_inside_deletion_form:
             self.is_inside_deletion_form = False
+
+
+class PostContentFilterTests(TestCase):
+    def test_post_content_renders_safe_markdown_subset(self):
+        rendered_content = str(post_content(
+            '# 一级标题\n\n'
+            '这是一段 **加粗文字** 和 [站内链接](/index/)。\n'
+            '下一行继续。\n\n'
+            '![封面说明](/media/post_images/example.jpg)'
+        ))
+
+        self.assertIn('<h2>一级标题</h2>', rendered_content)
+        self.assertIn('<strong>加粗文字</strong>', rendered_content)
+        self.assertIn('<a href="/index/">站内链接</a>', rendered_content)
+        self.assertIn('下一行继续。', rendered_content)
+        self.assertIn('<br>', rendered_content)
+        self.assertIn(
+            '<img src="/media/post_images/example.jpg" alt="封面说明" loading="lazy">',
+            rendered_content,
+        )
+
+    def test_post_content_escapes_html_and_blocks_unsafe_urls(self):
+        rendered_content = str(post_content(
+            '<script>alert(1)</script>\n\n'
+            '[危险链接](javascript:alert(1))\n\n'
+            '![危险图片](javascript:alert(1))'
+        ))
+
+        self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;', rendered_content)
+        self.assertNotIn('<script>', rendered_content)
+        self.assertNotIn('href="javascript:', rendered_content)
+        self.assertNotIn('src="javascript:', rendered_content)
+        self.assertIn('[危险链接](javascript:alert(1))', rendered_content)
+        self.assertIn('![危险图片](javascript:alert(1))', rendered_content)
 
 
 class RegistrationRequestModelTests(TestCase):
@@ -800,6 +845,87 @@ class AuthViewsTests(TestCase):
         post = Post.objects.get(title='我的文章')
         self.assertEqual(post.author, user)
         self.assertEqual(post.tags, '生活,记录')
+
+    def test_create_post_shows_markdown_editor_toolbar(self):
+        User.objects.create_user(username='markdown-writer', password='StrongPass12345')
+        self.client.login(username='markdown-writer', password='StrongPass12345')
+
+        response = self.client.get(reverse('create_post'))
+
+        self.assertContains(response, 'data-markdown-editor-for="postContent"')
+        self.assertContains(response, 'data-markdown-action="heading"')
+        self.assertContains(response, 'data-markdown-action="link"')
+        self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-image-upload')
+        self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
+        self.assertContains(response, 'markdown-preview')
+
+    def test_post_detail_edit_form_shows_markdown_editor_toolbar(self):
+        author = User.objects.create_user(username='markdown-editor', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Markdown 编辑文章',
+            category='life',
+            content='正文',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='markdown-editor', password='StrongPass12345')
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertContains(response, 'data-markdown-editor-for="postContent"')
+        self.assertContains(response, 'data-markdown-action="heading"')
+        self.assertContains(response, 'data-markdown-action="link"')
+        self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-image-upload')
+        self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
+        self.assertContains(response, 'markdown-preview')
+
+    def test_upload_post_image_requires_login(self):
+        response = self.client.post(reverse('upload_post_image'), {
+            'image': build_uploaded_test_image(),
+        })
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('upload_post_image')}",
+        )
+
+    def test_upload_post_image_returns_media_url_for_logged_in_user(self):
+        User.objects.create_user(username='image-writer', password='StrongPass12345')
+        self.client.login(username='image-writer', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post(reverse('upload_post_image'), {
+                    'image': build_uploaded_test_image('body-photo.jpg'),
+                })
+
+                response_data = response.json()
+                saved_relative_path = response_data['url'].removeprefix('/media/')
+                saved_file_path = os.path.join(temporary_media_root, saved_relative_path)
+                saved_file_exists = os.path.exists(saved_file_path)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response_data['url'].startswith('/media/post_images/'))
+        self.assertTrue(saved_file_exists)
+
+    def test_upload_post_image_rejects_invalid_file(self):
+        User.objects.create_user(username='bad-image-writer', password='StrongPass12345')
+        self.client.login(username='bad-image-writer', password='StrongPass12345')
+        invalid_file = SimpleUploadedFile(
+            'body.txt',
+            b'this is not an image',
+            content_type='text/plain',
+        )
+
+        response = self.client.post(reverse('upload_post_image'), {
+            'image': invalid_file,
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], '请上传有效的图片文件。')
 
     def test_generate_ai_post_requires_login(self):
         response = self.client.post(reverse('generate_ai_post'), {

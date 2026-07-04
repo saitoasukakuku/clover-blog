@@ -1,0 +1,25 @@
+<div class="markdown-editor-panel" data-markdown-editor-for="{{ textarea_id }}" data-markdown-upload-url="{% url 'upload_post_image' %}">
+    <div class="markdown-toolbar" role="toolbar" aria-label="Markdown 工具栏">
+        <button type="button" class="markdown-tool-btn" data-markdown-action="heading" title="标题">
+            <i class="fas fa-heading"></i>
+        </button>
+        <button type="button" class="markdown-tool-btn" data-markdown-action="bold" title="加粗">
+            <i class="fas fa-bold"></i>
+        </button>
+        <button type="button" class="markdown-tool-btn" data-markdown-action="link" title="插入链接">
+            <i class="fas fa-link"></i>
+        </button>
+        <button type="button" class="markdown-tool-btn" data-markdown-action="image-url" title="插入图片链接">
+            <i class="fas fa-image"></i>
+        </button>
+        <label class="markdown-tool-btn" title="上传图片">
+            <i class="fas fa-upload"></i>
+            <input type="file" class="d-none" data-markdown-image-upload accept="image/*">
+        </label>
+        <button type="button" class="markdown-tool-btn" data-markdown-action="preview" title="预览">
+            <i class="fas fa-eye"></i>
+        </button>
+    </div>
+    <div class="markdown-upload-status" data-markdown-status></div>
+    <div class="markdown-preview d-none" data-markdown-preview></div>
+</div>

@@ -135,6 +135,7 @@
         font-size: 0.86rem;
     }
 </style>
+{% include 'includes/markdown_editor_styles.html' %}
 {% endblock %}
 
 {% block content %}
@@ -228,6 +229,7 @@
                     <!-- 文章内容 -->
                     <div class="mb-4">
                         <label for="postContent" class="form-label"><i class="fas fa-align-left me-1"></i>文章内容</label>
+                        {% include 'includes/markdown_editor_toolbar.html' with textarea_id='postContent' %}
                         <textarea class="form-control" id="postContent" name="content" rows="10"
                             placeholder="写下你的想法...">{{ post.content|default:'' }}</textarea>
                     </div>
@@ -507,4 +509,5 @@
         });
     });
 </script>
+{% include 'includes/markdown_editor_script.html' %}
 {% endblock %}

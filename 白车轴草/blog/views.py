@@ -1,6 +1,7 @@
 from django import forms
 from django.shortcuts import get_object_or_404, render, redirect
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core import signing
 from django.core.paginator import Paginator
 from django.conf import settings
@@ -329,6 +330,26 @@ def validate_uploaded_image_file(uploaded_file):
             pass
         raise ValueError(INVALID_IMAGE_FILE_MESSAGE) from error
     return uploaded_file
+
+
+@login_required
+@require_POST
+def upload_post_image(request):
+    uploaded_image = request.FILES.get('image')
+    if uploaded_image is None:
+        return JsonResponse({'error': INVALID_IMAGE_FILE_MESSAGE}, status=400)
+
+    try:
+        validated_image = validate_uploaded_image_file(uploaded_image)
+        raw_extension = os.path.splitext(uploaded_image.name)[1].lstrip('.') or 'jpg'
+        image_extension = normalize_image_extension(raw_extension)
+    except ValueError as error:
+        return JsonResponse({'error': str(error)}, status=400)
+
+    image_file_name = f'post_images/{uuid.uuid4().hex[:16]}.{image_extension}'
+    saved_image_path = default_storage.save(image_file_name, validated_image)
+    image_url = f"{settings.MEDIA_URL.rstrip('/')}/{quote(saved_image_path)}"
+    return JsonResponse({'url': image_url})
 
 
 def build_post_form_context(title, category, tags, content, visibility):

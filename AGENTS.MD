@@ -73,6 +73,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 已新增归档页 `/archive/` 和标签页 `/tags/`，导航栏使用右侧快捷入口。
 - 文章详情页和首页文章卡片已展示可点击标签；标签点击进入首页 `?tag=` 精确标签筛选，
   不再复用关键词搜索；内部 `daily:*` 标签不展示。
+- 文章正文已支持轻量 Markdown 写作：创建页和编辑页都有工具栏，可插入标题、加粗、
+  链接、图片 URL、上传正文图片和本地预览；详情页渲染时会转义原始 HTML，并只允许安全
+  链接和安全图片地址。
 - 已新增作者主页、文章收藏、收藏列表和通知中心；评论、回复、好友申请通过和私信会
   生成站内通知。
 - `/index/` 文章列表搜索框已移除按日期搜索；后端会忽略旧的 `date` 查询参数，
@@ -185,6 +188,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `白车轴草/media/index_img_cache/`：首页轮播优化图缓存目录，运行时生成，已被 Git 忽略。
 - `白车轴草/media/index_img_copy.json`：首页轮播 DeepSeek 文案缓存文件，运行命令生成，已被
   Git 忽略。
+- `白车轴草/media/post_images/`：文章正文 Markdown 图片上传目录，已被 Git 忽略。
 - `白车轴草/media/music/`：全站音乐播放器音乐目录，已被 Git 忽略。
 - `白车轴草/media/music_cache/`：MP3 和 FLAC 内嵌封面导出的缓存目录，运行时生成，已被 Git 忽略。
 - `白车轴草/db.sqlite3`：本地开发数据库，已被 Git 忽略。
@@ -352,6 +356,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 登录用户可以访问公开已发布文章，以及自己的文章。
 - 只有文章作者可以编辑或删除自己的文章。
 - 编辑表单支持修改状态、可见范围、分类、标签、正文和封面。
+- 正文使用轻量 Markdown 渲染，支持标题、加粗、链接和图片；原始 HTML 会被转义，
+  不允许 `javascript:` 等不安全链接。
 - 登录用户可以收藏或取消收藏自己有权限访问的文章。
 
 ### 评论与回复
@@ -436,6 +442,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 预设分类和自定义分类。
 - 标签。
 - 封面上传、裁剪、移除和替换。
+- 正文 Markdown 工具栏，支持标题、加粗、链接、图片 URL、正文图片上传和本地预览。
+- 正文图片上传保存到 `media/post_images/`，后端复用图片大小和格式校验。
 - `/index/` 文章列表关键词搜索。
 - 分类、作者和标签筛选。
 - `/index/` 搜索结果显示命中文章数量。
@@ -639,6 +647,7 @@ sudo systemctl enable --now clover-blog-startup-post.timer
 - `/notifications/read_all/`：标记全部通知已读。
 - `/index/create_post/`：创建文章。
 - `/index/create_post/ai/`：AI 写作 POST 接口。
+- `/index/create_post/image/`：正文 Markdown 图片上传 POST 接口。
 - `/drafts/`：草稿箱。
 - `/edit_post/<post_id>/`：编辑文章。
 - `/delete_draft/<post_id>/`：删除草稿。
@@ -717,15 +726,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 160 test(s)`
-- `Ran 160 tests`
+- `Found 167 test(s)`
+- `Ran 167 tests`
 - `OK`
 
 2026-07-04 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 160 tests
+Ran 167 tests
 OK
 ```
 
@@ -946,6 +955,8 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - `/` 欢迎页背景图来自 `media/index_img/`，不要把该媒体目录提交到 Git。
 - `/index/` 文章列表封面使用稳定宽高比，避免固定低分辨率拉伸造成锯齿。
 - `/index/` 搜索框不再包含日期输入；不要重新添加按日期筛选，除非重新设计完整筛选体验。
+- 创建和编辑文章正文使用共享 Markdown 工具栏 include；详情页正文通过 `post_content`
+  过滤器渲染，扩展格式时必须同步更新前端预览和后端安全过滤测试。
 - 评论和回复当前使用一层嵌套布局，不要未经设计改成无限层级。
 - 全站音乐播放器位于 `base.html` 中，播放器 DOM 必须保持在 `#site-page-shell` 外，否则
   局部导航会打断播放。
