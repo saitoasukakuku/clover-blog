@@ -26,12 +26,13 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ## 当前交接摘要
 
 截至 2026-07-04，最新已部署功能提交为
-`587ed5c fix: compress markdown images before upload`；后续如果只有 `AGENTS.md` 文档提交，不改变
+`97d35e7 fix: improve markdown image editing`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `97d35e7 fix: improve markdown image editing`
 - `587ed5c fix: compress markdown images before upload`
 - `bfc812a fix: use native markdown image upload trigger`
 - `5c2dbcf feat: add modal markdown editor`
@@ -58,11 +59,11 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `264c53d fix: avoid date prefix in startup post titles`
 
 本地已完成 Django 检查、迁移一致性检查和 `blog` 应用测试，当前测试基线为
-`167` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
+`168` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `587ed5c`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `97d35e7`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -85,6 +86,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
   `.click()` 一个 `display:none` 的文件 input，避免内嵌浏览器拦截后表现为点击无反应。
 - Markdown 正文图片上传前会在浏览器端压缩：大图最长边缩到 1600px，JPEG 质量约 0.82；
   小于约 700KB 的图片和 GIF 会跳过压缩，从而减少经 Cloudflare Quick Tunnel 上传的体积。
+- Markdown 写入模式工具栏已固定在弹窗顶部；正文编辑区支持 Ctrl+V 粘贴图片并复用上传、
+  压缩和插入流程；“插入图片链接”不再写入 `example.com` 示例地址，而是要求输入真实图片
+  URL。文章详情页正文图片已限制在正文容器内显示，避免大图撑出内容区。
 - 已新增作者主页、文章收藏、收藏列表和通知中心；评论、回复、好友申请通过和私信会
   生成站内通知。
 - `/index/` 文章列表搜索框已移除按日期搜索；后端会忽略旧的 `date` 查询参数，
@@ -911,7 +915,7 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 截至 2026-07-04 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `587ed5c fix: compress markdown images before upload`。
+- 生产已部署到 `97d35e7 fix: improve markdown image editing`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 线上首页 HTML 已验证只有 1 个 `home-explore-panel`、1 个 `home-explore-grid`、
@@ -933,6 +937,8 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
   不再包含 `uploadInput.click()`。
 - 线上 Markdown 编辑脚本已验证包含 `compressMarkdownImage`、`正在压缩图片...` 和
   `canvas.toBlob`，正文图片上传前会先在浏览器端压缩再提交。
+- 线上 Markdown 编辑脚本已验证包含 `handlePaste` 和 `请输入图片地址`，工具栏样式包含
+  `position: sticky`；文章详情模板已验证包含 `.post-content img` 图片约束样式。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
 - 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
 - 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `Fly.flac` 等曲目；
