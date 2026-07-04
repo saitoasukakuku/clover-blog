@@ -26,12 +26,13 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 ## 当前交接摘要
 
 截至 2026-07-04，最新已部署功能提交为
-`f377a34 feat: add vision analysis for homepage copy`；后续如果只有 `AGENTS.md` 文档提交，不改变
+`aec6702 feat: add markdown editor for posts`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `aec6702 feat: add markdown editor for posts`
 - `f377a34 feat: add vision analysis for homepage copy`
 - `f590e4e fix: stabilize homepage copy generation`
 - `6dae2ec fix: batch homepage copy generation`
@@ -54,11 +55,11 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `264c53d fix: avoid date prefix in startup post titles`
 
 本地已完成 Django 检查、迁移一致性检查和 `blog` 应用测试，当前测试基线为
-`159` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
+`167` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `f377a34`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `aec6702`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -901,7 +902,7 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 截至 2026-07-04 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `f377a34 feat: add vision analysis for homepage copy`。
+- 生产已部署到 `aec6702 feat: add markdown editor for posts`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 线上首页 HTML 已验证只有 1 个 `home-explore-panel`、1 个 `home-explore-grid`、
@@ -914,6 +915,8 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - 线上 `generate_homepage_copy --help` 已验证包含 `--vision-model` 和 `--skip-vision` 参数；
   未配置 `HOMEPAGE_VISION_API_KEY` 时不会调用视觉 API，会继续使用元数据降级路径。
 - Cloudflare 首页 HTML 已验证不再包含旧的“清爽一点的首页”固定文案。
+- 线上创建文章页和编辑文章页模板已验证引用共享 Markdown 工具栏，正文图片上传路由
+  `/index/create_post/image/` 已部署；共享工具栏包含本地预览容器和上传 URL。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
 - 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
 - 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `Fly.flac` 等曲目；
