@@ -54,6 +54,7 @@ from io import BytesIO, StringIO
 import base64
 import binascii
 import hashlib
+import json
 import os
 import re
 import time
@@ -74,9 +75,11 @@ ALLOWED_IMAGE_EXTENSIONS = {
 }
 HOMEPAGE_IMAGE_DIR_NAME = 'index_img'
 HOMEPAGE_IMAGE_CACHE_DIR_NAME = 'index_img_cache'
+HOMEPAGE_IMAGE_COPY_FILE_NAME = 'index_img_copy.json'
 HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
+HOMEPAGE_COPY_FIELDS = ('kicker', 'headline', 'lead', 'card_title', 'card_text')
 HOMEPAGE_THEME_PRESETS = [
     {
         'accent': '#5f8fc8',
@@ -635,17 +638,76 @@ def get_or_create_homepage_cached_image_url(image_file_name):
     return f"{settings.MEDIA_URL.rstrip('/')}/{HOMEPAGE_IMAGE_CACHE_DIR_NAME}/{quote(cache_file_name)}"
 
 
-def build_homepage_slide_copy(image_index):
-    return HOMEPAGE_COPY_PRESETS[image_index % len(HOMEPAGE_COPY_PRESETS)]
+def normalize_homepage_slide_copy(raw_slide_copy):
+    if not isinstance(raw_slide_copy, dict):
+        return None
+
+    normalized_copy = {}
+    for field_name in HOMEPAGE_COPY_FIELDS:
+        field_value = raw_slide_copy.get(field_name)
+        if not isinstance(field_value, str) or not field_value.strip():
+            return None
+        normalized_copy[field_name] = field_value.strip()
+
+    raw_moods = raw_slide_copy.get('moods')
+    if not isinstance(raw_moods, list):
+        return None
+    normalized_moods = []
+    for raw_mood in raw_moods:
+        if not isinstance(raw_mood, str):
+            continue
+        normalized_mood = raw_mood.strip()
+        if normalized_mood and normalized_mood not in normalized_moods:
+            normalized_moods.append(normalized_mood[:12])
+        if len(normalized_moods) == 3:
+            break
+    if not normalized_moods:
+        return None
+    normalized_copy['moods'] = normalized_moods
+    return normalized_copy
+
+
+def get_homepage_image_copy_file_path():
+    return os.path.join(settings.MEDIA_ROOT, HOMEPAGE_IMAGE_COPY_FILE_NAME)
+
+
+def get_homepage_ai_copy_by_file_name():
+    try:
+        with open(get_homepage_image_copy_file_path(), 'r', encoding='utf-8') as copy_file:
+            raw_copy_by_file_name = json.load(copy_file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw_copy_by_file_name, dict):
+        return {}
+
+    copy_by_file_name = {}
+    for image_file_name, raw_slide_copy in raw_copy_by_file_name.items():
+        if not isinstance(image_file_name, str):
+            continue
+        if not is_homepage_image_file_name_allowed(image_file_name):
+            continue
+        normalized_copy = normalize_homepage_slide_copy(raw_slide_copy)
+        if normalized_copy:
+            copy_by_file_name[image_file_name] = normalized_copy
+    return copy_by_file_name
+
+
+def build_homepage_slide_copy(image_index, image_file_name, ai_copy_by_file_name):
+    fallback_copy = HOMEPAGE_COPY_PRESETS[image_index % len(HOMEPAGE_COPY_PRESETS)].copy()
+    ai_slide_copy = ai_copy_by_file_name.get(image_file_name)
+    if ai_slide_copy:
+        fallback_copy.update(ai_slide_copy)
+    return fallback_copy
 
 
 def build_homepage_carousel_slides():
     carousel_slides = []
     image_file_names = get_homepage_image_file_names()
+    ai_copy_by_file_name = get_homepage_ai_copy_by_file_name()
 
     for image_index, image_file_name in enumerate(image_file_names):
         theme_preset = HOMEPAGE_THEME_PRESETS[image_index % len(HOMEPAGE_THEME_PRESETS)]
-        copy_preset = build_homepage_slide_copy(image_index)
+        copy_preset = build_homepage_slide_copy(image_index, image_file_name, ai_copy_by_file_name)
         carousel_slides.append({
             'image_url': reverse('homepage_carousel_image', args=[image_file_name]),
             'file_name': image_file_name,

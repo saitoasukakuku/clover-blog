@@ -147,13 +147,16 @@
 
     .home-btn {
         align-items: center;
+        appearance: none;
         background: var(--home-paper-strong);
         backdrop-filter: blur(16px);
         border: 1px solid rgba(255, 255, 255, .72);
         border-radius: 999px;
         box-shadow: 0 16px 32px rgba(0, 0, 0, .08);
         color: var(--home-accent-strong);
+        cursor: pointer;
         display: inline-flex;
+        font-family: inherit;
         font-size: 1rem;
         font-weight: 800;
         gap: 8px;
@@ -523,10 +526,10 @@
                 <h1 class="home-title" id="homeHeadline">在新的画面里，慢慢打开今天的阅读。</h1>
                 <p class="home-lead" id="homeLead">首页会从站点图库里轮换背景，先给今天的阅读留出一个安静开场。</p>
                 <div class="home-actions">
-                    <a class="home-btn home-btn-primary" href="#home-latest">
+                    <button class="home-btn home-btn-primary" type="button" data-home-scroll-target="home-latest">
                         <i class="fas fa-arrow-down"></i>
                         <span>看最近更新</span>
-                    </a>
+                    </button>
                     {% if featured_post %}
                     <a class="home-btn" href="{% url 'post_detail' featured_post.id %}">
                         <i class="fas fa-bookmark"></i>
@@ -632,6 +635,7 @@
     const cardText = document.getElementById('homeCardText');
     const moodChips = document.getElementById('homeMoodChips');
     const carouselControls = document.getElementById('homeCarouselControls');
+    const homeScrollButtons = document.querySelectorAll('[data-home-scroll-target]');
     let currentSlideIndex = 0;
     let carouselTimerId = null;
     let pendingSlideIndex = null;
@@ -743,6 +747,27 @@
             showCarouselSlide(currentSlideIndex + 1);
         }, 5200);
     }
+
+    function scrollToHomeSection(targetId) {
+        const targetElement = document.getElementById(targetId);
+        if (!targetElement) {
+            return;
+        }
+
+        window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}#${targetId}`);
+        window.requestAnimationFrame(() => {
+            targetElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+            });
+        });
+    }
+
+    homeScrollButtons.forEach((buttonElement) => {
+        buttonElement.addEventListener('click', () => {
+            scrollToHomeSection(buttonElement.dataset.homeScrollTarget);
+        });
+    });
 
     function renderCarouselControls() {
         if (!carouselControls || !carouselSlides.length) {

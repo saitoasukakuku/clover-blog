@@ -3166,6 +3166,14 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertTemplateUsed(index_response, 'index.html')
         self.assertContains(index_response, '搜索文章')
 
+    def test_home_recent_updates_button_uses_scripted_scroll_without_hash_anchor(self):
+        response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'data-home-scroll-target="home-latest"')
+        self.assertContains(response, 'scrollToHomeSection')
+        self.assertContains(response, 'history.replaceState')
+        self.assertNotContains(response, 'href="#home-latest"')
+
     def test_home_keeps_exploration_links_in_single_dedicated_panel(self):
         response = self.client.get(reverse('home'))
 
@@ -3276,6 +3284,33 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertEqual(carousel_slides[1]['file_name'], 'second.png')
         self.assertNotContains(response, 'notes.txt')
 
+    def test_home_carousel_uses_cached_deepseek_copy_for_image_file(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            with open(os.path.join(image_directory, 'river.jpg'), 'wb') as image_file:
+                image_file.write(b'fake jpg')
+            with open(os.path.join(temporary_media_root, 'index_img_copy.json'), 'w', encoding='utf-8') as copy_file:
+                json.dump({
+                    'river.jpg': {
+                        'kicker': '秋河 · 明亮',
+                        'headline': '顺着水声翻到新的段落。',
+                        'lead': '这张图有河流和秋色，适合轻一点的阅读开场。',
+                        'card_title': '河边的慢读时刻',
+                        'card_text': 'DeepSeek 根据图片描述写出的首页卡片文案。',
+                        'moods': ['河流', '秋色', '慢读'],
+                    },
+                }, copy_file, ensure_ascii=False)
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        carousel_slide = response.context['carousel_slides'][0]
+        self.assertEqual(carousel_slide['kicker'], '秋河 · 明亮')
+        self.assertEqual(carousel_slide['headline'], '顺着水声翻到新的段落。')
+        self.assertEqual(carousel_slide['card_title'], '河边的慢读时刻')
+        self.assertEqual(carousel_slide['moods'], ['河流', '秋色', '慢读'])
+
     def test_home_carousel_includes_every_allowed_image_from_media_index_img(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
             image_directory = os.path.join(temporary_media_root, 'index_img')
@@ -3347,6 +3382,42 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, 'background: #2e7d32')
         self.assertContains(response, 'color: #fff')
         self.assertContains(response, 'flex: 0 0 56px')
+
+
+class HomepageCopyGenerationCommandTests(TestCase):
+    def test_generate_homepage_copy_writes_deepseek_copy_cache(self):
+        generated_copy = {
+            'kicker': '山谷 · 清亮',
+            'headline': '把山风放进今天的首页。',
+            'lead': '画面明亮，有绿色和蓝色，适合清爽的阅读开场。',
+            'card_title': '山谷里的阅读邀请',
+            'card_text': '根据图片描述生成的短句，避免重复导航说明。',
+            'moods': ['山谷', '晴天', '慢读'],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            Image.new('RGB', (1200, 700), color=(80, 150, 110)).save(
+                os.path.join(image_directory, 'valley.jpg'),
+                format='JPEG',
+            )
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                with patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'test-key'}):
+                    with patch(
+                        'blog.management.commands.create_startup_post.Command.send_deepseek_request',
+                        return_value={'choices': [{'message': {'content': json.dumps(generated_copy, ensure_ascii=False)}}]},
+                    ) as send_deepseek_request:
+                        call_command('generate_homepage_copy', stdout=StringIO())
+
+            copy_file_path = os.path.join(temporary_media_root, 'index_img_copy.json')
+            with open(copy_file_path, 'r', encoding='utf-8') as copy_file:
+                cached_copy = json.load(copy_file)
+
+        self.assertEqual(cached_copy['valley.jpg']['card_title'], '山谷里的阅读邀请')
+        self.assertEqual(cached_copy['valley.jpg']['moods'], ['山谷', '晴天', '慢读'])
+        self.assertEqual(send_deepseek_request.call_count, 1)
 
 
 class PostDeletionTests(TestCase):
