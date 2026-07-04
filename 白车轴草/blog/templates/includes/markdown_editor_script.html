@@ -197,16 +197,12 @@
 
             var imageTrigger = closestElement(event.target, '[data-markdown-image-trigger]');
             if (imageTrigger) {
-                event.preventDefault();
                 var triggerModal = closestElement(imageTrigger, '[data-markdown-modal-for]');
                 var triggerTextarea = getModalTextarea(triggerModal);
-                var uploadInput = triggerModal ? triggerModal.querySelector('[data-markdown-image-upload]') : null;
                 if (triggerTextarea) {
                     saveSelection(triggerTextarea);
                 }
-                if (uploadInput) {
-                    uploadInput.click();
-                }
+                setStatus(triggerModal, '请选择要插入正文的图片。', false);
                 return;
             }
 

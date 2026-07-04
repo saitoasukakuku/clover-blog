@@ -861,9 +861,14 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'data-markdown-action="image-url"')
         self.assertContains(response, 'data-markdown-image-trigger')
         self.assertContains(response, 'data-markdown-image-upload')
+        self.assertContains(response, 'for="markdownImageUpload-postContent"')
+        self.assertContains(response, 'id="markdownImageUpload-postContent"')
+        self.assertContains(response, 'class="markdown-file-input"')
         self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
         self.assertContains(response, 'markdown-modal-preview')
         self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
+        self.assertNotContains(response, 'class="d-none" data-markdown-image-upload')
+        self.assertNotContains(response, 'uploadInput.click();')
 
     def test_post_detail_edit_form_shows_markdown_editor_modal(self):
         author = User.objects.create_user(username='markdown-editor', password='StrongPass12345')
@@ -888,9 +893,13 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'data-markdown-action="image-url"')
         self.assertContains(response, 'data-markdown-image-trigger')
         self.assertContains(response, 'data-markdown-image-upload')
+        self.assertContains(response, 'for="markdownImageUpload-postContent"')
+        self.assertContains(response, 'id="markdownImageUpload-postContent"')
+        self.assertContains(response, 'class="markdown-file-input"')
         self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
         self.assertContains(response, 'markdown-modal-preview')
         self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
+        self.assertNotContains(response, 'class="d-none" data-markdown-image-upload')
 
     def test_upload_post_image_requires_login(self):
         response = self.client.post(reverse('upload_post_image'), {

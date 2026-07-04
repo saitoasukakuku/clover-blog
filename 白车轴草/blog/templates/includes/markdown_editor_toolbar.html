@@ -33,13 +33,15 @@
                             <button type="button" class="markdown-tool-btn" data-markdown-action="image-url" title="插入图片链接">
                                 <i class="fas fa-image"></i>
                             </button>
-                            <button type="button" class="markdown-tool-btn" data-markdown-image-trigger title="上传图片">
+                            <label class="markdown-tool-btn" for="markdownImageUpload-{{ textarea_id }}"
+                                data-markdown-image-trigger title="上传图片">
                                 <i class="fas fa-upload"></i>
-                            </button>
+                            </label>
                             <button type="button" class="markdown-tool-btn" data-markdown-action="preview" title="显示或隐藏预览">
                                 <i class="fas fa-eye"></i>
                             </button>
-                            <input type="file" class="d-none" data-markdown-image-upload accept="image/*">
+                            <input type="file" class="markdown-file-input" id="markdownImageUpload-{{ textarea_id }}"
+                                data-markdown-image-upload accept="image/*">
                         </div>
                         <label class="visually-hidden" for="markdownModalTextarea-{{ textarea_id }}">Markdown 正文</label>
                         <textarea class="form-control markdown-modal-textarea" id="markdownModalTextarea-{{ textarea_id }}"
