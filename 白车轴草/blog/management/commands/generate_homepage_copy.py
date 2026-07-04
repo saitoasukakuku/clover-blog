@@ -36,6 +36,12 @@ class Command(BaseCommand):
             action='store_true',
             help='Regenerate copy even when a cached entry already exists.',
         )
+        parser.add_argument(
+            '--batch-size',
+            type=int,
+            default=12,
+            help='Number of image descriptions sent to DeepSeek in one request.',
+        )
 
     def handle(self, *args, **options):
         api_key = os.getenv('DEEPSEEK_API_KEY')
@@ -49,34 +55,44 @@ class Command(BaseCommand):
 
         model = options['model']
         should_force = options['force']
+        batch_size = max(1, options['batch_size'])
         cached_copy_by_file_name = get_homepage_ai_copy_by_file_name()
         generated_copy_by_file_name = dict(cached_copy_by_file_name)
         deepseek_client = StartupPostCommand()
         generated_count = 0
         skipped_count = 0
+        pending_image_descriptions = []
 
         for image_file_name in image_file_names:
             if not should_force and image_file_name in generated_copy_by_file_name:
                 skipped_count += 1
                 continue
 
-            image_description = self.describe_homepage_image(image_file_name)
-            slide_copy = self.generate_slide_copy(
+            pending_image_descriptions.append({
+                'file_name': image_file_name,
+                'description': self.describe_homepage_image(image_file_name),
+            })
+
+        for batch_start in range(0, len(pending_image_descriptions), batch_size):
+            image_description_batch = pending_image_descriptions[batch_start:batch_start + batch_size]
+            slide_copy_batch = self.generate_slide_copy_batch(
                 deepseek_client,
                 api_key,
                 model,
-                image_file_name,
-                image_description,
+                image_description_batch,
             )
-            generated_copy_by_file_name[image_file_name] = slide_copy
+            for image_description in image_description_batch:
+                image_file_name = image_description['file_name']
+                generated_copy_by_file_name[image_file_name] = slide_copy_batch[image_file_name]
+                self.stdout.write(f'Generated homepage copy for {image_file_name}')
             generated_count += 1
-            self.stdout.write(f'Generated homepage copy for {image_file_name}')
 
         self.write_copy_file(generated_copy_by_file_name)
         self.stdout.write(
             self.style.SUCCESS(
                 f'Wrote {HOMEPAGE_IMAGE_COPY_FILE_NAME}: '
-                f'{generated_count} generated, {skipped_count} skipped.'
+                f'{len(pending_image_descriptions)} generated, {skipped_count} skipped, '
+                f'{generated_count} DeepSeek request(s).'
             )
         )
 
@@ -129,7 +145,8 @@ class Command(BaseCommand):
             return '蓝紫冷色调'
         return '粉紫柔和色调'
 
-    def generate_slide_copy(self, deepseek_client, api_key, model, image_file_name, image_description):
+    def generate_slide_copy_batch(self, deepseek_client, api_key, model, image_description_batch):
+        image_descriptions_json = json.dumps(image_description_batch, ensure_ascii=False)
         request_body = {
             'model': model,
             'messages': [
@@ -145,9 +162,10 @@ class Command(BaseCommand):
                 {
                     'role': 'user',
                     'content': (
-                        f'图片文件名：{image_file_name}\n'
-                        f'图片描述：{image_description}\n'
-                        'JSON 字段必须是 kicker、headline、lead、card_title、card_text、moods。'
+                        f'图片描述数组：{image_descriptions_json}\n'
+                        '请为数组里的每个 file_name 生成一组首页轮播文案。'
+                        '输出必须是 JSON 对象，顶层 key 必须使用原始 file_name。'
+                        '每个 value 的字段必须是 kicker、headline、lead、card_title、card_text、moods。'
                         'kicker 不超过 10 个中文字符，可以包含一个居中点。'
                         'headline 不超过 26 个中文字符。'
                         'lead 不超过 42 个中文字符。'
@@ -165,14 +183,25 @@ class Command(BaseCommand):
         response_body = deepseek_client.send_deepseek_request(api_key, request_body)
         output_text = deepseek_client.extract_message_content(response_body)
         try:
-            raw_slide_copy = json.loads(output_text)
+            raw_copy_batch = json.loads(output_text)
         except json.JSONDecodeError as error:
             raise CommandError(f'DeepSeek returned invalid homepage copy JSON: {error}') from error
 
-        normalized_copy = normalize_homepage_slide_copy(raw_slide_copy)
-        if not normalized_copy:
-            raise CommandError('DeepSeek returned incomplete homepage copy.')
-        return normalized_copy
+        if len(image_description_batch) == 1 and normalize_homepage_slide_copy(raw_copy_batch):
+            raw_copy_batch = {
+                image_description_batch[0]['file_name']: raw_copy_batch,
+            }
+        if not isinstance(raw_copy_batch, dict):
+            raise CommandError('DeepSeek returned homepage copy in an invalid shape.')
+
+        normalized_copy_batch = {}
+        for image_description in image_description_batch:
+            image_file_name = image_description['file_name']
+            normalized_copy = normalize_homepage_slide_copy(raw_copy_batch.get(image_file_name))
+            if not normalized_copy:
+                raise CommandError(f'DeepSeek returned incomplete homepage copy for {image_file_name}.')
+            normalized_copy_batch[image_file_name] = normalized_copy
+        return normalized_copy_batch
 
     def write_copy_file(self, copy_by_file_name):
         copy_file_path = get_homepage_image_copy_file_path()
