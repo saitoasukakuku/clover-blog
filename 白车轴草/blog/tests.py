@@ -3203,6 +3203,31 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(tracks[0]['cover_url'], '/media/music/%E6%97%A0%E6%8D%9F%E6%AD%8C%E6%9B%B2.webp')
         self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': None, 'text': '无损歌词'})
 
+    def test_music_tracks_prefer_same_name_web_playback_file(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'master.flac'), 'wb') as music_file:
+                music_file.write(b'fLaC large master audio')
+            with open(os.path.join(music_directory, 'master.web.m4a'), 'wb') as playback_file:
+                playback_file.write(b'smaller browser playback audio')
+            with open(os.path.join(music_directory, 'master.jpg'), 'wb') as cover_file:
+                cover_file.write(b'fake cover')
+            with open(os.path.join(music_directory, 'master.lrc'), 'w', encoding='utf-8') as lyrics_file:
+                lyrics_file.write('[00:02.00]playback lyric')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                from blog.context_processors import site_music_tracks
+
+                context = site_music_tracks(None)
+
+        tracks = context['site_music_tracks']
+        self.assertEqual(len(tracks), 1)
+        self.assertEqual(tracks[0]['title'], 'master')
+        self.assertEqual(tracks[0]['audio_url'], '/media/music/master.web.m4a')
+        self.assertEqual(tracks[0]['cover_url'], '/media/music/master.jpg')
+        self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': 2.0, 'text': 'playback lyric'})
+
     def test_music_tracks_fall_back_to_embedded_flac_cover(self):
         embedded_cover_bytes = b'\xff\xd8fake-flac-cover\xff\xd9'
         with tempfile.TemporaryDirectory() as temporary_media_root:

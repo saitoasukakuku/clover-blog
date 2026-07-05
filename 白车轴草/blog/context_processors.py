@@ -13,6 +13,12 @@ from blog.site_owner import get_site_owner_profile
 MUSIC_DIR_NAME = 'music'
 MUSIC_CACHE_DIR_NAME = 'music_cache'
 MUSIC_AUDIO_EXTENSIONS = {'.mp3', '.ogg', '.wav', '.m4a', '.flac'}
+MUSIC_WEB_PLAYBACK_SUFFIX = '.web'
+MUSIC_WEB_PLAYBACK_EXTENSIONS = ('.m4a', '.mp3', '.ogg')
+MUSIC_WEB_PLAYBACK_FILE_SUFFIXES = tuple(
+    f'{MUSIC_WEB_PLAYBACK_SUFFIX}{extension}'
+    for extension in MUSIC_WEB_PLAYBACK_EXTENSIONS
+)
 MUSIC_COVER_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 MUSIC_LYRICS_EXTENSIONS = ('.lrc', '.txt')
 
@@ -66,6 +72,17 @@ def social_counts(request):
 
 def build_media_file_url(directory_name, file_name):
     return f"{settings.MEDIA_URL.rstrip('/')}/{directory_name}/{quote(file_name)}"
+
+
+def split_music_file_name(audio_file_name):
+    file_stem, audio_extension = os.path.splitext(audio_file_name)
+    is_web_playback_file = (
+        audio_extension.lower() in MUSIC_WEB_PLAYBACK_EXTENSIONS
+        and file_stem.casefold().endswith(MUSIC_WEB_PLAYBACK_SUFFIX)
+    )
+    if is_web_playback_file:
+        return file_stem[:-len(MUSIC_WEB_PLAYBACK_SUFFIX)], audio_extension, True
+    return file_stem, audio_extension, False
 
 
 def decode_id3_syncsafe_size(size_bytes):
@@ -392,8 +409,15 @@ def read_text_file(file_path):
 
 def build_music_track(music_directory, audio_file_name):
     audio_file_path = os.path.join(music_directory, audio_file_name)
-    file_stem, audio_extension = os.path.splitext(audio_file_name)
+    file_stem, audio_extension, _ = split_music_file_name(audio_file_name)
     audio_metadata = read_audio_metadata(audio_file_path, audio_extension)
+    playback_file_name, _ = find_same_name_file(
+        music_directory,
+        file_stem,
+        MUSIC_WEB_PLAYBACK_FILE_SUFFIXES,
+    )
+    if not playback_file_name:
+        playback_file_name = audio_file_name
 
     cover_file_name, _ = find_same_name_file(
         music_directory,
@@ -424,7 +448,7 @@ def build_music_track(music_directory, audio_file_name):
 
     return {
         'title': audio_metadata['title'] or file_stem,
-        'audio_url': build_media_file_url(MUSIC_DIR_NAME, audio_file_name),
+        'audio_url': build_media_file_url(MUSIC_DIR_NAME, playback_file_name),
         'cover_url': cover_url,
         'lyrics_lines': parse_lyrics_lines(raw_lyrics),
     }
@@ -462,12 +486,25 @@ def get_site_music_tracks():
     except OSError:
         audio_file_names = []
 
+    audio_file_stems = set()
     for audio_file_name in audio_file_names:
         audio_file_path = os.path.join(music_directory, audio_file_name)
-        _, audio_extension = os.path.splitext(audio_file_name)
+        file_stem, audio_extension, is_web_playback_file = split_music_file_name(audio_file_name)
         if audio_extension.lower() not in MUSIC_AUDIO_EXTENSIONS:
             continue
         if not os.path.isfile(audio_file_path):
+            continue
+        if not is_web_playback_file:
+            audio_file_stems.add(file_stem.casefold())
+
+    for audio_file_name in audio_file_names:
+        audio_file_path = os.path.join(music_directory, audio_file_name)
+        file_stem, audio_extension, is_web_playback_file = split_music_file_name(audio_file_name)
+        if audio_extension.lower() not in MUSIC_AUDIO_EXTENSIONS:
+            continue
+        if not os.path.isfile(audio_file_path):
+            continue
+        if is_web_playback_file and file_stem.casefold() in audio_file_stems:
             continue
         tracks.append(build_music_track(music_directory, audio_file_name))
 
