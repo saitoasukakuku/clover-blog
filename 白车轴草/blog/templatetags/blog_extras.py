@@ -18,22 +18,40 @@ def get_item(dictionary, key):
 @register.filter(name='post_content')
 def post_content(value):
     escaped_content = str(conditional_escape(value or '')).replace('\r\n', '\n').replace('\r', '\n')
-    paragraphs = re.split(r'\n{2,}', escaped_content)
-    rendered_paragraphs = []
-    for paragraph in paragraphs:
-        stripped_paragraph = paragraph.strip('\n')
-        if not stripped_paragraph.strip():
-            continue
-        heading_match = re.match(r'^(#{1,3})\s+(.+)$', stripped_paragraph)
-        if heading_match and '\n' not in stripped_paragraph:
+    rendered_blocks = render_post_markdown_lines(escaped_content.split('\n'))
+    return mark_safe('\n\n'.join(rendered_blocks))
+
+
+def render_post_markdown_lines(escaped_lines):
+    rendered_blocks = []
+    pending_paragraph_lines = []
+
+    def flush_pending_paragraph():
+        if not pending_paragraph_lines:
+            return
+        paragraph_text = '\n'.join(pending_paragraph_lines).strip('\n')
+        if paragraph_text.strip():
+            rendered_inline_paragraph = render_post_inline_markdown(paragraph_text)
+            rendered_blocks.append(f'<p>{rendered_inline_paragraph.replace(chr(10), "<br>")}</p>')
+        pending_paragraph_lines.clear()
+
+    for escaped_line in escaped_lines:
+        heading_match = re.match(r'^(#{1,3})\s+(.+)$', escaped_line.strip())
+        if heading_match:
+            flush_pending_paragraph()
             heading_level = len(heading_match.group(1)) + 1
             heading_text = render_post_inline_markdown(heading_match.group(2).strip())
-            rendered_paragraphs.append(f'<h{heading_level}>{heading_text}</h{heading_level}>')
+            rendered_blocks.append(f'<h{heading_level}>{heading_text}</h{heading_level}>')
             continue
 
-        rendered_inline_paragraph = render_post_inline_markdown(stripped_paragraph)
-        rendered_paragraphs.append(f'<p>{rendered_inline_paragraph.replace(chr(10), "<br>")}</p>')
-    return mark_safe('\n\n'.join(rendered_paragraphs))
+        if not escaped_line.strip():
+            flush_pending_paragraph()
+            continue
+
+        pending_paragraph_lines.append(escaped_line)
+
+    flush_pending_paragraph()
+    return rendered_blocks
 
 
 def render_post_inline_markdown(escaped_text):

@@ -180,6 +180,18 @@ class PostContentFilterTests(TestCase):
             rendered_content,
         )
 
+    def test_post_content_renders_headings_without_blank_lines(self):
+        rendered_content = str(post_content(
+            '第一段\n'
+            '## 小标题\n'
+            '第二段'
+        ))
+
+        self.assertIn('<p>第一段</p>', rendered_content)
+        self.assertIn('<h3>小标题</h3>', rendered_content)
+        self.assertIn('<p>第二段</p>', rendered_content)
+        self.assertNotIn('## 小标题', rendered_content)
+
     def test_post_content_escapes_html_and_blocks_unsafe_urls(self):
         rendered_content = str(post_content(
             '<script>alert(1)</script>\n\n'
@@ -857,9 +869,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'data-markdown-modal-for="postContent"')
         self.assertContains(response, 'data-markdown-modal-textarea')
         self.assertContains(response, 'data-markdown-action="heading"')
-        self.assertContains(response, 'markdown-tool-btn-text')
-        self.assertContains(response, '<span>标题</span>', html=True)
-        self.assertNotContains(response, '<i class="fas fa-heading"></i>')
+        self.assertContains(response, '<i class="fas fa-heading"></i>', html=True)
+        self.assertContains(response, 'renderMarkdownLines')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
         self.assertContains(response, 'data-markdown-image-trigger')
@@ -904,9 +915,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'data-markdown-modal-for="postContent"')
         self.assertContains(response, 'data-markdown-modal-textarea')
         self.assertContains(response, 'data-markdown-action="heading"')
-        self.assertContains(response, 'markdown-tool-btn-text')
-        self.assertContains(response, '<span>标题</span>', html=True)
-        self.assertNotContains(response, '<i class="fas fa-heading"></i>')
+        self.assertContains(response, '<i class="fas fa-heading"></i>', html=True)
+        self.assertContains(response, 'renderMarkdownLines')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
         self.assertContains(response, 'data-markdown-image-trigger')

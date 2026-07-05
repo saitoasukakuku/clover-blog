@@ -177,21 +177,47 @@
                 .replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
         }
 
+        function renderMarkdownLines(escapedLines) {
+            var renderedBlocks = [];
+            var pendingParagraphLines = [];
+
+            function flushPendingParagraph() {
+                if (!pendingParagraphLines.length) {
+                    return;
+                }
+                var paragraphText = pendingParagraphLines.join('\n').replace(/^\n+|\n+$/g, '');
+                if (paragraphText.trim()) {
+                    renderedBlocks.push('<p>' + renderInlineMarkdown(paragraphText).replace(/\n/g, '<br>') + '</p>');
+                }
+                pendingParagraphLines = [];
+            }
+
+            escapedLines.forEach(function (escapedLine) {
+                var headingMatch = escapedLine.trim().match(/^(#{1,3})\s+(.+)$/);
+                if (headingMatch) {
+                    flushPendingParagraph();
+                    var headingLevel = headingMatch[1].length + 1;
+                    renderedBlocks.push(
+                        '<h' + headingLevel + '>' + renderInlineMarkdown(headingMatch[2].trim()) + '</h' + headingLevel + '>'
+                    );
+                    return;
+                }
+
+                if (!escapedLine.trim()) {
+                    flushPendingParagraph();
+                    return;
+                }
+
+                pendingParagraphLines.push(escapedLine);
+            });
+
+            flushPendingParagraph();
+            return renderedBlocks;
+        }
+
         function renderMarkdownPreview(rawText) {
             var escapedText = escapeMarkdownPreview(rawText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-            var blocks = escapedText.split(/\n{2,}/);
-            return blocks.map(function (blockText) {
-                var strippedBlock = blockText.replace(/^\n+|\n+$/g, '');
-                if (!strippedBlock.trim()) {
-                    return '';
-                }
-                var headingMatch = strippedBlock.match(/^(#{1,3})\s+(.+)$/);
-                if (headingMatch && strippedBlock.indexOf('\n') === -1) {
-                    var headingLevel = headingMatch[1].length + 1;
-                    return '<h' + headingLevel + '>' + renderInlineMarkdown(headingMatch[2].trim()) + '</h' + headingLevel + '>';
-                }
-                return '<p>' + renderInlineMarkdown(strippedBlock).replace(/\n/g, '<br>') + '</p>';
-            }).filter(Boolean).join('\n\n');
+            return renderMarkdownLines(escapedText.split('\n')).join('\n\n');
         }
 
         function updatePreview(modal) {
