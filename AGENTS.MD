@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-- 状态更新时间：2026-07-04
+- 状态更新时间：2026-07-05
 - 项目名：白车轴草
 - 项目类型：Django 4.2 多用户博客
 - 本地工作区：`E:\projects\django-projects\白车轴草`
@@ -18,20 +18,21 @@
   `https://salary-undergraduate-euros-ampland.trycloudflare.com/`
 
 Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变化，不能作为稳定域名。
-截至 2026-07-04，该 HTTPS 地址已验证返回 `200 OK`。
+截至 2026-07-05，该 HTTPS 地址已验证返回 `200 OK`。
 
 仓库根目录用于 Git、依赖清单和协作文档，真正的 Django 工程位于
 `白车轴草/` 子目录。核心业务集中在单个 `blog` 应用中。
 
 ## 当前交接摘要
 
-截至 2026-07-04，最新已部署功能提交为
-`9d66be6 fix: stabilize markdown toolbar insertion`；后续如果只有 `AGENTS.md` 文档提交，不改变
+截至 2026-07-05，最新已部署功能提交为
+`ab4d8db fix: render markdown headings within text`；后续如果只有 `AGENTS.md` 文档提交，不改变
 线上功能状态。本地没有未提交的受 Git 跟踪文件改动；仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `ab4d8db fix: render markdown headings within text`
 - `9d66be6 fix: stabilize markdown toolbar insertion`
 - `97d35e7 fix: improve markdown image editing`
 - `587ed5c fix: compress markdown images before upload`
@@ -60,11 +61,11 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `264c53d fix: avoid date prefix in startup post titles`
 
 本地已完成 Django 检查、迁移一致性检查和 `blog` 应用测试，当前测试基线为
-`168` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
+`169` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `9d66be6`。部署过程中在 Gunicorn
+生产服务器已通过 `sudo clover-blog-deploy` 部署到 `ab4d8db`。部署过程中在 Gunicorn
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
@@ -90,8 +91,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - Markdown 写入模式工具栏已固定在弹窗顶部；正文编辑区支持 Ctrl+V 粘贴图片并复用上传、
   压缩和插入流程；“插入图片链接”不再写入 `example.com` 示例地址，而是要求输入真实图片
   URL。文章详情页正文图片已限制在正文容器内显示，避免大图撑出内容区。
-- Markdown 写入模式的标题按钮已从单个 `H` 图标改为“标题”文字按钮；点击标题、加粗、
-  链接或插入图片后会恢复编辑区滚动位置，避免长正文中工具栏操作把编辑区卷到底部。
+- Markdown 写入模式的标题按钮保持标题图标；点击标题、加粗、链接或插入图片后会恢复
+  编辑区滚动位置，避免长正文中工具栏操作把编辑区卷到底部。标题渲染已改为逐行解析，
+  `## 小标题` 即使前后没有空行，也会在弹窗预览和文章详情页渲染为真正标题。
 - 已新增作者主页、文章收藏、收藏列表和通知中心；评论、回复、好友申请通过和私信会
   生成站内通知。
 - `/index/` 文章列表搜索框已移除按日期搜索；后端会忽略旧的 `date` 查询参数，
@@ -743,15 +745,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 168 test(s)`
-- `Ran 168 tests`
+- `Found 169 test(s)`
+- `Ran 169 tests`
 - `OK`
 
-2026-07-04 已重新运行：
+2026-07-05 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 168 tests
+Ran 169 tests
 OK
 ```
 
@@ -861,8 +863,8 @@ sudo clover-blog-deploy
 
 Deploy Key 只有仓库读取权限，不能向 GitHub 推送代码。
 
-截至 2026-07-04，生产服务器已通过一键部署更新到
-`9d66be6 fix: stabilize markdown toolbar insertion`，数据库迁移检查显示无待执行迁移。部署日志
+截至 2026-07-05，生产服务器已通过一键部署更新到
+`ab4d8db fix: render markdown headings within text`，数据库迁移检查显示无待执行迁移。部署日志
 在 Gunicorn 重启窗口可能短暂出现 `curl: (22) The requested URL returned error: 502`；
 如果随后 `clover-blog`、`nginx`、本机首页和 Cloudflare 首页检查均正常，可按部署成功处理。
 
@@ -915,10 +917,10 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 
 ## 当前线上验证状态
 
-截至 2026-07-04 已确认：
+截至 2026-07-05 已确认：
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
-- 生产已部署到 `9d66be6 fix: stabilize markdown toolbar insertion`。
+- 生产已部署到 `ab4d8db fix: render markdown headings within text`。
 - HTTP 根路径现在提供沉浸式欢迎页，`/index/` 继续作为文章列表页。
 - Cloudflare HTTPS 首页返回 `200 OK`。
 - 线上首页 HTML 已验证只有 1 个 `home-explore-panel`、1 个 `home-explore-grid`、
@@ -942,9 +944,11 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
   `canvas.toBlob`，正文图片上传前会先在浏览器端压缩再提交。
 - 线上 Markdown 编辑脚本已验证包含 `handlePaste` 和 `请输入图片地址`，工具栏样式包含
   `position: sticky`；文章详情模板已验证包含 `.post-content img` 图片约束样式。
-- 线上 Markdown 工具栏已验证包含 `markdown-tool-btn-text`，旧的
-  `<i class="fas fa-heading"></i>` 标题图标已不存在；线上脚本已验证包含
-  `restoreTextareaScroll`，工具栏插入标题、链接和图片后会恢复正文编辑区滚动位置。
+- 线上 Markdown 工具栏已验证包含 `<i class="fas fa-heading"></i>` 标题图标；线上脚本已
+  验证包含 `restoreTextareaScroll` 和 `renderMarkdownLines`，工具栏插入标题、链接和图片
+  后会恢复正文编辑区滚动位置，且没有空行包围的 `## 小标题` 也会在预览中渲染成标题。
+- 线上后端正文过滤器已验证包含 `render_post_markdown_lines`，文章详情页也会逐行识别
+  Markdown 标题，避免 `## 小标题` 原样显示。
 - 首页、文章详情、静态文件、头像和文章封面可以正常加载。
 - 首页轮播图来自 `media/index_img/`，当前服务器目录已批量上传一批轮播图片。
 - 全站音乐播放器已上线，当前服务器 `media/music/` 中已有 `Fly.flac` 等曲目；
