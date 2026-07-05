@@ -3225,6 +3225,7 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(len(tracks), 1)
         self.assertEqual(tracks[0]['title'], 'master')
         self.assertEqual(tracks[0]['audio_url'], '/media/music/master.web.m4a')
+        self.assertTrue(tracks[0]['is_web_playback'])
         self.assertEqual(tracks[0]['cover_url'], '/media/music/master.jpg')
         self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': 2.0, 'text': 'playback lyric'})
 
@@ -3348,6 +3349,11 @@ class SiteMusicPlayerTests(TestCase):
 
         self.assertContains(response, 'site-music-control-strip')
         self.assertContains(response, 'site-music-progress-meter')
+        self.assertContains(response, 'preloadSiteMusicTrack')
+        self.assertContains(response, 'preloadSiteMusicNeighbor')
+        self.assertContains(response, 'siteMusicNextPreloader')
+        self.assertContains(response, "siteMusicAudio.preload = 'auto'")
+        self.assertContains(response, "siteMusicAudio.preload = 'metadata'")
         self.assertContains(response, 'scrollbar-width: thin;')
         self.assertContains(response, '.site-music-list::-webkit-scrollbar')
         self.assertContains(response, 'site-music-card-background')

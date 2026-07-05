@@ -449,6 +449,7 @@ def build_music_track(music_directory, audio_file_name):
     return {
         'title': audio_metadata['title'] or file_stem,
         'audio_url': build_media_file_url(MUSIC_DIR_NAME, playback_file_name),
+        'is_web_playback': playback_file_name != audio_file_name,
         'cover_url': cover_url,
         'lyrics_lines': parse_lyrics_lines(raw_lyrics),
     }

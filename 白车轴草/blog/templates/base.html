@@ -1228,6 +1228,7 @@
             let siteMusicCurrentLyrics = [];
             let siteMusicActiveLyricIndex = -1;
             let siteMusicLastSavedSecond = -1;
+            const siteMusicNextPreloader = new Audio();
 
             if (!siteMusicPlayer || !siteMusicAudio || !siteMusicTracks.length) {
                 return;
@@ -1309,6 +1310,32 @@
                 siteMusicProgress.setAttribute('aria-valuenow', String(Math.round(progressPercent)));
             }
 
+            function preloadSiteMusicTrack(currentTrack) {
+                if (currentTrack.is_web_playback) {
+                    siteMusicAudio.preload = 'auto';
+                    siteMusicAudio.load();
+                    return;
+                }
+                siteMusicAudio.preload = 'metadata';
+            }
+
+            function preloadSiteMusicNeighbor(trackIndex) {
+                if (siteMusicTracks.length < 2) {
+                    return;
+                }
+                const nextTrack = siteMusicTracks[(trackIndex + 1) % siteMusicTracks.length];
+                if (!nextTrack || !nextTrack.is_web_playback) {
+                    siteMusicNextPreloader.removeAttribute('src');
+                    return;
+                }
+                if (siteMusicNextPreloader.getAttribute('src') === nextTrack.audio_url) {
+                    return;
+                }
+                siteMusicNextPreloader.preload = 'auto';
+                siteMusicNextPreloader.src = nextTrack.audio_url;
+                siteMusicNextPreloader.load();
+            }
+
             function renderSiteMusicPlaylist() {
                 siteMusicList.innerHTML = '';
                 siteMusicTracks.forEach((track, trackIndex) => {
@@ -1372,6 +1399,8 @@
                         siteMusicAudio.currentTime = Math.min(options.currentTime, siteMusicAudio.duration || options.currentTime);
                     }, { once: true });
                 }
+                preloadSiteMusicTrack(currentTrack);
+                preloadSiteMusicNeighbor(siteMusicCurrentIndex);
                 updateSiteMusicPlayIcon();
             }
 
