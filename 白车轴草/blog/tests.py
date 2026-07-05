@@ -3334,6 +3334,11 @@ class SiteMusicPlayerTests(TestCase):
         self.assertNotContains(response, 'site-music-toggle-needle')
         self.assertContains(response, 'handleSiteMusicOutsideClick')
         self.assertContains(response, 'removeSiteMusicDetail')
+        self.assertContains(response, 'SITE_MUSIC_HOVER_CLOSE_DELAY_MS')
+        self.assertContains(response, 'site-music-player.is-hovering .site-music-card')
+        self.assertContains(response, 'openSiteMusicHoverDetail')
+        self.assertContains(response, 'scheduleSiteMusicHoverClose')
+        self.assertContains(response, 'clearSiteMusicHoverCloseTimer')
 
     def test_base_template_renders_refined_music_player_layout(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:

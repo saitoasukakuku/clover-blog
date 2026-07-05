@@ -469,7 +469,7 @@
             background-size: cover;
         }
 
-        .site-music-player:hover .site-music-card,
+        .site-music-player.is-hovering .site-music-card,
         .site-music-player:focus-within .site-music-card,
         .site-music-player.is-open .site-music-card {
             opacity: 1;
@@ -1208,6 +1208,7 @@
     <script>
         (() => {
             const SITE_MUSIC_STATE_KEY = 'clover-site-music-state';
+            const SITE_MUSIC_HOVER_CLOSE_DELAY_MS = 2400;
             const siteMusicTracksElement = document.getElementById('site-music-tracks');
             const siteMusicTracks = siteMusicTracksElement ? JSON.parse(siteMusicTracksElement.textContent) : [];
             const siteMusicPlayer = document.getElementById('siteMusicPlayer');
@@ -1228,6 +1229,7 @@
             let siteMusicCurrentLyrics = [];
             let siteMusicActiveLyricIndex = -1;
             let siteMusicLastSavedSecond = -1;
+            let siteMusicHoverCloseTimer = null;
             const siteMusicNextPreloader = new Audio();
 
             if (!siteMusicPlayer || !siteMusicAudio || !siteMusicTracks.length) {
@@ -1411,12 +1413,39 @@
                 }
             }
 
+            function clearSiteMusicHoverCloseTimer() {
+                if (siteMusicHoverCloseTimer) {
+                    clearTimeout(siteMusicHoverCloseTimer);
+                    siteMusicHoverCloseTimer = null;
+                }
+            }
+
+            function openSiteMusicHoverDetail() {
+                clearSiteMusicHoverCloseTimer();
+                siteMusicPlayer.classList.add('is-hovering');
+            }
+
+            function scheduleSiteMusicHoverClose() {
+                clearSiteMusicHoverCloseTimer();
+                siteMusicHoverCloseTimer = setTimeout(() => {
+                    siteMusicPlayer.classList.remove('is-hovering');
+                    siteMusicHoverCloseTimer = null;
+                }, SITE_MUSIC_HOVER_CLOSE_DELAY_MS);
+            }
+
             siteMusicToggle.addEventListener('click', () => {
-                siteMusicPlayer.classList.toggle('is-open');
+                const shouldOpen = !siteMusicPlayer.classList.contains('is-open');
+                clearSiteMusicHoverCloseTimer();
+                siteMusicPlayer.classList.toggle('is-open', shouldOpen);
+                siteMusicPlayer.classList.toggle('is-hovering', shouldOpen);
+                siteMusicToggle.setAttribute('aria-expanded', String(shouldOpen));
             });
 
             function removeSiteMusicDetail() {
+                clearSiteMusicHoverCloseTimer();
                 siteMusicPlayer.classList.remove('is-open');
+                siteMusicPlayer.classList.remove('is-hovering');
+                siteMusicToggle.setAttribute('aria-expanded', 'false');
             }
 
             function handleSiteMusicOutsideClick(event) {
@@ -1426,6 +1455,8 @@
             }
 
             document.addEventListener('click', handleSiteMusicOutsideClick);
+            siteMusicPlayer.addEventListener('mouseenter', openSiteMusicHoverDetail);
+            siteMusicPlayer.addEventListener('mouseleave', scheduleSiteMusicHoverClose);
 
             siteMusicPlay.addEventListener('click', () => {
                 if (siteMusicAudio.paused) {
