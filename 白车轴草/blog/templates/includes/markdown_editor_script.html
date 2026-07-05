@@ -4,6 +4,8 @@
             window.cloverMarkdownEditorController.destroy();
         }
 
+        var MAX_MARKDOWN_HISTORY_STATES = 80;
+
         function closestElement(target, selector) {
             return target && target.closest ? target.closest(selector) : null;
         }
@@ -41,6 +43,7 @@
             textarea.dataset.markdownSelectionStart = String(textarea.selectionStart);
             textarea.dataset.markdownSelectionEnd = String(textarea.selectionEnd);
             textarea.dataset.markdownScrollTop = String(textarea.scrollTop || 0);
+            updateCurrentMarkdownHistorySelection(textarea);
         }
 
         function getSavedSelection(textarea) {
@@ -78,6 +81,100 @@
                 textarea.scrollTop = scrollTop;
                 textarea.dataset.markdownScrollTop = String(scrollTop);
             });
+        }
+
+        function getMarkdownHistoryState(textarea) {
+            return {
+                value: textarea.value,
+                selectionStart: typeof textarea.selectionStart === 'number' ? textarea.selectionStart : textarea.value.length,
+                selectionEnd: typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : textarea.value.length,
+                scrollTop: textarea.scrollTop || 0,
+            };
+        }
+
+        function updateCurrentMarkdownHistorySelection(textarea) {
+            var undoStack = textarea ? textarea._markdownUndoStack : null;
+            if (!undoStack || !undoStack.length) {
+                return;
+            }
+            var currentState = getMarkdownHistoryState(textarea);
+            var latestState = undoStack[undoStack.length - 1];
+            if (latestState.value !== currentState.value) {
+                return;
+            }
+            latestState.selectionStart = currentState.selectionStart;
+            latestState.selectionEnd = currentState.selectionEnd;
+            latestState.scrollTop = currentState.scrollTop;
+        }
+
+        function initializeMarkdownHistory(textarea) {
+            textarea._markdownUndoStack = [getMarkdownHistoryState(textarea)];
+            textarea._markdownRedoStack = [];
+        }
+
+        function recordMarkdownHistory(textarea) {
+            if (!textarea || textarea.dataset.markdownHistoryRestoring === 'true') {
+                return;
+            }
+            if (!textarea._markdownUndoStack) {
+                initializeMarkdownHistory(textarea);
+                return;
+            }
+
+            var currentState = getMarkdownHistoryState(textarea);
+            var undoStack = textarea._markdownUndoStack;
+            var latestState = undoStack[undoStack.length - 1];
+            if (latestState && latestState.value === currentState.value) {
+                undoStack[undoStack.length - 1] = currentState;
+                return;
+            }
+
+            undoStack.push(currentState);
+            if (undoStack.length > MAX_MARKDOWN_HISTORY_STATES) {
+                undoStack.shift();
+            }
+            textarea._markdownRedoStack = [];
+        }
+
+        function restoreMarkdownHistoryState(textarea, modal, historyState) {
+            textarea.dataset.markdownHistoryRestoring = 'true';
+            textarea.value = historyState.value;
+            focusTextareaWithoutPageJump(textarea);
+            textarea.setSelectionRange(
+                Math.max(0, Math.min(historyState.selectionStart, textarea.value.length)),
+                Math.max(0, Math.min(historyState.selectionEnd, textarea.value.length))
+            );
+            restoreTextareaScroll(textarea, historyState.scrollTop);
+            saveSelection(textarea);
+            syncSourceFromModal(modal);
+            updatePreview(modal);
+            delete textarea.dataset.markdownHistoryRestoring;
+        }
+
+        function undoMarkdownHistory(textarea, modal) {
+            var undoStack = textarea._markdownUndoStack || [];
+            if (undoStack.length < 2) {
+                return false;
+            }
+
+            var currentState = undoStack.pop();
+            textarea._markdownRedoStack = textarea._markdownRedoStack || [];
+            textarea._markdownRedoStack.push(currentState);
+            restoreMarkdownHistoryState(textarea, modal, undoStack[undoStack.length - 1]);
+            return true;
+        }
+
+        function redoMarkdownHistory(textarea, modal) {
+            var redoStack = textarea._markdownRedoStack || [];
+            if (!redoStack.length) {
+                return false;
+            }
+
+            var nextState = redoStack.pop();
+            textarea._markdownUndoStack = textarea._markdownUndoStack || [];
+            textarea._markdownUndoStack.push(nextState);
+            restoreMarkdownHistoryState(textarea, modal, nextState);
+            return true;
         }
 
         function dispatchTextareaInput(textarea) {
@@ -238,6 +335,7 @@
             }
             modalTextarea.value = sourceTextarea.value;
             saveSelection(modalTextarea);
+            initializeMarkdownHistory(modalTextarea);
             setStatus(modal, '', false);
             updatePreview(modal);
         }
@@ -317,8 +415,33 @@
             }
             var modal = closestElement(textarea, '[data-markdown-modal-for]');
             saveSelection(textarea);
+            recordMarkdownHistory(textarea);
             syncSourceFromModal(modal);
             updatePreview(modal);
+        }
+
+        function handleKeydown(event) {
+            var textarea = closestElement(event.target, '[data-markdown-modal-textarea]');
+            if (!textarea || (!event.ctrlKey && !event.metaKey)) {
+                return;
+            }
+
+            var keyName = event.key ? event.key.toLowerCase() : '';
+            var modal = closestElement(textarea, '[data-markdown-modal-for]');
+            if (keyName === 'z' && event.shiftKey) {
+                event.preventDefault();
+                redoMarkdownHistory(textarea, modal);
+                return;
+            }
+            if (keyName === 'z') {
+                event.preventDefault();
+                undoMarkdownHistory(textarea, modal);
+                return;
+            }
+            if (keyName === 'y') {
+                event.preventDefault();
+                redoMarkdownHistory(textarea, modal);
+            }
         }
 
         function handleSelectionEvent(event) {
@@ -501,6 +624,7 @@
         }
 
         document.addEventListener('click', handleClick);
+        document.addEventListener('keydown', handleKeydown);
         document.addEventListener('input', handleInput);
         document.addEventListener('change', handleUploadChange);
         document.addEventListener('paste', handlePaste);
@@ -512,6 +636,7 @@
         window.cloverMarkdownEditorController = {
             destroy: function () {
                 document.removeEventListener('click', handleClick);
+                document.removeEventListener('keydown', handleKeydown);
                 document.removeEventListener('input', handleInput);
                 document.removeEventListener('change', handleUploadChange);
                 document.removeEventListener('paste', handlePaste);
