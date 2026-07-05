@@ -88,6 +88,10 @@ echo "正在收集静态资源..."
 sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
     collectstatic --noinput
 
+echo "Preparing music web playback files..."
+sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
+    prepare_music_playback --continue-on-error
+
 echo "正在执行 Django 部署检查..."
 sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" check --deploy
 

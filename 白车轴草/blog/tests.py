@@ -3365,6 +3365,97 @@ class SiteMusicPlayerTests(TestCase):
         self.assertNotContains(response, 'aspect-ratio: 1 / 1;')
 
 
+class MusicPlaybackCommandTests(TestCase):
+    def test_prepare_music_playback_creates_missing_web_versions(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'large.flac'), 'wb') as music_file:
+                music_file.write(b'fLaC large audio')
+            with open(os.path.join(music_directory, 'song.mp3'), 'wb') as music_file:
+                music_file.write(b'large mp3 audio')
+
+            def fake_run(command_arguments, check):
+                output_path = command_arguments[-1]
+                with open(output_path, 'wb') as playback_file:
+                    playback_file.write(b'web playback')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root):
+                with patch('blog.management.commands.prepare_music_playback.shutil.which', return_value='/usr/bin/ffmpeg'):
+                    with patch('blog.management.commands.prepare_music_playback.subprocess.run', side_effect=fake_run) as run_mock:
+                        call_command('prepare_music_playback')
+
+        command_arguments_list = [call_args.args[0] for call_args in run_mock.call_args_list]
+        self.assertEqual(len(command_arguments_list), 2)
+        self.assertIn('-movflags', command_arguments_list[0])
+        self.assertIn('+faststart', command_arguments_list[0])
+        self.assertIn('large.web.m4a', command_arguments_list[0][-1])
+        self.assertIn('libmp3lame', command_arguments_list[1])
+        self.assertIn('song.web.mp3', command_arguments_list[1][-1])
+
+    def test_prepare_music_playback_skips_current_web_versions(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            source_path = os.path.join(music_directory, 'large.flac')
+            output_path = os.path.join(music_directory, 'large.web.m4a')
+            with open(source_path, 'wb') as music_file:
+                music_file.write(b'fLaC large audio')
+            with open(output_path, 'wb') as playback_file:
+                playback_file.write(b'current web playback')
+            os.utime(source_path, (1000, 1000))
+            os.utime(output_path, (2000, 2000))
+
+            with self.settings(MEDIA_ROOT=temporary_media_root):
+                with patch('blog.management.commands.prepare_music_playback.shutil.which', return_value='/usr/bin/ffmpeg'):
+                    with patch('blog.management.commands.prepare_music_playback.subprocess.run') as run_mock:
+                        call_command('prepare_music_playback')
+
+        run_mock.assert_not_called()
+
+    def test_prepare_music_playback_ignores_existing_web_files_as_sources(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'song.web.m4a'), 'wb') as playback_file:
+                playback_file.write(b'web playback')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root):
+                with patch('blog.management.commands.prepare_music_playback.shutil.which', return_value='/usr/bin/ffmpeg'):
+                    with patch('blog.management.commands.prepare_music_playback.subprocess.run') as run_mock:
+                        call_command('prepare_music_playback')
+
+        run_mock.assert_not_called()
+
+    def test_prepare_music_playback_warns_when_ffmpeg_is_missing(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'large.flac'), 'wb') as music_file:
+                music_file.write(b'fLaC large audio')
+
+            command_output = StringIO()
+            with self.settings(MEDIA_ROOT=temporary_media_root):
+                with patch('blog.management.commands.prepare_music_playback.shutil.which', return_value=None):
+                    call_command('prepare_music_playback', stdout=command_output)
+
+        self.assertIn('ffmpeg is not installed', command_output.getvalue())
+
+    def test_deploy_script_prepares_music_playback_before_deploy_check(self):
+        blog_directory = os.path.dirname(os.path.abspath(__file__))
+        project_directory = os.path.dirname(blog_directory)
+        repository_directory = os.path.dirname(project_directory)
+        deploy_script_path = os.path.join(repository_directory, 'scripts', 'deploy_production.sh')
+
+        with open(deploy_script_path, 'r', encoding='utf-8') as deploy_script:
+            deploy_script_content = deploy_script.read()
+
+        prepare_index = deploy_script_content.index('prepare_music_playback')
+        check_index = deploy_script_content.index('check --deploy')
+        self.assertIn('prepare_music_playback --continue-on-error', deploy_script_content)
+        self.assertLess(prepare_index, check_index)
+
+
 class HomepageTemplateIntegrationTests(TestCase):
     def test_index_uses_shared_navigation_and_still_renders_search_and_posts(self):
         author = User.objects.create_user(username='homepage-author', password='StrongPass12345')
