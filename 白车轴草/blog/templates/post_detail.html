@@ -459,6 +459,56 @@
         gap: 12px;
     }
 
+    .series-posts {
+        background: rgba(232, 245, 233, 0.42);
+        border: 1px solid rgba(var(--theme-primary), 0.16);
+        border-radius: 8px;
+        padding: 18px;
+    }
+
+    .series-post-list {
+        display: grid;
+        gap: 10px;
+    }
+
+    .series-post-card {
+        align-items: center;
+        border: 1px solid var(--detail-line);
+        border-radius: 8px;
+        color: var(--detail-ink);
+        display: flex;
+        gap: 12px;
+        padding: 12px 14px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+
+    .series-post-card:hover,
+    .series-post-current {
+        background: rgba(255, 255, 255, 0.82);
+        border-color: rgba(var(--theme-primary), 0.28);
+        color: #1b5e20;
+    }
+
+    .series-post-order {
+        align-items: center;
+        background: #edf8ed;
+        border-radius: 999px;
+        color: #1b5e20;
+        display: inline-flex;
+        flex: 0 0 auto;
+        font-size: 0.82rem;
+        font-weight: 800;
+        justify-content: center;
+        min-width: 34px;
+        padding: 4px 9px;
+    }
+
+    .series-post-title {
+        font-weight: 800;
+        line-height: 1.35;
+    }
+
     .related-post-card {
         border: 1px solid var(--detail-line);
         border-radius: 12px;
@@ -799,6 +849,25 @@
                         {{ post.content|post_content }}
                         <div class="article-end-mark"></div>
                     </div>
+                    {% if series_posts %}
+                    <section class="series-posts mt-5">
+                        <h2 class="h5 mb-3">
+                            <i class="fas fa-layer-group me-2 text-success"></i>
+                            文章系列：{{ post.series_title }}
+                        </h2>
+                        <div class="series-post-list">
+                            {% for series_post in series_posts %}
+                            <a class="series-post-card {% if series_post.id == post.id %}series-post-current{% endif %}"
+                                href="{% url 'post_detail' series_post.id %}">
+                                <span class="series-post-order">
+                                    {% if series_post.series_order %}{{ series_post.series_order }}{% else %}{{ forloop.counter }}{% endif %}
+                                </span>
+                                <span class="series-post-title">{{ series_post.title }}</span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </section>
+                    {% endif %}
                     {% if related_posts %}
                     <section class="related-posts mt-5 pt-4 border-top">
                         <h2 class="h5 mb-4">
@@ -1037,6 +1106,27 @@
                             placeholder="输入自定义分类..." maxlength="50">
                     </div>
 
+                    <!-- 文章标签 -->
+                    <div class="mb-4">
+                        <label for="postTags" class="form-label"><i class="fas fa-tags me-1"></i>文章标签</label>
+                        <input type="text" class="form-control" id="postTags" name="tags"
+                            value="{{ post.tags|default:'' }}" placeholder="多个标签使用逗号分隔" maxlength="200">
+                    </div>
+
+                    <!-- 文章系列 -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-8">
+                            <label for="postSeriesTitle" class="form-label"><i class="fas fa-layer-group me-1"></i>文章系列</label>
+                            <input type="text" class="form-control" id="postSeriesTitle" name="series_title"
+                                value="{{ post.series_title|default:'' }}" placeholder="例如：Django 入门" maxlength="100">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="postSeriesOrder" class="form-label"><i class="fas fa-sort-numeric-down me-1"></i>系列顺序</label>
+                            <input type="number" class="form-control" id="postSeriesOrder" name="series_order"
+                                value="{{ post.series_order|default:'' }}" min="1" max="9999" placeholder="可留空">
+                        </div>
+                    </div>
+
                     <!-- 可见范围 -->
 
                     <div class="mb-4">
@@ -1119,6 +1209,12 @@
                     <span>分类</span>
                     <strong>{{ post.category_label }}</strong>
                 </div>
+                {% if post.series_title %}
+                <div class="detail-stat">
+                    <span>系列</span>
+                    <strong>{{ post.series_title }}</strong>
+                </div>
+                {% endif %}
                 <div class="detail-stat">
                     <span>发布</span>
                     <strong>{{ post.created_at|date:"Y-m-d" }}</strong>

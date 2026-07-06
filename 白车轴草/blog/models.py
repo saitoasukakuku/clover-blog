@@ -33,6 +33,8 @@ class Post(models.Model):
     title = models.CharField(max_length=200, verbose_name='文章标题')
     category = models.CharField(max_length=50, verbose_name='文章分类')
     tags = models.CharField(max_length=200, blank=True, verbose_name='文章标签')
+    series_title = models.CharField(max_length=100, blank=True, verbose_name='文章系列')
+    series_order = models.PositiveIntegerField(null=True, blank=True, verbose_name='系列顺序')
     cover = models.ImageField(upload_to='covers/', null=True, blank=True, verbose_name='封面图片')
     content = models.TextField(verbose_name='文章内容')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name='状态')
@@ -76,6 +78,8 @@ class PostRevision(models.Model):
     title = models.CharField(max_length=200, verbose_name='文章标题')
     category = models.CharField(max_length=50, verbose_name='文章分类')
     tags = models.CharField(max_length=200, blank=True, verbose_name='文章标签')
+    series_title = models.CharField(max_length=100, blank=True, verbose_name='文章系列')
+    series_order = models.PositiveIntegerField(null=True, blank=True, verbose_name='系列顺序')
     content = models.TextField(verbose_name='文章内容')
     status = models.CharField(
         max_length=20,
@@ -102,6 +106,8 @@ class PostRevision(models.Model):
             title=post.title,
             category=post.category,
             tags=post.tags,
+            series_title=post.series_title,
+            series_order=post.series_order,
             content=post.content,
             status=post.status,
             visibility=post.visibility,

@@ -881,6 +881,30 @@ class AuthViewsTests(TestCase):
         self.assertEqual(post.author, user)
         self.assertEqual(post.tags, '生活,记录')
 
+    def test_create_post_saves_series_fields(self):
+        user = User.objects.create_user(username='series-writer', password='StrongPass12345')
+        self.client.login(username='series-writer', password='StrongPass12345')
+
+        response = self.client.post(reverse('create_post'), {
+            'title': '系列第二篇',
+            'category': 'tech',
+            'tags': 'Django',
+            'series_title': 'Django 入门',
+            'series_order': '2',
+            'content': '系列正文',
+            'visibility': 'public',
+            'action': 'publish',
+        })
+
+        self.assertRedirects(response, reverse('index'))
+        post = Post.objects.get(title='系列第二篇')
+        self.assertEqual(post.series_title, 'Django 入门')
+        self.assertEqual(post.series_order, 2)
+
+        detail_response = self.client.get(reverse('post_detail', args=[post.id]))
+        self.assertContains(detail_response, '文章系列')
+        self.assertContains(detail_response, 'Django 入门')
+
     def test_edit_post_creates_revision_snapshot_before_changes(self):
         author = User.objects.create_user(username='revision-writer', password='StrongPass12345')
         post = Post.objects.create(
@@ -918,6 +942,40 @@ class AuthViewsTests(TestCase):
         self.assertEqual(post.tags, '新标签')
         self.assertEqual(post.content, '新正文')
         self.assertEqual(post.visibility, 'private')
+
+    def test_edit_post_updates_series_and_snapshots_old_series(self):
+        author = User.objects.create_user(username='series-editor', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='系列旧文章',
+            category='life',
+            tags='旧标签',
+            series_title='旧系列',
+            series_order=1,
+            content='正文',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='series-editor', password='StrongPass12345')
+
+        response = self.client.post(reverse('edit_post', args=[post.id]), {
+            'title': '系列旧文章',
+            'category': 'life',
+            'tags': '旧标签',
+            'series_title': '新系列',
+            'series_order': '3',
+            'content': '正文',
+            'visibility': 'public',
+            'action': 'publish',
+        })
+
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        post.refresh_from_db()
+        revision = PostRevision.objects.get(post=post)
+        self.assertEqual(revision.series_title, '旧系列')
+        self.assertEqual(revision.series_order, 1)
+        self.assertEqual(post.series_title, '新系列')
+        self.assertEqual(post.series_order, 3)
 
     def test_edit_post_does_not_create_revision_when_content_is_unchanged(self):
         author = User.objects.create_user(username='unchanged-writer', password='StrongPass12345')
@@ -981,6 +1039,50 @@ class AuthViewsTests(TestCase):
         self.assertNotContains(reader_response, '旧标题')
         self.assertEqual(list(reader_response.context['post_revisions']), [])
 
+    def test_post_detail_lists_readable_posts_in_same_series(self):
+        author = User.objects.create_user(username='series-author', password='StrongPass12345')
+        reader = User.objects.create_user(username='series-reader', password='StrongPass12345')
+        first_post = Post.objects.create(
+            author=author,
+            title='第一篇',
+            category='life',
+            series_title='旅行札记',
+            series_order=1,
+            content='第一篇正文',
+            status='published',
+            visibility='public',
+        )
+        current_post = Post.objects.create(
+            author=author,
+            title='第二篇',
+            category='life',
+            series_title='旅行札记',
+            series_order=2,
+            content='第二篇正文',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=author,
+            title='私密篇',
+            category='life',
+            series_title='旅行札记',
+            series_order=3,
+            content='私密正文',
+            status='published',
+            visibility='private',
+        )
+        self.client.login(username='series-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('post_detail', args=[current_post.id]))
+
+        series_titles = [series_post.title for series_post in response.context['series_posts']]
+        self.assertEqual(series_titles, [first_post.title, current_post.title])
+        self.assertContains(response, '文章系列')
+        self.assertContains(response, '旅行札记')
+        self.assertContains(response, 'series-post-current')
+        self.assertNotContains(response, '私密篇')
+
     def test_create_post_shows_markdown_editor_modal(self):
         user = User.objects.create_user(username='markdown-writer', password='StrongPass12345')
         self.client.login(username='markdown-writer', password='StrongPass12345')
@@ -1035,6 +1137,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'restorePostAutosaveDraft')
         self.assertContains(response, 'savePostAutosaveDraft')
         self.assertContains(response, 'clearPostAutosaveDraft')
+        self.assertContains(response, 'series_title')
+        self.assertContains(response, 'series_order')
         self.assertContains(response, 'localStorage')
 
     def test_post_detail_edit_form_shows_markdown_editor_modal(self):
@@ -1092,6 +1196,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'restorePostAutosaveDraft')
         self.assertContains(response, 'savePostAutosaveDraft')
         self.assertContains(response, 'clearPostAutosaveDraft')
+        self.assertContains(response, 'series_title')
+        self.assertContains(response, 'series_order')
         self.assertContains(response, 'localStorage')
 
     def test_post_detail_constrains_markdown_body_images(self):

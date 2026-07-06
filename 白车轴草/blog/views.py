@@ -293,6 +293,19 @@ def resolve_category(request):
     return category
 
 
+def parse_series_order(raw_series_order):
+    cleaned_series_order = (raw_series_order or '').strip()
+    if not cleaned_series_order:
+        return None
+    try:
+        series_order = int(cleaned_series_order)
+    except ValueError:
+        return None
+    if series_order < 1:
+        return None
+    return min(series_order, 9999)
+
+
 def normalize_image_extension(raw_extension):
     extension = raw_extension.lower().strip()
     normalized_extension = ALLOWED_IMAGE_EXTENSIONS.get(extension)
@@ -622,11 +635,21 @@ def media_manager_run_action(request):
     return redirect('media_manager')
 
 
-def build_post_form_context(title, category, tags, content, visibility):
+def build_post_form_context(
+    title,
+    category,
+    tags,
+    content,
+    visibility,
+    series_title='',
+    series_order=None,
+):
     post = Post(
         title=title or '',
         category=category or '',
         tags=tags or '',
+        series_title=series_title or '',
+        series_order=series_order,
         content=content or '',
         visibility=visibility or 'private',
     )
@@ -841,6 +864,24 @@ def get_related_posts(post, request_user, limit=3):
         candidate_post
         for _, __, candidate_post in scored_posts[:limit]
     ]
+
+
+def get_series_posts(post, request_user):
+    if not post.series_title:
+        return []
+    return list(
+        filter_readable_posts(
+            Post.objects.filter(series_title=post.series_title),
+            request_user,
+        ).select_related(
+            'author',
+            'author__profile',
+        ).order_by(
+            'series_order',
+            'created_at',
+            'id',
+        )
+    )
 
 
 def get_homepage_image_file_names():
@@ -1785,6 +1826,8 @@ def create_post(request):
         title = request.POST.get('title')
         category = resolve_category(request)
         tags = (request.POST.get('tags') or '').strip()[:200]
+        series_title = (request.POST.get('series_title') or '').strip()[:100]
+        series_order = parse_series_order(request.POST.get('series_order'))
         content = request.POST.get('content') or ''
         cover = request.FILES.get('cover')
         cropped_cover_data = request.POST.get('cropped_cover')
@@ -1802,7 +1845,15 @@ def create_post(request):
                 return render(
                     request,
                     'create_post.html',
-                    build_post_form_context(title, category, tags, content, visibility),
+                    build_post_form_context(
+                        title,
+                        category,
+                        tags,
+                        content,
+                        visibility,
+                        series_title,
+                        series_order,
+                    ),
                 )
         elif cover:
             try:
@@ -1812,7 +1863,15 @@ def create_post(request):
                 return render(
                     request,
                     'create_post.html',
-                    build_post_form_context(title, category, tags, content, visibility),
+                    build_post_form_context(
+                        title,
+                        category,
+                        tags,
+                        content,
+                        visibility,
+                        series_title,
+                        series_order,
+                    ),
                 )
 
         ai_cover_data = None
@@ -1835,6 +1894,8 @@ def create_post(request):
             title=title,
             category=category,
             tags=tags,
+            series_title=series_title,
+            series_order=series_order,
             content=content,
             cover=cover,
             status=status,
@@ -1965,6 +2026,8 @@ def edit_post(request, post_id):
             'title': request.POST.get('title') or '',
             'category': resolve_category(request),
             'tags': (request.POST.get('tags') or '').strip()[:200],
+            'series_title': (request.POST.get('series_title') or '').strip()[:100],
+            'series_order': parse_series_order(request.POST.get('series_order')),
             'content': request.POST.get('content') or '',
             'status': 'published' if action == 'publish' else 'draft',
             'visibility': request.POST.get('visibility', 'private'),
@@ -2083,6 +2146,7 @@ def post_detail(request, post_id):
         'comment_form': comment_form,
         'display_tags': get_display_tags(post),
         'related_posts': get_related_posts(post, request.user),
+        'series_posts': get_series_posts(post, request.user),
         'post_revisions': post_revisions,
         'is_favorited': (
             request.user.is_authenticated

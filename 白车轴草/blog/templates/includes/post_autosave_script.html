@@ -58,6 +58,8 @@
                 category: getPostAutosaveValue(form, 'category'),
                 custom_category: getPostAutosaveValue(form, 'custom_category'),
                 tags: getPostAutosaveValue(form, 'tags'),
+                series_title: getPostAutosaveValue(form, 'series_title'),
+                series_order: getPostAutosaveValue(form, 'series_order'),
                 visibility: getPostAutosaveValue(form, 'visibility'),
                 content: getPostAutosaveValue(form, 'content'),
                 savedAt: new Date().toISOString(),
@@ -80,6 +82,8 @@
             setPostAutosaveValue(form, 'category', autosaveDraft.category || '');
             setPostAutosaveValue(form, 'custom_category', autosaveDraft.custom_category || '');
             setPostAutosaveValue(form, 'tags', autosaveDraft.tags || '');
+            setPostAutosaveValue(form, 'series_title', autosaveDraft.series_title || '');
+            setPostAutosaveValue(form, 'series_order', autosaveDraft.series_order || '');
             setPostAutosaveValue(form, 'visibility', autosaveDraft.visibility || '');
             setPostAutosaveValue(form, 'content', autosaveDraft.content || '');
             delete form.dataset.postAutosaveRestoring;
