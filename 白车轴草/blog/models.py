@@ -142,6 +142,16 @@ class Comment(models.Model):
         max_length=1000,
         verbose_name='评论内容',
     )
+    is_hidden = models.BooleanField(default=False, verbose_name='已隐藏')
+    moderated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='moderated_comments',
+        null=True,
+        blank=True,
+        verbose_name='审核人',
+    )
+    moderated_at = models.DateTimeField(null=True, blank=True, verbose_name='审核时间')
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='评论时间',

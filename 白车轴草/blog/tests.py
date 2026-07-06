@@ -3265,6 +3265,90 @@ class AuthorProfileTests(TestCase):
         )
 
 
+class CommentModerationTests(TestCase):
+    def create_post_with_comment(self):
+        author = User.objects.create_user(username='moderation-author', password='StrongPass12345')
+        commenter = User.objects.create_user(username='moderation-commenter', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Moderation post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        comment = Comment.objects.create(
+            post=post,
+            author=commenter,
+            content='Needs moderation',
+        )
+        return author, commenter, post, comment
+
+    def test_post_author_can_hide_and_restore_comment(self):
+        author, _, post, comment = self.create_post_with_comment()
+        self.client.login(username='moderation-author', password='StrongPass12345')
+
+        hide_response = self.client.post(reverse('moderate_comment', args=[comment.id]), {
+            'action': 'hide',
+        })
+        comment.refresh_from_db()
+        author_detail_response = self.client.get(reverse('post_detail', args=[post.id]))
+        self.client.logout()
+        public_detail_response = self.client.get(reverse('post_detail', args=[post.id]))
+        self.client.login(username='moderation-author', password='StrongPass12345')
+        restore_response = self.client.post(reverse('moderate_comment', args=[comment.id]), {
+            'action': 'restore',
+        })
+        comment.refresh_from_db()
+
+        self.assertRedirects(hide_response, reverse('post_detail', args=[post.id]))
+        self.assertTrue(author_detail_response.context['can_moderate_comments'])
+        self.assertContains(author_detail_response, 'Needs moderation')
+        self.assertContains(author_detail_response, '已隐藏')
+        self.assertNotContains(public_detail_response, 'Needs moderation')
+        self.assertRedirects(restore_response, reverse('post_detail', args=[post.id]))
+        self.assertFalse(comment.is_hidden)
+        self.assertEqual(comment.moderated_by, author)
+        self.assertIsNotNone(comment.moderated_at)
+
+    def test_unrelated_user_cannot_moderate_comment(self):
+        _, _, post, comment = self.create_post_with_comment()
+        User.objects.create_user(username='moderation-outsider', password='StrongPass12345')
+        self.client.login(username='moderation-outsider', password='StrongPass12345')
+
+        response = self.client.post(reverse('moderate_comment', args=[comment.id]), {
+            'action': 'hide',
+        })
+
+        comment.refresh_from_db()
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        self.assertFalse(comment.is_hidden)
+
+    def test_hidden_replies_are_hidden_from_regular_readers(self):
+        author, commenter, post, comment = self.create_post_with_comment()
+        reply_author = User.objects.create_user(username='moderation-replier', password='StrongPass12345')
+        reply = Comment.objects.create(
+            post=post,
+            author=reply_author,
+            parent=comment,
+            content='Hidden reply',
+            is_hidden=True,
+            moderated_by=author,
+            moderated_at=timezone.now(),
+        )
+        self.client.login(username='moderation-commenter', password='StrongPass12345')
+
+        regular_response = self.client.get(reverse('post_detail', args=[post.id]))
+        self.client.logout()
+        self.client.login(username='moderation-author', password='StrongPass12345')
+        author_response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertContains(regular_response, comment.content)
+        self.assertNotContains(regular_response, reply.content)
+        self.assertContains(author_response, reply.content)
+        self.assertContains(author_response, '这条回复已隐藏')
+
+
 class FavoritePostTests(TestCase):
     def get_favorite_model(self):
         return apps.get_model('blog', 'PostFavorite')

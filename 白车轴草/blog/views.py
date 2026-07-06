@@ -941,6 +941,16 @@ def get_post_interaction_context(post, request_user):
     }
 
 
+def can_moderate_comment(user, comment):
+    return (
+        user.is_authenticated
+        and (
+            user.is_superuser
+            or comment.post.author_id == user.id
+        )
+    )
+
+
 def get_category_counts(posts):
     counter = Counter(post.category for post in posts if post.category)
     categories = [
@@ -2466,11 +2476,20 @@ def post_detail(request, post_id):
         post.status == 'published'
         and post.visibility == 'public'
     )
+    can_moderate_comments = (
+        request.user.is_authenticated
+        and (
+            request.user.is_superuser
+            or post.author_id == request.user.id
+        )
+    )
 
     if comments_enabled:
         reply_queryset = Comment.objects.select_related(
             'author__profile'
         ).order_by('created_at')
+        if not can_moderate_comments:
+            reply_queryset = reply_queryset.filter(is_hidden=False)
         comments = post.comments.filter(
             parent__isnull=True
         ).select_related(
@@ -2478,10 +2497,14 @@ def post_detail(request, post_id):
         ).prefetch_related(
             Prefetch('replies', queryset=reply_queryset)
         )
-        comment_count = post.comments.count()
+        if not can_moderate_comments:
+            comments = comments.filter(is_hidden=False)
+        comment_count = post.comments.filter(is_hidden=False).count()
+        hidden_comment_count = post.comments.filter(is_hidden=True).count()
     else:
         comments = post.comments.none()
         comment_count = 0
+        hidden_comment_count = 0
 
     if comments_enabled and request.user.is_authenticated:
         comment_form = CommentForm()
@@ -2500,6 +2523,8 @@ def post_detail(request, post_id):
         'comments_enabled': comments_enabled,
         'comments': comments,
         'comment_count': comment_count,
+        'hidden_comment_count': hidden_comment_count,
+        'can_moderate_comments': can_moderate_comments,
         'comment_form': comment_form,
         'display_tags': get_display_tags(post),
         'related_posts': get_related_posts(post, request.user),
@@ -2612,6 +2637,37 @@ def delete_comment(request, comment_id):
 
     comment.delete()
     messages.success(request, '评论已删除。')
+    return redirect('post_detail', post_id=post_id)
+
+
+@login_required
+@require_POST
+def moderate_comment(request, comment_id):
+    comment = get_object_or_404(
+        Comment.objects.select_related('post'),
+        id=comment_id,
+    )
+    post_id = comment.post_id
+    if not can_moderate_comment(request.user, comment):
+        messages.error(request, '你没有权限审核这条评论。')
+        return redirect('post_detail', post_id=post_id)
+
+    moderation_action = request.POST.get('action')
+    if moderation_action == 'hide':
+        comment.is_hidden = True
+        comment.moderated_by = request.user
+        comment.moderated_at = timezone.now()
+        comment.save(update_fields=['is_hidden', 'moderated_by', 'moderated_at'])
+        messages.success(request, '评论已隐藏。')
+    elif moderation_action == 'restore':
+        comment.is_hidden = False
+        comment.moderated_by = request.user
+        comment.moderated_at = timezone.now()
+        comment.save(update_fields=['is_hidden', 'moderated_by', 'moderated_at'])
+        messages.success(request, '评论已恢复显示。')
+    else:
+        messages.error(request, '未知的评论审核操作。')
+
     return redirect('post_detail', post_id=post_id)
 
 

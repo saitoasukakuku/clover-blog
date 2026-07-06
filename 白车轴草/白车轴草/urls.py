@@ -49,6 +49,7 @@ urlpatterns = [
     path('post/<int:post_id>/reaction/', views.toggle_post_reaction, name='toggle_post_reaction'),
     path('post/<int:post_id>/comment/', views.add_comment, name='add_comment'),
     path('comment/<int:comment_id>/delete/', views.delete_comment, name='delete_comment'),
+    path('comment/<int:comment_id>/moderate/', views.moderate_comment, name='moderate_comment'),
     path('post/<int:post_id>/delete/', views.delete_post, name='delete_post'),
     path('rss.xml', views.rss_feed, name='rss_feed'),
 ]

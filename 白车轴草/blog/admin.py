@@ -63,8 +63,8 @@ class RegistrationRequestAdmin(admin.ModelAdmin):
 
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
-    list_display = ('post', 'author', 'parent', 'content_preview', 'created_at')
-    list_filter = ('created_at',)
+    list_display = ('post', 'author', 'parent', 'is_hidden', 'moderated_by', 'content_preview', 'created_at')
+    list_filter = ('is_hidden', 'created_at')
     search_fields = ('content', 'author__username', 'post__title')
     ordering = ('-created_at',)
 
