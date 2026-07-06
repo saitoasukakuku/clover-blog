@@ -4690,6 +4690,71 @@ class MusicPlaybackCommandTests(TestCase):
 
 
 class HomepageTemplateIntegrationTests(TestCase):
+    def test_base_renders_default_seo_meta(self):
+        response = self.client.get(reverse('index'))
+
+        self.assertContains(response, 'name="description"')
+        self.assertContains(response, 'property="og:title"')
+        self.assertContains(response, 'property="og:description"')
+        self.assertContains(response, 'property="og:type"')
+        self.assertContains(response, 'rel="canonical"')
+        self.assertContains(response, '白车轴草')
+
+    def test_post_detail_renders_post_seo_meta(self):
+        author = User.objects.create_user(username='seo-author', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='SEO 文章标题',
+            category='life',
+            content='这是一篇用于生成搜索摘要的正文内容。',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertContains(response, 'SEO 文章标题')
+        self.assertContains(response, '这是一篇用于生成搜索摘要的正文内容。')
+        self.assertContains(response, 'property="og:type" content="article"')
+
+    def test_sitemap_xml_lists_public_pages_and_public_posts_only(self):
+        author = User.objects.create_user(username='sitemap-author', password='StrongPass12345')
+        public_post = Post.objects.create(
+            author=author,
+            title='公开站点地图文章',
+            category='life',
+            content='公开正文',
+            status='published',
+            visibility='public',
+        )
+        private_post = Post.objects.create(
+            author=author,
+            title='私密站点地图文章',
+            category='life',
+            content='私密正文',
+            status='published',
+            visibility='private',
+        )
+        draft_post = Post.objects.create(
+            author=author,
+            title='草稿站点地图文章',
+            category='life',
+            content='草稿正文',
+            status='draft',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('sitemap_xml'))
+        sitemap_content = response.content.decode('utf-8')
+
+        self.assertEqual(response['Content-Type'], 'application/xml; charset=utf-8')
+        self.assertIn('<urlset', sitemap_content)
+        self.assertIn(reverse('home'), sitemap_content)
+        self.assertIn(reverse('index'), sitemap_content)
+        self.assertIn(reverse('post_detail', args=[public_post.id]), sitemap_content)
+        self.assertNotIn(reverse('post_detail', args=[private_post.id]), sitemap_content)
+        self.assertNotIn(reverse('post_detail', args=[draft_post.id]), sitemap_content)
+
     def test_base_renders_mobile_bottom_navigation(self):
         response = self.client.get(reverse('index'))
 

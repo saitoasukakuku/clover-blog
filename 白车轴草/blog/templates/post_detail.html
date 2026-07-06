@@ -2,6 +2,10 @@
 {% load blog_extras %}
 
 {% block title %}{{ post.title }} - 白车轴草{% endblock %}
+{% block meta_description %}{{ post.content|striptags|cut:'**'|truncatechars:140 }}{% endblock %}
+{% block og_title %}{{ post.title }} - 白车轴草{% endblock %}
+{% block og_description %}{{ post.content|striptags|cut:'**'|truncatechars:140 }}{% endblock %}
+{% block og_type %}article{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">

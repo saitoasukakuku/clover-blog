@@ -570,6 +570,58 @@ self.addEventListener('fetch', (event) => {{
     return response
 
 
+def sitemap_xml(request):
+    sitemap_entries = [
+        {
+            'loc': request.build_absolute_uri(reverse('home')),
+            'changefreq': 'daily',
+            'priority': '1.0',
+        },
+        {
+            'loc': request.build_absolute_uri(reverse('index')),
+            'changefreq': 'daily',
+            'priority': '0.9',
+        },
+        {
+            'loc': request.build_absolute_uri(reverse('archive')),
+            'changefreq': 'weekly',
+            'priority': '0.6',
+        },
+        {
+            'loc': request.build_absolute_uri(reverse('tags')),
+            'changefreq': 'weekly',
+            'priority': '0.6',
+        },
+    ]
+    public_posts = Post.objects.filter(
+        get_currently_published_query(),
+        visibility='public',
+    ).order_by('-updated_at')
+    for post in public_posts:
+        sitemap_entries.append({
+            'loc': request.build_absolute_uri(reverse('post_detail', args=[post.id])),
+            'lastmod': timezone.localtime(post.updated_at).date().isoformat(),
+            'changefreq': 'monthly',
+            'priority': '0.7',
+        })
+
+    output = StringIO()
+    xml = SimplerXMLGenerator(output, 'utf-8')
+    xml.startDocument()
+    xml.startElement('urlset', {'xmlns': 'http://www.sitemaps.org/schemas/sitemap/0.9'})
+    for sitemap_entry in sitemap_entries:
+        xml.startElement('url', {})
+        xml.addQuickElement('loc', sitemap_entry['loc'])
+        if sitemap_entry.get('lastmod'):
+            xml.addQuickElement('lastmod', sitemap_entry['lastmod'])
+        xml.addQuickElement('changefreq', sitemap_entry['changefreq'])
+        xml.addQuickElement('priority', sitemap_entry['priority'])
+        xml.endElement('url')
+    xml.endElement('urlset')
+    xml.endDocument()
+    return HttpResponse(output.getvalue(), content_type='application/xml; charset=utf-8')
+
+
 def get_upload_file_extension(uploaded_file):
     return os.path.splitext(os.path.basename(uploaded_file.name or ''))[1].lower()
 

@@ -8,6 +8,7 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('manifest.webmanifest', views.pwa_manifest, name='pwa_manifest'),
     path('service-worker.js', views.service_worker, name='service_worker'),
+    path('sitemap.xml', views.sitemap_xml, name='sitemap_xml'),
     path('homepage-image/<path:image_file_name>/', views.homepage_carousel_image, name='homepage_carousel_image'),
     path('admin/', admin.site.urls),
     path('index/', views.index, name='index'),
