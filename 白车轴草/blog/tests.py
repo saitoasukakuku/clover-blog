@@ -3380,6 +3380,112 @@ class FavoritePostTests(TestCase):
         self.assertNotContains(response, 'No longer readable favorite')
 
 
+class PostInteractionTests(TestCase):
+    def get_like_model(self):
+        return apps.get_model('blog', 'PostLike')
+
+    def get_reaction_model(self):
+        return apps.get_model('blog', 'PostReaction')
+
+    def create_public_post(self):
+        author = User.objects.create_user(username='interaction-author', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Interactive post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        return author, post
+
+    def test_logged_in_user_can_toggle_post_like(self):
+        _, post = self.create_public_post()
+        reader = User.objects.create_user(username='like-reader', password='StrongPass12345')
+        self.client.login(username='like-reader', password='StrongPass12345')
+        PostLike = self.get_like_model()
+
+        like_response = self.client.post(reverse('toggle_post_like', args=[post.id]), {
+            'next': reverse('post_detail', args=[post.id]),
+        })
+        unlike_response = self.client.post(reverse('toggle_post_like', args=[post.id]), {
+            'next': reverse('post_detail', args=[post.id]),
+        })
+
+        self.assertRedirects(like_response, reverse('post_detail', args=[post.id]))
+        self.assertRedirects(unlike_response, reverse('post_detail', args=[post.id]))
+        self.assertFalse(PostLike.objects.filter(user=reader, post=post).exists())
+
+    def test_user_cannot_like_unreadable_private_post(self):
+        author = User.objects.create_user(username='private-like-author', password='StrongPass12345')
+        reader = User.objects.create_user(username='private-like-reader', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Private like post',
+            category='life',
+            content='Private content',
+            status='published',
+            visibility='private',
+        )
+        self.client.login(username='private-like-reader', password='StrongPass12345')
+
+        response = self.client.post(reverse('toggle_post_like', args=[post.id]))
+
+        self.assertEqual(response.status_code, 404)
+        PostLike = self.get_like_model()
+        self.assertFalse(PostLike.objects.filter(user=reader, post=post).exists())
+
+    def test_post_reaction_can_be_created_changed_and_removed(self):
+        _, post = self.create_public_post()
+        reader = User.objects.create_user(username='reaction-reader', password='StrongPass12345')
+        self.client.login(username='reaction-reader', password='StrongPass12345')
+        PostReaction = self.get_reaction_model()
+
+        create_response = self.client.post(reverse('toggle_post_reaction', args=[post.id]), {
+            'reaction_type': 'useful',
+            'next': reverse('post_detail', args=[post.id]),
+        })
+        change_response = self.client.post(reverse('toggle_post_reaction', args=[post.id]), {
+            'reaction_type': 'fun',
+            'next': reverse('post_detail', args=[post.id]),
+        })
+        remove_response = self.client.post(reverse('toggle_post_reaction', args=[post.id]), {
+            'reaction_type': 'fun',
+            'next': reverse('post_detail', args=[post.id]),
+        })
+
+        self.assertRedirects(create_response, reverse('post_detail', args=[post.id]))
+        self.assertRedirects(change_response, reverse('post_detail', args=[post.id]))
+        self.assertRedirects(remove_response, reverse('post_detail', args=[post.id]))
+        self.assertFalse(PostReaction.objects.filter(user=reader, post=post).exists())
+
+    def test_post_detail_shows_interaction_counts_and_active_reaction(self):
+        _, post = self.create_public_post()
+        reader = User.objects.create_user(username='detail-reaction-reader', password='StrongPass12345')
+        other_reader = User.objects.create_user(username='detail-other-reader', password='StrongPass12345')
+        PostLike = self.get_like_model()
+        PostReaction = self.get_reaction_model()
+        PostLike.objects.create(user=reader, post=post)
+        PostReaction.objects.create(user=reader, post=post, reaction_type='useful')
+        PostReaction.objects.create(user=other_reader, post=post, reaction_type='fun')
+        self.client.login(username='detail-reaction-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertEqual(response.context['like_count'], 1)
+        self.assertTrue(response.context['is_liked'])
+        reaction_options = {
+            reaction['value']: reaction
+            for reaction in response.context['reaction_options']
+        }
+        self.assertEqual(reaction_options['useful']['count'], 1)
+        self.assertTrue(reaction_options['useful']['is_active'])
+        self.assertEqual(reaction_options['fun']['count'], 1)
+        self.assertContains(response, '这篇文章给你的感觉')
+        self.assertContains(response, '已赞')
+        self.assertContains(response, '有用')
+
+
 class NotificationCenterTests(TestCase):
     def get_notification_model(self):
         return apps.get_model('blog', 'Notification')

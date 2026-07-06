@@ -7,6 +7,8 @@ from blog.models import (
     Notification,
     Post,
     PostFavorite,
+    PostLike,
+    PostReaction,
     PostRevision,
     PrivateMessage,
     RegistrationRequest,
@@ -103,6 +105,21 @@ class PostFavoriteAdmin(admin.ModelAdmin):
     list_display = ('user', 'post', 'created_at')
     search_fields = ('user__username', 'post__title')
     ordering = ('-created_at',)
+
+
+@admin.register(PostLike)
+class PostLikeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'post', 'created_at')
+    search_fields = ('user__username', 'post__title')
+    ordering = ('-created_at',)
+
+
+@admin.register(PostReaction)
+class PostReactionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'post', 'reaction_type', 'updated_at')
+    list_filter = ('reaction_type', 'updated_at')
+    search_fields = ('user__username', 'post__title')
+    ordering = ('-updated_at',)
 
 
 @admin.register(Notification)

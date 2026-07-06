@@ -11,7 +11,7 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import F, Prefetch, Q, Sum
+from django.db.models import Count, F, Prefetch, Q, Sum
 from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -51,6 +51,8 @@ from blog.models import (
     Notification,
     Post,
     PostFavorite,
+    PostLike,
+    PostReaction,
     PostRevision,
     PrivateMessage,
     RegistrationRequest,
@@ -94,6 +96,12 @@ HOMEPAGE_IMAGE_COPY_FILE_NAME = 'index_img_copy.json'
 HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
+REACTION_ICON_MAP = {
+    'useful': 'fas fa-lightbulb',
+    'resonate': 'fas fa-heart',
+    'inspired': 'fas fa-seedling',
+    'fun': 'fas fa-star',
+}
 HOMEPAGE_COPY_FIELDS = ('kicker', 'headline', 'lead', 'card_title', 'card_text')
 RECENTLY_READ_SESSION_KEY = 'recently_read_post_ids'
 INVALID_AUDIO_FILE_MESSAGE = '请上传 MP3、FLAC、WAV、M4A 或 OGG 音频文件。'
@@ -841,6 +849,58 @@ def create_notification(
         private_message=private_message,
         friend_request=friend_request,
     )
+
+
+def get_readable_post_or_404(post_id, user):
+    readable_posts = filter_readable_posts(
+        Post.objects.filter(id=post_id),
+        user,
+    )
+    return get_object_or_404(readable_posts)
+
+
+def get_post_interaction_context(post, request_user):
+    reaction_counts = {
+        reaction_type: 0
+        for reaction_type, _ in PostReaction.REACTION_CHOICES
+    }
+    reaction_rows = PostReaction.objects.filter(
+        post=post,
+    ).values(
+        'reaction_type',
+    ).annotate(
+        count=Count('id'),
+    )
+    for reaction_row in reaction_rows:
+        reaction_counts[reaction_row['reaction_type']] = reaction_row['count']
+
+    user_reaction_type = ''
+    if request_user.is_authenticated:
+        user_reaction_type = (
+            PostReaction.objects.filter(user=request_user, post=post)
+            .values_list('reaction_type', flat=True)
+            .first()
+            or ''
+        )
+
+    return {
+        'like_count': post.likes.count(),
+        'is_liked': (
+            request_user.is_authenticated
+            and PostLike.objects.filter(user=request_user, post=post).exists()
+        ),
+        'reaction_options': [
+            {
+                'value': reaction_type,
+                'label': reaction_label,
+                'count': reaction_counts.get(reaction_type, 0),
+                'icon_class': REACTION_ICON_MAP.get(reaction_type, 'fas fa-circle'),
+                'is_active': user_reaction_type == reaction_type,
+            }
+            for reaction_type, reaction_label in PostReaction.REACTION_CHOICES
+        ],
+        'user_reaction_type': user_reaction_type,
+    }
 
 
 def get_category_counts(posts):
@@ -1920,11 +1980,7 @@ def favorite_posts(request):
 @login_required
 @require_POST
 def toggle_favorite(request, post_id):
-    readable_posts = filter_readable_posts(
-        Post.objects.filter(id=post_id),
-        request.user,
-    )
-    post = get_object_or_404(readable_posts)
+    post = get_readable_post_or_404(post_id, request.user)
     favorite = PostFavorite.objects.filter(
         user=request.user,
         post=post,
@@ -1938,13 +1994,64 @@ def toggle_favorite(request, post_id):
         messages.success(request, '文章已加入收藏。')
 
     fallback_url = reverse('post_detail', args=[post.id])
-    next_url = request.POST.get('next') or fallback_url
-    if not url_has_allowed_host_and_scheme(
-        next_url,
-        allowed_hosts={request.get_host()},
-    ):
-        next_url = fallback_url
-    return redirect(next_url)
+    return redirect(get_safe_post_next_url(request, fallback_url))
+
+
+@login_required
+@require_POST
+def toggle_post_like(request, post_id):
+    post = get_readable_post_or_404(post_id, request.user)
+    post_like = PostLike.objects.filter(
+        user=request.user,
+        post=post,
+    ).first()
+
+    if post_like:
+        post_like.delete()
+        messages.info(request, '已取消点赞。')
+    else:
+        PostLike.objects.create(user=request.user, post=post)
+        messages.success(request, '已点赞。')
+
+    fallback_url = reverse('post_detail', args=[post.id])
+    return redirect(get_safe_post_next_url(request, fallback_url))
+
+
+@login_required
+@require_POST
+def toggle_post_reaction(request, post_id):
+    post = get_readable_post_or_404(post_id, request.user)
+    reaction_type = (request.POST.get('reaction_type') or '').strip()
+    allowed_reaction_types = {
+        choice_value
+        for choice_value, _ in PostReaction.REACTION_CHOICES
+    }
+    if reaction_type not in allowed_reaction_types:
+        messages.error(request, '请选择有效的文章反应。')
+        fallback_url = reverse('post_detail', args=[post.id])
+        return redirect(get_safe_post_next_url(request, fallback_url))
+
+    post_reaction = PostReaction.objects.filter(
+        user=request.user,
+        post=post,
+    ).first()
+    if post_reaction and post_reaction.reaction_type == reaction_type:
+        post_reaction.delete()
+        messages.info(request, '已取消这个反应。')
+    elif post_reaction:
+        post_reaction.reaction_type = reaction_type
+        post_reaction.save(update_fields=['reaction_type', 'updated_at'])
+        messages.success(request, '已更新文章反应。')
+    else:
+        PostReaction.objects.create(
+            user=request.user,
+            post=post,
+            reaction_type=reaction_type,
+        )
+        messages.success(request, '已记录文章反应。')
+
+    fallback_url = reverse('post_detail', args=[post.id])
+    return redirect(get_safe_post_next_url(request, fallback_url))
 
 
 @login_required
@@ -2329,6 +2436,7 @@ def post_detail(request, post_id):
             and PostFavorite.objects.filter(user=request.user, post=post).exists()
         ),
     }
+    context.update(get_post_interaction_context(post, request.user))
     context.update(get_category_context(post))
     return render(request, 'post_detail.html', context)
 

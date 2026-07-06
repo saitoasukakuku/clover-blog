@@ -279,6 +279,78 @@
         font-weight: 600;
     }
 
+    .post-interaction-panel {
+        background: rgba(247, 252, 247, 0.9);
+        border: 1px solid rgba(var(--theme-primary), 0.14);
+        border-radius: 8px;
+        display: grid;
+        gap: 16px;
+        margin: 34px auto 0;
+        max-width: 760px;
+        padding: 18px;
+    }
+
+    .post-interaction-header {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+    }
+
+    .post-interaction-title {
+        color: var(--detail-ink);
+        font-weight: 800;
+        margin-bottom: 2px;
+    }
+
+    .post-interaction-subtitle {
+        color: var(--detail-muted);
+        font-size: 0.86rem;
+    }
+
+    .reaction-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .reaction-buttons form {
+        margin: 0;
+    }
+
+    .reaction-button {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid rgba(var(--theme-primary), 0.18);
+        border-radius: 999px;
+        color: #275b2b;
+        display: inline-flex;
+        font-size: 0.9rem;
+        font-weight: 700;
+        gap: 7px;
+        padding: 8px 13px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+
+    .reaction-button:hover,
+    .reaction-button.active {
+        background: rgba(var(--theme-primary), 0.1);
+        border-color: rgba(var(--theme-primary), 0.36);
+        color: #1b5e20;
+        transform: translateY(-1px);
+    }
+
+    .reaction-count {
+        background: rgba(232, 245, 233, 0.92);
+        border-radius: 999px;
+        color: #1b5e20;
+        font-size: 0.78rem;
+        min-width: 22px;
+        padding: 1px 7px;
+        text-align: center;
+    }
+
     .post-content {
         max-width: 760px;
         margin: 0 auto;
@@ -736,6 +808,21 @@
             width: 100%;
         }
 
+        .post-interaction-header {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .reaction-button {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .reaction-buttons form,
+        .reaction-buttons a {
+            flex: 1 1 calc(50% - 10px);
+        }
+
         .post-content {
             font-size: 1rem;
             line-height: 1.9;
@@ -821,10 +908,23 @@
                                     {% if is_favorited %}已收藏{% else %}收藏{% endif %}
                                 </button>
                             </form>
+                            <form method="post" action="{% url 'toggle_post_like' post.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <button type="submit"
+                                        class="btn {% if is_liked %}btn-success{% else %}btn-outline-success{% endif %} btn-sm rounded-pill">
+                                    <i class="{% if is_liked %}fas{% else %}far{% endif %} fa-thumbs-up me-1"></i>
+                                    {% if is_liked %}已赞{% else %}点赞{% endif %} {{ like_count }}
+                                </button>
+                            </form>
                             {% else %}
                             <a href="{% url 'login' %}?next={{ request.path|urlencode }}"
                                 class="btn btn-outline-success btn-sm rounded-pill">
                                 <i class="far fa-bookmark me-1"></i>登录后收藏
+                            </a>
+                            <a href="{% url 'login' %}?next={{ request.path|urlencode }}"
+                                class="btn btn-outline-success btn-sm rounded-pill">
+                                <i class="far fa-thumbs-up me-1"></i>登录后点赞
                             </a>
                             {% endif %}
 
@@ -849,6 +949,37 @@
                         {{ post.content|post_content }}
                         <div class="article-end-mark"></div>
                     </div>
+                    <section class="post-interaction-panel" aria-label="文章互动">
+                        <div class="post-interaction-header">
+                            <div>
+                                <div class="post-interaction-title">这篇文章给你的感觉</div>
+                                <div class="post-interaction-subtitle">留下一个轻量反应，方便以后回看内容倾向。</div>
+                            </div>
+                            <span class="badge text-bg-success">点赞 {{ like_count }}</span>
+                        </div>
+                        <div class="reaction-buttons">
+                            {% for reaction in reaction_options %}
+                                {% if user.is_authenticated %}
+                                <form method="post" action="{% url 'toggle_post_reaction' post.id %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <input type="hidden" name="reaction_type" value="{{ reaction.value }}">
+                                    <button type="submit" class="reaction-button {% if reaction.is_active %}active{% endif %}">
+                                        <i class="{{ reaction.icon_class }}"></i>
+                                        <span>{{ reaction.label }}</span>
+                                        <span class="reaction-count">{{ reaction.count }}</span>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <a class="reaction-button" href="{% url 'login' %}?next={{ request.path|urlencode }}">
+                                    <i class="{{ reaction.icon_class }}"></i>
+                                    <span>{{ reaction.label }}</span>
+                                    <span class="reaction-count">{{ reaction.count }}</span>
+                                </a>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </section>
                     {% if series_posts %}
                     <section class="series-posts mt-5">
                         <h2 class="h5 mb-3">

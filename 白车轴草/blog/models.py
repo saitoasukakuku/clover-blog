@@ -431,6 +431,79 @@ class PostFavorite(models.Model):
         return f'{self.user.username} 收藏 {self.post.title}'
 
 
+class PostLike(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='post_likes',
+        verbose_name='点赞用户',
+    )
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='likes',
+        verbose_name='点赞文章',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='点赞时间')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('user', 'post'),
+                name='unique_post_like',
+            ),
+        ]
+        ordering = ['-created_at']
+        verbose_name = '文章点赞'
+        verbose_name_plural = '文章点赞'
+
+    def __str__(self):
+        return f'{self.user.username} 点赞 {self.post.title}'
+
+
+class PostReaction(models.Model):
+    REACTION_CHOICES = (
+        ('useful', '有用'),
+        ('resonate', '共鸣'),
+        ('inspired', '启发'),
+        ('fun', '有趣'),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='post_reactions',
+        verbose_name='反应用户',
+    )
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='reactions',
+        verbose_name='反应文章',
+    )
+    reaction_type = models.CharField(
+        max_length=20,
+        choices=REACTION_CHOICES,
+        verbose_name='反应类型',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='反应时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('user', 'post'),
+                name='unique_post_reaction',
+            ),
+        ]
+        ordering = ['-updated_at']
+        verbose_name = '文章表情反应'
+        verbose_name_plural = '文章表情反应'
+
+    def __str__(self):
+        return f'{self.user.username} 对 {self.post.title} 标记 {self.get_reaction_type_display()}'
+
+
 class Notification(models.Model):
     TYPE_CHOICES = (
         ('comment_on_post', '文章评论'),
