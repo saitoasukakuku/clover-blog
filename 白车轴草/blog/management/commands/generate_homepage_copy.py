@@ -13,7 +13,7 @@ from blog.management.commands.create_startup_post import (
     DEFAULT_DEEPSEEK_MODEL,
     Command as StartupPostCommand,
 )
-from blog.views import (
+from blog.homepage_media import (
     HOMEPAGE_IMAGE_COPY_FILE_NAME,
     get_homepage_ai_copy_by_file_name,
     get_homepage_image_copy_file_path,
