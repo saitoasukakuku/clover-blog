@@ -65,6 +65,22 @@ class Post(models.Model):
     def __str__(self):
         return self.title
 
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=('status', 'visibility', '-created_at'),
+                name='post_status_vis_created_idx',
+            ),
+            models.Index(
+                fields=('author', 'status', '-created_at'),
+                name='post_author_status_created_idx',
+            ),
+            models.Index(
+                fields=('status', 'category', '-created_at'),
+                name='post_category_created_idx',
+            ),
+        ]
+
 
 class PostRevision(models.Model):
     post = models.ForeignKey(
@@ -166,6 +182,12 @@ class Comment(models.Model):
     )
 
     class Meta:
+        indexes = [
+            models.Index(
+                fields=('post', 'is_hidden', '-created_at'),
+                name='comment_post_hidden_idx',
+            ),
+        ]
         ordering = ['-created_at']
         verbose_name = '评论'
         verbose_name_plural = '评论'
@@ -226,6 +248,12 @@ class RegistrationRequest(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
+        indexes = [
+            models.Index(
+                fields=('status', '-updated_at'),
+                name='regreq_status_updated_idx',
+            ),
+        ]
         ordering = ['-updated_at']
         verbose_name = '注册申请'
         verbose_name_plural = '注册申请'
@@ -322,6 +350,12 @@ class FriendRequest(models.Model):
             models.CheckConstraint(
                 check=~models.Q(sender=models.F('receiver')),
                 name='friend_request_users_differ',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=('receiver', 'status', '-updated_at'),
+                name='friendreq_recv_status_idx',
             ),
         ]
         ordering = ['-updated_at']
@@ -443,6 +477,16 @@ class PrivateMessage(models.Model):
             models.CheckConstraint(
                 check=~models.Q(sender=models.F('recipient')),
                 name='private_message_users_differ',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=('recipient', 'is_read', 'created_at'),
+                name='pm_rec_read_created_idx',
+            ),
+            models.Index(
+                fields=('sender', 'recipient', 'created_at'),
+                name='pm_pair_created_idx',
             ),
         ]
         ordering = ['created_at']
@@ -623,6 +667,16 @@ class Notification(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='通知时间')
 
     class Meta:
+        indexes = [
+            models.Index(
+                fields=('recipient', 'is_read', '-created_at'),
+                name='notif_rec_read_created_idx',
+            ),
+            models.Index(
+                fields=('recipient', 'notification_type', '-created_at'),
+                name='notif_rec_type_created_idx',
+            ),
+        ]
         ordering = ['-created_at']
         verbose_name = '通知'
         verbose_name_plural = '通知'

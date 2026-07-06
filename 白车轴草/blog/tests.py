@@ -25,6 +25,7 @@ from blog.models import (
     Comment,
     FriendRequest,
     Friendship,
+    Notification,
     Post,
     PostRevision,
     PrivateMessage,
@@ -33,6 +34,36 @@ from blog.models import (
 )
 from blog.templatetags.blog_extras import post_content
 from blog.views import AI_COVER_TOKEN_SALT
+
+
+class ModelIndexTests(TestCase):
+    def assertModelHasIndexes(self, model, expected_index_names):
+        current_index_names = {index.name for index in model._meta.indexes}
+        self.assertTrue(set(expected_index_names).issubset(current_index_names))
+
+    def test_common_query_indexes_are_declared(self):
+        self.assertModelHasIndexes(Post, [
+            'post_status_vis_created_idx',
+            'post_author_status_created_idx',
+            'post_category_created_idx',
+        ])
+        self.assertModelHasIndexes(Comment, [
+            'comment_post_hidden_idx',
+        ])
+        self.assertModelHasIndexes(RegistrationRequest, [
+            'regreq_status_updated_idx',
+        ])
+        self.assertModelHasIndexes(FriendRequest, [
+            'friendreq_recv_status_idx',
+        ])
+        self.assertModelHasIndexes(PrivateMessage, [
+            'pm_rec_read_created_idx',
+            'pm_pair_created_idx',
+        ])
+        self.assertModelHasIndexes(Notification, [
+            'notif_rec_read_created_idx',
+            'notif_rec_type_created_idx',
+        ])
 
 
 def encode_id3_syncsafe_size(value):
