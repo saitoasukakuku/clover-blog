@@ -1284,6 +1284,10 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'renderMarkdownLines')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-action="image-library"')
+        self.assertContains(response, f'data-markdown-library-url="{reverse("post_image_library")}"')
+        self.assertContains(response, 'data-markdown-image-library')
+        self.assertContains(response, 'loadMarkdownImageLibrary')
         self.assertContains(response, 'data-markdown-action="code-block"')
         self.assertContains(response, 'data-markdown-action="table"')
         self.assertContains(response, 'data-markdown-image-trigger')
@@ -1352,6 +1356,10 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'renderMarkdownLines')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-action="image-library"')
+        self.assertContains(response, f'data-markdown-library-url="{reverse("post_image_library")}"')
+        self.assertContains(response, 'data-markdown-image-library')
+        self.assertContains(response, 'loadMarkdownImageLibrary')
         self.assertContains(response, 'data-markdown-action="code-block"')
         self.assertContains(response, 'data-markdown-action="table"')
         self.assertContains(response, 'data-markdown-image-trigger')
@@ -1460,6 +1468,37 @@ class AuthViewsTests(TestCase):
         self.assertTrue(response_data['url'].startswith('/media/post_images/'))
         self.assertEqual(response_data['markdown'], f"![body-photo]({response_data['url']})")
         self.assertTrue(saved_file_exists)
+
+    def test_post_image_library_requires_login(self):
+        response = self.client.get(reverse('post_image_library'))
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('post_image_library')}",
+        )
+
+    def test_post_image_library_returns_uploaded_post_images(self):
+        User.objects.create_user(username='image-library-user', password='StrongPass12345')
+        self.client.login(username='image-library-user', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            post_image_directory = os.path.join(temporary_media_root, 'post_images')
+            os.makedirs(post_image_directory)
+            Image.new('RGB', (24, 24), color=(80, 120, 160)).save(
+                os.path.join(post_image_directory, 'first-photo.jpg'),
+                format='JPEG',
+            )
+            with open(os.path.join(post_image_directory, 'notes.txt'), 'w', encoding='utf-8') as text_file:
+                text_file.write('not image')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('post_image_library'))
+
+        response_data = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response_data['images']), 1)
+        self.assertEqual(response_data['images'][0]['alt'], 'first-photo')
+        self.assertEqual(response_data['images'][0]['url'], '/media/post_images/first-photo.jpg')
 
     def test_upload_post_image_rejects_invalid_file(self):
         User.objects.create_user(username='bad-image-writer', password='StrongPass12345')

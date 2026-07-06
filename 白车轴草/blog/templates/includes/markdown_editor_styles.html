@@ -101,6 +101,69 @@
         pointer-events: none;
     }
 
+    .markdown-image-library-panel {
+        border-bottom: 1px solid #e4eee5;
+        background: #f8fcf8;
+        padding: 10px;
+    }
+
+    .markdown-image-library-header {
+        align-items: center;
+        color: #53705a;
+        display: flex;
+        font-size: .82rem;
+        font-weight: 800;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+
+    .markdown-image-library-list {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+        max-height: 186px;
+        overflow: auto;
+    }
+
+    .markdown-image-library-item {
+        background: #fff;
+        border: 1px solid #d8ead9;
+        border-radius: 8px;
+        color: #2b3a2d;
+        cursor: pointer;
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+        padding: 6px;
+        text-align: left;
+    }
+
+    .markdown-image-library-item:hover {
+        border-color: #4caf50;
+        box-shadow: 0 8px 18px rgba(46, 125, 50, .12);
+    }
+
+    .markdown-image-library-item img {
+        aspect-ratio: 4 / 3;
+        border-radius: 6px;
+        object-fit: cover;
+        width: 100%;
+    }
+
+    .markdown-image-library-name {
+        font-size: .74rem;
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .markdown-image-library-empty {
+        color: #7c887d;
+        font-size: .84rem;
+        padding: 10px 2px;
+    }
+
     .markdown-modal-textarea {
         flex: 1;
         min-height: 58vh;

@@ -27,6 +27,14 @@
             return modal ? modal.querySelector('[data-markdown-status]') : null;
         }
 
+        function getImageLibraryPanel(modal) {
+            return modal ? modal.querySelector('[data-markdown-image-library]') : null;
+        }
+
+        function getImageLibraryList(modal) {
+            return modal ? modal.querySelector('[data-markdown-image-library-list]') : null;
+        }
+
         function setStatus(modal, message, isError) {
             var status = getStatus(modal);
             if (!status) {
@@ -222,6 +230,15 @@
                 return '';
             }
             return imageUrl.trim();
+        }
+
+        function escapeHtml(rawText) {
+            return String(rawText || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function escapeMarkdownPreview(rawText) {
@@ -494,6 +511,61 @@
             }
         }
 
+        function renderMarkdownImageLibrary(modal, images) {
+            var imageLibraryList = getImageLibraryList(modal);
+            var imageLibraryCount = modal ? modal.querySelector('[data-markdown-image-library-count]') : null;
+            if (!imageLibraryList) {
+                return;
+            }
+            if (imageLibraryCount) {
+                imageLibraryCount.textContent = images.length ? String(images.length) : '';
+            }
+            if (!images.length) {
+                imageLibraryList.innerHTML = '<div class="markdown-image-library-empty">暂无已上传图片</div>';
+                return;
+            }
+            imageLibraryList.innerHTML = images.map(function (imageItem) {
+                var imageUrl = escapeHtml(imageItem.url);
+                var imageAlt = escapeHtml(imageItem.alt || '图片');
+                var imageFileName = escapeHtml(imageItem.file_name || imageItem.alt || '图片');
+                return (
+                    '<button type="button" class="markdown-image-library-item" data-markdown-library-item ' +
+                    'data-markdown-image-url="' + imageUrl + '" data-markdown-image-alt="' + imageAlt + '">' +
+                    '<img src="' + imageUrl + '" alt="' + imageAlt + '">' +
+                    '<span class="markdown-image-library-name">' + imageFileName + '</span>' +
+                    '</button>'
+                );
+            }).join('');
+        }
+
+        function loadMarkdownImageLibrary(modal) {
+            var libraryUrl = modal ? modal.getAttribute('data-markdown-library-url') : '';
+            if (!modal || !libraryUrl) {
+                return Promise.resolve();
+            }
+            setStatus(modal, '图片库加载中...', false);
+            return fetch(libraryUrl, {
+                method: 'GET',
+                credentials: 'same-origin',
+            })
+                .then(function (response) {
+                    return response.json().then(function (responseData) {
+                        if (!response.ok) {
+                            throw new Error(responseData.error || '图片库加载失败。');
+                        }
+                        return responseData;
+                    });
+                })
+                .then(function (responseData) {
+                    renderMarkdownImageLibrary(modal, responseData.images || []);
+                    modal.dataset.markdownImageLibraryLoaded = 'true';
+                    setStatus(modal, '图片库已更新。', false);
+                })
+                .catch(function (error) {
+                    setStatus(modal, error.message, true);
+                });
+        }
+
         function syncModalFromSource(modal) {
             var sourceTextarea = getSourceTextarea(modal);
             var modalTextarea = getModalTextarea(modal);
@@ -524,6 +596,21 @@
                 var modal = modalId ? document.querySelector(modalId) : null;
                 if (modal) {
                     syncModalFromSource(modal);
+                }
+                return;
+            }
+
+            var libraryItem = closestElement(event.target, '[data-markdown-library-item]');
+            if (libraryItem) {
+                var libraryModal = closestElement(libraryItem, '[data-markdown-modal-for]');
+                var libraryTextarea = getModalTextarea(libraryModal);
+                var libraryImageUrl = libraryItem.getAttribute('data-markdown-image-url') || '';
+                var libraryImageAlt = libraryItem.getAttribute('data-markdown-image-alt') || '图片';
+                if (libraryTextarea && libraryImageUrl) {
+                    event.preventDefault();
+                    saveSelection(libraryTextarea);
+                    insertMarkdownBlock(libraryTextarea, '![' + libraryImageAlt + '](' + libraryImageUrl + ')');
+                    setStatus(libraryModal, '图片已从图库插入正文。', false);
                 }
                 return;
             }
@@ -568,6 +655,16 @@
                 var imageUrl = promptMarkdownImageUrl();
                 if (imageUrl) {
                     insertMarkdownBlock(textarea, '![图片说明](' + imageUrl + ')');
+                }
+            } else if (action === 'image-library') {
+                var imageLibraryPanel = getImageLibraryPanel(modal);
+                if (imageLibraryPanel) {
+                    var shouldShowLibrary = imageLibraryPanel.hidden;
+                    imageLibraryPanel.hidden = !shouldShowLibrary;
+                    actionButton.classList.toggle('is-active', shouldShowLibrary);
+                    if (shouldShowLibrary && modal.dataset.markdownImageLibraryLoaded !== 'true') {
+                        loadMarkdownImageLibrary(modal);
+                    }
                 }
             } else if (action === 'preview') {
                 var previewPane = modal ? modal.querySelector('[data-markdown-preview-pane]') : null;

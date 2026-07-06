@@ -8,7 +8,8 @@
 
 <div class="modal fade markdown-editor-modal" id="markdownEditorModal-{{ textarea_id }}" tabindex="-1"
     aria-labelledby="markdownEditorModalLabel-{{ textarea_id }}" aria-hidden="true"
-    data-markdown-modal-for="{{ textarea_id }}" data-markdown-upload-url="{% url 'upload_post_image' %}">
+    data-markdown-modal-for="{{ textarea_id }}" data-markdown-upload-url="{% url 'upload_post_image' %}"
+    data-markdown-library-url="{% url 'post_image_library' %}">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-lg-down">
         <div class="modal-content">
             <div class="modal-header">
@@ -39,6 +40,9 @@
                             <button type="button" class="markdown-tool-btn" data-markdown-action="image-url" title="插入图片链接">
                                 <i class="fas fa-image"></i>
                             </button>
+                            <button type="button" class="markdown-tool-btn" data-markdown-action="image-library" title="图片库">
+                                <i class="fas fa-images"></i>
+                            </button>
                             <label class="markdown-tool-btn" for="markdownImageUpload-{{ textarea_id }}"
                                 data-markdown-image-trigger title="上传图片">
                                 <i class="fas fa-upload"></i>
@@ -51,6 +55,13 @@
                             </button>
                             <input type="file" class="markdown-file-input" id="markdownImageUpload-{{ textarea_id }}"
                                 data-markdown-image-upload accept="image/*">
+                        </div>
+                        <div class="markdown-image-library-panel" data-markdown-image-library hidden>
+                            <div class="markdown-image-library-header">
+                                <span>图片库</span>
+                                <span data-markdown-image-library-count></span>
+                            </div>
+                            <div class="markdown-image-library-list" data-markdown-image-library-list></div>
                         </div>
                         <label class="visually-hidden" for="markdownModalTextarea-{{ textarea_id }}">Markdown 正文</label>
                         <textarea class="form-control markdown-modal-textarea" id="markdownModalTextarea-{{ textarea_id }}"

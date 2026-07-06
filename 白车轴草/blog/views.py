@@ -465,6 +465,39 @@ def upload_post_image(request):
     })
 
 
+def build_post_image_library_items():
+    post_image_directory = os.path.join(settings.MEDIA_ROOT, 'post_images')
+    try:
+        image_file_names = sorted(
+            os.listdir(post_image_directory),
+            key=lambda file_name: os.path.getmtime(os.path.join(post_image_directory, file_name)),
+            reverse=True,
+        )
+    except OSError:
+        return []
+
+    image_items = []
+    for image_file_name in image_file_names:
+        image_file_path = os.path.join(post_image_directory, image_file_name)
+        if not os.path.isfile(image_file_path):
+            continue
+        image_extension = os.path.splitext(image_file_name)[1].lstrip('.').lower()
+        if image_extension not in ALLOWED_IMAGE_EXTENSIONS:
+            continue
+        image_alt_text = os.path.splitext(image_file_name)[0]
+        image_items.append({
+            'file_name': image_file_name,
+            'alt': image_alt_text,
+            'url': f"{settings.MEDIA_URL.rstrip('/')}/post_images/{quote(image_file_name)}",
+        })
+    return image_items
+
+
+@login_required
+def post_image_library(request):
+    return JsonResponse({'images': build_post_image_library_items()})
+
+
 def pwa_manifest(request):
     manifest = {
         'name': '白车轴草',
