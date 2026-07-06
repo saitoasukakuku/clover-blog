@@ -21,6 +21,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.html import conditional_escape, strip_tags
 from django.utils.safestring import mark_safe
 from django.utils.xmlutils import SimplerXMLGenerator
+from django.templatetags.static import static as static_asset
 from PIL import Image, ImageOps, UnidentifiedImageError
 from blog.forms import (
     ChineseAuthenticationForm,
@@ -98,6 +99,8 @@ HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
 MENTION_USERNAME_PATTERN = re.compile(r'@([\w.@+-]{1,150})')
+PWA_CACHE_VERSION = '2026-07-06-1'
+PWA_THEME_COLOR = '#2e7d32'
 REACTION_ICON_MAP = {
     'useful': 'fas fa-lightbulb',
     'resonate': 'fas fa-heart',
@@ -424,6 +427,111 @@ def upload_post_image(request):
         'url': image_url,
         'markdown': f'![{image_alt_text}]({image_url})',
     })
+
+
+def pwa_manifest(request):
+    manifest = {
+        'name': '白车轴草',
+        'short_name': '白车轴草',
+        'description': '一个用于阅读、写作、图片和音乐收藏的个人小站。',
+        'start_url': reverse('home'),
+        'scope': '/',
+        'display': 'standalone',
+        'background_color': '#f5f7f5',
+        'theme_color': PWA_THEME_COLOR,
+        'orientation': 'portrait-primary',
+        'icons': [
+            {
+                'src': static_asset('img/favicon_v4.png'),
+                'sizes': '192x192',
+                'type': 'image/png',
+                'purpose': 'any maskable',
+            },
+            {
+                'src': static_asset('img/favicon_v4.png'),
+                'sizes': '512x512',
+                'type': 'image/png',
+                'purpose': 'any maskable',
+            },
+        ],
+    }
+    return JsonResponse(
+        manifest,
+        json_dumps_params={'ensure_ascii': False},
+        content_type='application/manifest+json',
+    )
+
+
+def service_worker(request):
+    shell_urls = [
+        reverse('home'),
+        reverse('index'),
+        reverse('archive'),
+        reverse('tags'),
+        static_asset('img/favicon_v4.png'),
+        static_asset('js/jquery-3.7.1.js'),
+        static_asset('plugins/bootstrap-5.3.8-dist/css/bootstrap.min.css'),
+        static_asset('plugins/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js'),
+    ]
+    shell_urls_json = json.dumps(shell_urls, ensure_ascii=False)
+    cache_name = f'clover-blog-shell-v{PWA_CACHE_VERSION}'
+    service_worker_source = f"""
+const CACHE_NAME = {json.dumps(cache_name)};
+const SHELL_URLS = {shell_urls_json};
+
+self.addEventListener('install', (event) => {{
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then((cache) => cache.addAll(SHELL_URLS))
+            .then(() => self.skipWaiting())
+    );
+}});
+
+self.addEventListener('activate', (event) => {{
+    event.waitUntil(
+        caches.keys()
+            .then((cacheNames) => Promise.all(
+                cacheNames
+                    .filter((cacheName) => cacheName.startsWith('clover-blog-shell-v') && cacheName !== CACHE_NAME)
+                    .map((cacheName) => caches.delete(cacheName))
+            ))
+            .then(() => self.clients.claim())
+    );
+}});
+
+function shouldSkipRuntimeCache(requestUrl) {{
+    const requestPath = new URL(requestUrl).pathname;
+    return requestPath.startsWith('/media/music/');
+}}
+
+self.addEventListener('fetch', (event) => {{
+    if (event.request.method !== 'GET') return;
+    if (!event.request.url.startsWith(self.location.origin)) return;
+    if (shouldSkipRuntimeCache(event.request.url)) return;
+
+    event.respondWith(
+        fetch(event.request)
+            .then((networkResponse) => {{
+                if (networkResponse && networkResponse.ok) {{
+                    caches.open(CACHE_NAME).then((cache) => {{
+                        cache.put(event.request, networkResponse.clone());
+                    }});
+                }}
+                return networkResponse;
+            }})
+            .catch(() => caches.match(event.request).then((cachedResponse) => {{
+                if (cachedResponse) return cachedResponse;
+                if (event.request.mode === 'navigate') {{
+                    return caches.match('/');
+                }}
+                return Response.error();
+            }}))
+    );
+}});
+"""
+    response = HttpResponse(service_worker_source.strip(), content_type='application/javascript; charset=utf-8')
+    response['Service-Worker-Allowed'] = '/'
+    return response
 
 
 def get_upload_file_extension(uploaded_file):

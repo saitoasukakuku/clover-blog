@@ -25,6 +25,25 @@
             linear-gradient(135deg, #eef8ef 0%, #d9efda 50%, #f7fbf6 100%);
     }
 
+    .reading-progress-shell {
+        background: rgba(232, 245, 233, 0.82);
+        height: 4px;
+        left: 0;
+        overflow: hidden;
+        position: fixed;
+        right: 0;
+        top: 0;
+        z-index: 1045;
+    }
+
+    .reading-progress-fill {
+        background: linear-gradient(90deg, #2e7d32, #81c784);
+        height: 100%;
+        transform: translateX(-100%);
+        transition: transform 0.12s linear;
+        width: 100%;
+    }
+
     {% if post.cover %}
     .detail-page-wrapper::before {
         content: '';
@@ -847,6 +866,15 @@
 
 {% block content %}
 <div class="detail-page-wrapper">
+    <div class="reading-progress-shell"
+        id="readingProgressBar"
+        role="progressbar"
+        aria-label="阅读进度"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0">
+        <div class="reading-progress-fill" id="readingProgressFill"></div>
+    </div>
 
     <!-- 文章头部（透明，仅文字） -->
     <section class="post-detail-header" id="pageHeader">
@@ -1469,6 +1497,93 @@
 
 {% block extra_js %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+    (() => {
+        const readingProgressBar = document.getElementById('readingProgressBar');
+        const readingProgressFill = document.getElementById('readingProgressFill');
+        const READING_POSITION_STORAGE_KEY = 'clover-reading-position:post:{{ post.id }}';
+        const MAX_READING_POSITION_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+        let isReadingScrollTicking = false;
+
+        function getCurrentScrollY() {
+            return window.scrollY || document.documentElement.scrollTop || 0;
+        }
+
+        function getMaximumScrollY() {
+            const documentElement = document.documentElement;
+            const bodyElement = document.body;
+            const documentHeight = Math.max(
+                bodyElement.scrollHeight,
+                bodyElement.offsetHeight,
+                documentElement.clientHeight,
+                documentElement.scrollHeight,
+                documentElement.offsetHeight
+            );
+            return Math.max(documentHeight - window.innerHeight, 1);
+        }
+
+        function updateReadingProgress() {
+            if (!readingProgressBar || !readingProgressFill) return;
+            const currentScrollY = getCurrentScrollY();
+            const maximumScrollY = getMaximumScrollY();
+            const progressPercent = Math.min(100, Math.max(0, (currentScrollY / maximumScrollY) * 100));
+            readingProgressFill.style.transform = `translateX(${progressPercent - 100}%)`;
+            readingProgressBar.setAttribute('aria-valuenow', String(Math.round(progressPercent)));
+        }
+
+        function saveReadingPosition() {
+            try {
+                const currentScrollY = getCurrentScrollY();
+                const maximumScrollY = getMaximumScrollY();
+                const readingPosition = {
+                    scrollY: currentScrollY,
+                    maximumScrollY: maximumScrollY,
+                    savedAt: Date.now(),
+                };
+                localStorage.setItem(READING_POSITION_STORAGE_KEY, JSON.stringify(readingPosition));
+            } catch (error) {
+                return;
+            }
+        }
+
+        function restoreReadingPosition() {
+            try {
+                const storedReadingPosition = localStorage.getItem(READING_POSITION_STORAGE_KEY);
+                if (!storedReadingPosition) return;
+                const readingPosition = JSON.parse(storedReadingPosition);
+                const isRecentPosition = Date.now() - Number(readingPosition.savedAt || 0) < MAX_READING_POSITION_AGE_MS;
+                const targetScrollY = Number(readingPosition.scrollY || 0);
+                if (!isRecentPosition || targetScrollY < 120) return;
+                window.scrollTo({
+                    top: Math.min(targetScrollY, getMaximumScrollY()),
+                    behavior: 'auto',
+                });
+            } catch (error) {
+                return;
+            }
+        }
+
+        function requestReadingProgressUpdate() {
+            if (isReadingScrollTicking) return;
+            isReadingScrollTicking = true;
+            requestAnimationFrame(() => {
+                updateReadingProgress();
+                saveReadingPosition();
+                isReadingScrollTicking = false;
+            });
+        }
+
+        restoreReadingPosition();
+        updateReadingProgress();
+        window.addEventListener('scroll', requestReadingProgressUpdate, { passive: true });
+        window.addEventListener('resize', requestReadingProgressUpdate);
+        window.addEventListener('beforeunload', saveReadingPosition);
+        window.addEventListener('load', () => {
+            restoreReadingPosition();
+            updateReadingProgress();
+        });
+    })();
+</script>
 <script>
     $(document).ready(function () {
         // === 模式切换逻辑 ===

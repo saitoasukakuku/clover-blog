@@ -1218,6 +1218,29 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'height: auto')
         self.assertContains(response, 'object-fit: contain')
 
+    def test_post_detail_tracks_reading_progress_and_position(self):
+        author = User.objects.create_user(username='reading-progress-author', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='阅读进度文章',
+            category='life',
+            content='第一段\n\n第二段\n\n第三段',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertContains(response, 'id="readingProgressBar"')
+        self.assertContains(response, 'aria-label="阅读进度"')
+        self.assertContains(response, f'clover-reading-position:post:{post.id}')
+        self.assertContains(response, 'READING_POSITION_STORAGE_KEY')
+        self.assertContains(response, 'updateReadingProgress')
+        self.assertContains(response, 'restoreReadingPosition')
+        self.assertContains(response, 'saveReadingPosition')
+        self.assertContains(response, 'requestAnimationFrame')
+        self.assertContains(response, 'beforeunload')
+
     def test_upload_post_image_requires_login(self):
         response = self.client.post(reverse('upload_post_image'), {
             'image': build_uploaded_test_image(),
@@ -4414,6 +4437,56 @@ class MusicPlaybackCommandTests(TestCase):
 
 
 class HomepageTemplateIntegrationTests(TestCase):
+    def test_base_renders_mobile_bottom_navigation(self):
+        response = self.client.get(reverse('index'))
+
+        self.assertTemplateUsed(response, 'base.html')
+        self.assertContains(response, 'mobile-bottom-nav')
+        self.assertContains(response, 'aria-label="手机底部导航"')
+        self.assertContains(response, f'href="{reverse("home")}"')
+        self.assertContains(response, f'href="{reverse("index")}"')
+        self.assertContains(response, f'href="{reverse("archive")}"')
+        self.assertContains(response, f'href="{reverse("tags")}"')
+        self.assertContains(response, 'body.has-mobile-bottom-nav')
+        self.assertContains(response, '.site-music-player')
+        self.assertContains(response, 'bottom: 86px')
+
+    def test_base_links_pwa_manifest_and_registers_service_worker(self):
+        response = self.client.get(reverse('index'))
+
+        self.assertContains(response, f'rel="manifest" href="{reverse("pwa_manifest")}"')
+        self.assertContains(response, 'name="theme-color" content="#2e7d32"')
+        self.assertContains(response, 'id="pwaInstallButton"')
+        self.assertContains(response, 'beforeinstallprompt')
+        self.assertContains(response, 'navigator.serviceWorker.register')
+        self.assertContains(response, reverse('service_worker'))
+
+    def test_pwa_manifest_returns_install_metadata(self):
+        response = self.client.get(reverse('pwa_manifest'))
+        manifest = response.json()
+
+        self.assertEqual(response['Content-Type'], 'application/manifest+json')
+        self.assertEqual(manifest['name'], '白车轴草')
+        self.assertEqual(manifest['short_name'], '白车轴草')
+        self.assertEqual(manifest['start_url'], reverse('home'))
+        self.assertEqual(manifest['scope'], '/')
+        self.assertEqual(manifest['display'], 'standalone')
+        self.assertEqual(manifest['theme_color'], '#2e7d32')
+        self.assertGreaterEqual(len(manifest['icons']), 1)
+
+    def test_service_worker_caches_shell_and_skips_music_media(self):
+        response = self.client.get(reverse('service_worker'))
+        service_worker_content = response.content.decode('utf-8')
+
+        self.assertEqual(response['Content-Type'], 'application/javascript; charset=utf-8')
+        self.assertEqual(response['Service-Worker-Allowed'], '/')
+        self.assertIn('clover-blog-shell-v', service_worker_content)
+        self.assertIn(reverse('home'), service_worker_content)
+        self.assertIn(reverse('index'), service_worker_content)
+        self.assertIn("event.request.mode === 'navigate'", service_worker_content)
+        self.assertIn('/media/music/', service_worker_content)
+        self.assertIn('cache.put(event.request, networkResponse.clone())', service_worker_content)
+
     def test_index_uses_shared_navigation_and_still_renders_search_and_posts(self):
         author = User.objects.create_user(username='homepage-author', password='StrongPass12345')
         Post.objects.create(
