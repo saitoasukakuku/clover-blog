@@ -3617,6 +3617,46 @@ class NotificationCenterTests(TestCase):
         self.assertContains(response, 'Visible notification')
         self.assertNotContains(response, 'Hidden notification')
 
+    def test_notifications_page_filters_by_status_and_type(self):
+        current_user = User.objects.create_user(username='filtered-notification-owner', password='StrongPass12345')
+        Notification = self.get_notification_model()
+        for notification_index in range(13):
+            Notification.objects.create(
+                recipient=current_user,
+                notification_type='private_message',
+                message=f'Matching notification {notification_index}',
+                target_url=reverse('index'),
+            )
+        Notification.objects.create(
+            recipient=current_user,
+            notification_type='comment_on_post',
+            message='Wrong type notification',
+            target_url=reverse('index'),
+        )
+        Notification.objects.create(
+            recipient=current_user,
+            notification_type='private_message',
+            message='Read notification',
+            target_url=reverse('index'),
+            is_read=True,
+        )
+        self.client.login(username='filtered-notification-owner', password='StrongPass12345')
+
+        response = self.client.get(reverse('notifications'), {
+            'status': 'unread',
+            'type': 'private_message',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['selected_notification_status'], 'unread')
+        self.assertEqual(response.context['selected_notification_type'], 'private_message')
+        self.assertEqual(response.context['page_obj'].paginator.count, 13)
+        self.assertContains(response, 'Matching notification')
+        self.assertNotContains(response, 'Wrong type notification')
+        self.assertNotContains(response, 'Read notification')
+        self.assertContains(response, '?status=unread&amp;type=private_message&amp;page=2')
+        self.assertContains(response, '全部类型')
+
     def test_read_notification_marks_it_read_and_redirects_to_target(self):
         recipient = User.objects.create_user(username='read-notification-user', password='StrongPass12345')
         actor = User.objects.create_user(username='read-notification-actor', password='StrongPass12345')

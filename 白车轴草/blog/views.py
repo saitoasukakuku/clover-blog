@@ -2056,17 +2056,53 @@ def toggle_post_reaction(request, post_id):
 
 @login_required
 def notifications_view(request):
+    selected_notification_status = request.GET.get('status', 'all').strip()
+    selected_notification_type = request.GET.get('type', 'all').strip()
+    if selected_notification_status not in {'all', 'unread', 'read'}:
+        selected_notification_status = 'all'
+    notification_type_labels = dict(Notification.TYPE_CHOICES)
+    if selected_notification_type not in notification_type_labels:
+        selected_notification_type = 'all'
+
     notifications = Notification.objects.filter(
         recipient=request.user,
     ).select_related(
         'actor',
         'actor__profile',
-    ).order_by('-created_at')
+    )
+    if selected_notification_status == 'unread':
+        notifications = notifications.filter(is_read=False)
+    elif selected_notification_status == 'read':
+        notifications = notifications.filter(is_read=True)
+    if selected_notification_type != 'all':
+        notifications = notifications.filter(notification_type=selected_notification_type)
+    notifications = notifications.order_by('-created_at')
+
+    pagination_params = request.GET.copy()
+    pagination_params.pop('page', None)
+    pagination_query = pagination_params.urlencode()
+    pagination_prefix = f'{pagination_query}&' if pagination_query else ''
+
     paginator = Paginator(notifications, 12)
     page_obj = paginator.get_page(request.GET.get('page'))
     return render(request, 'notifications.html', {
         'notifications': page_obj,
         'page_obj': page_obj,
+        'notification_status_options': [
+            {'value': 'all', 'label': '全部状态'},
+            {'value': 'unread', 'label': '未读'},
+            {'value': 'read', 'label': '已读'},
+        ],
+        'notification_type_options': [
+            {'value': 'all', 'label': '全部类型'},
+            *[
+                {'value': notification_type, 'label': notification_label}
+                for notification_type, notification_label in Notification.TYPE_CHOICES
+            ],
+        ],
+        'selected_notification_status': selected_notification_status,
+        'selected_notification_type': selected_notification_type,
+        'pagination_prefix': pagination_prefix,
     })
 
 

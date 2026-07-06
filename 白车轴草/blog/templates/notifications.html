@@ -18,6 +18,18 @@
         margin-bottom: 20px;
     }
 
+    .notification-filters {
+        align-items: end;
+        background: #fff;
+        border: 1px solid #e1eee1;
+        border-radius: 8px;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) auto;
+        margin-bottom: 18px;
+        padding: 16px;
+    }
+
     .notification-list {
         background: #fff;
         border: 1px solid #e1eee1;
@@ -61,6 +73,10 @@
     }
 
     @media (max-width: 640px) {
+        .notification-filters {
+            grid-template-columns: 1fr;
+        }
+
         .notification-row {
             align-items: flex-start;
             flex-direction: column;
@@ -88,6 +104,32 @@
         </div>
     </div>
 
+    <form class="notification-filters" method="get" action="{% url 'notifications' %}">
+        <div>
+            <label class="form-label fw-semibold" for="notificationStatus">状态</label>
+            <select class="form-select" id="notificationStatus" name="status">
+                {% for status_option in notification_status_options %}
+                <option value="{{ status_option.value }}" {% if selected_notification_status == status_option.value %}selected{% endif %}>
+                    {{ status_option.label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label fw-semibold" for="notificationType">类型</label>
+            <select class="form-select" id="notificationType" name="type">
+                {% for type_option in notification_type_options %}
+                <option value="{{ type_option.value }}" {% if selected_notification_type == type_option.value %}selected{% endif %}>
+                    {{ type_option.label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn btn-success" type="submit">
+            <i class="fas fa-filter me-1"></i>筛选
+        </button>
+    </form>
+
     <section class="notification-list">
         {% for notification in notifications %}
         <article class="notification-row {% if not notification.is_read %}unread{% endif %}">
@@ -99,6 +141,8 @@
                     <span class="mx-2">·</span>
                     {% endif %}
                     {{ notification.created_at|date:"Y-m-d H:i" }}
+                    <span class="mx-2">·</span>
+                    {{ notification.get_notification_type_display }}
                     {% if not notification.is_read %}
                     <span class="badge text-bg-success ms-2">未读</span>
                     {% endif %}
@@ -112,7 +156,7 @@
             </form>
         </article>
         {% empty %}
-        <div class="notifications-empty">暂时没有通知。</div>
+        <div class="notifications-empty">暂时没有符合筛选条件的通知。</div>
         {% endfor %}
     </section>
 
@@ -120,15 +164,15 @@
     <nav aria-label="通知分页" class="mt-3">
         <ul class="pagination justify-content-center">
             {% if page_obj.has_previous %}
-            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+            <li class="page-item"><a class="page-link" href="?{{ pagination_prefix }}page={{ page_obj.previous_page_number }}">上一页</a></li>
             {% endif %}
             {% for page_num in page_obj.paginator.page_range %}
             <li class="page-item {% if page_obj.number == page_num %}active{% endif %}">
-                <a class="page-link" href="?page={{ page_num }}">{{ page_num }}</a>
+                <a class="page-link" href="?{{ pagination_prefix }}page={{ page_num }}">{{ page_num }}</a>
             </li>
             {% endfor %}
             {% if page_obj.has_next %}
-            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+            <li class="page-item"><a class="page-link" href="?{{ pagination_prefix }}page={{ page_obj.next_page_number }}">下一页</a></li>
             {% endif %}
         </ul>
     </nav>
