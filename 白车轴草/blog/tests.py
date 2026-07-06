@@ -7,6 +7,7 @@ from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.apps import apps
 from django.core import mail, signing
@@ -4190,6 +4191,12 @@ class NotificationCenterTests(TestCase):
 
 
 class SiteMusicPlayerTests(TestCase):
+    def read_music_player_static_assets(self):
+        static_root = settings.BASE_DIR / 'blog' / 'static'
+        script_content = (static_root / 'js' / 'site-music-player.js').read_text(encoding='utf-8')
+        style_content = (static_root / 'css' / 'site-music-player.css').read_text(encoding='utf-8')
+        return script_content, style_content
+
     def test_admin_dashboard_requires_superuser(self):
         User.objects.create_user(username='reader', password='StrongPass12345')
         self.client.login(username='reader', password='StrongPass12345')
@@ -4630,19 +4637,40 @@ class SiteMusicPlayerTests(TestCase):
         self.assertContains(response, 'id="siteMusicListToggle"')
         self.assertContains(response, 'id="siteMusicList"')
         self.assertContains(response, 'site-music-card-backdrop')
-        self.assertContains(response, 'renderSiteMusicPlaylist')
-        self.assertContains(response, 'handleSiteNavigationClick')
-        self.assertContains(response, 'handleSiteNavigationSubmit')
         self.assertContains(response, 'site-music-card-compact')
         self.assertNotContains(response, 'site-music-toggle-tonearm')
         self.assertNotContains(response, 'site-music-toggle-needle')
-        self.assertContains(response, 'handleSiteMusicOutsideClick')
-        self.assertContains(response, 'removeSiteMusicDetail')
-        self.assertContains(response, 'SITE_MUSIC_HOVER_CLOSE_DELAY_MS')
-        self.assertContains(response, 'site-music-player.is-hovering .site-music-card')
-        self.assertContains(response, 'openSiteMusicHoverDetail')
-        self.assertContains(response, 'scheduleSiteMusicHoverClose')
-        self.assertContains(response, 'clearSiteMusicHoverCloseTimer')
+        script_content, style_content = self.read_music_player_static_assets()
+        self.assertIn('handleSiteNavigationClick', script_content)
+        self.assertIn('handleSiteNavigationSubmit', script_content)
+        self.assertIn('handleSiteMusicOutsideClick', script_content)
+        self.assertIn('removeSiteMusicDetail', script_content)
+        self.assertIn('SITE_MUSIC_HOVER_CLOSE_DELAY_MS', script_content)
+        self.assertIn('openSiteMusicHoverDetail', script_content)
+        self.assertIn('scheduleSiteMusicHoverClose', script_content)
+        self.assertIn('clearSiteMusicHoverCloseTimer', script_content)
+        self.assertIn('site-music-player.is-hovering .site-music-card', style_content)
+
+    def test_base_template_loads_music_player_static_assets(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'site song.mp3'), 'wb') as music_file:
+                music_file.write(b'fake mp3')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'css/site-music-player.css')
+        self.assertContains(response, 'js/site-music-player.js')
+
+        script_content, style_content = self.read_music_player_static_assets()
+        self.assertIn('renderSiteMusicPlaylist', script_content)
+        self.assertIn('handleSiteNavigationClick', script_content)
+        self.assertIn('getNextSiteMusicIndex', script_content)
+        self.assertIn('.site-music-list::-webkit-scrollbar', style_content)
+        self.assertIn('.site-music-player.is-hovering .site-music-card', style_content)
+        self.assertNotContains(response, 'function renderSiteMusicPlaylist')
 
     def test_base_template_renders_refined_music_player_layout(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
@@ -4658,20 +4686,21 @@ class SiteMusicPlayerTests(TestCase):
 
         self.assertContains(response, 'site-music-control-strip')
         self.assertContains(response, 'site-music-progress-meter')
-        self.assertContains(response, 'preloadSiteMusicTrack')
-        self.assertContains(response, 'preloadSiteMusicNeighbor')
-        self.assertContains(response, 'siteMusicNextPreloader')
-        self.assertContains(response, "siteMusicAudio.preload = 'auto'")
-        self.assertContains(response, "siteMusicAudio.preload = 'metadata'")
-        self.assertContains(response, 'scrollbar-width: thin;')
-        self.assertContains(response, '.site-music-list::-webkit-scrollbar')
         self.assertContains(response, 'site-music-card-background')
-        self.assertContains(response, 'max-height: min(286px, calc(100vh - 112px));')
         self.assertNotContains(response, 'type="range"')
-        self.assertNotContains(response, '::-webkit-slider-thumb')
-        self.assertNotContains(response, '::-moz-range-thumb')
-        self.assertNotContains(response, 'background-size: contain;')
-        self.assertNotContains(response, 'aspect-ratio: 1 / 1;')
+        script_content, style_content = self.read_music_player_static_assets()
+        self.assertIn('preloadSiteMusicTrack', script_content)
+        self.assertIn('preloadSiteMusicNeighbor', script_content)
+        self.assertIn('siteMusicNextPreloader', script_content)
+        self.assertIn("siteMusicAudio.preload = 'auto'", script_content)
+        self.assertIn("siteMusicAudio.preload = 'metadata'", script_content)
+        self.assertIn('scrollbar-width: thin;', style_content)
+        self.assertIn('.site-music-list::-webkit-scrollbar', style_content)
+        self.assertIn('max-height: min(286px, calc(100vh - 112px));', style_content)
+        self.assertNotIn('::-webkit-slider-thumb', style_content)
+        self.assertNotIn('::-moz-range-thumb', style_content)
+        self.assertNotIn('background-size: contain;', style_content)
+        self.assertNotIn('aspect-ratio: 1 / 1;', style_content)
 
     def test_base_template_renders_music_queue_modes(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
@@ -4687,14 +4716,15 @@ class SiteMusicPlayerTests(TestCase):
 
         self.assertContains(response, 'id="siteMusicShuffle"')
         self.assertContains(response, 'id="siteMusicRepeat"')
-        self.assertContains(response, 'getNextSiteMusicIndex')
-        self.assertContains(response, 'getPreviousSiteMusicIndex')
-        self.assertContains(response, 'siteMusicShuffleEnabled')
-        self.assertContains(response, 'siteMusicRepeatMode')
-        self.assertContains(response, 'repeatMode: siteMusicRepeatMode')
-        self.assertContains(response, 'shuffleEnabled: siteMusicShuffleEnabled')
         self.assertContains(response, 'aria-label="随机播放"')
         self.assertContains(response, 'aria-label="循环全部"')
+        script_content, _ = self.read_music_player_static_assets()
+        self.assertIn('getNextSiteMusicIndex', script_content)
+        self.assertIn('getPreviousSiteMusicIndex', script_content)
+        self.assertIn('siteMusicShuffleEnabled', script_content)
+        self.assertIn('siteMusicRepeatMode', script_content)
+        self.assertIn('repeatMode: siteMusicRepeatMode', script_content)
+        self.assertIn('shuffleEnabled: siteMusicShuffleEnabled', script_content)
 
 
 class MusicPlaybackCommandTests(TestCase):
@@ -4865,8 +4895,11 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, f'href="{reverse("archive")}"')
         self.assertContains(response, f'href="{reverse("tags")}"')
         self.assertContains(response, 'body.has-mobile-bottom-nav')
-        self.assertContains(response, '.site-music-player')
-        self.assertContains(response, 'bottom: 86px')
+        self.assertContains(response, 'css/site-music-player.css')
+        music_style_path = settings.BASE_DIR / 'blog' / 'static' / 'css' / 'site-music-player.css'
+        music_style_content = music_style_path.read_text(encoding='utf-8')
+        self.assertIn('.site-music-player', music_style_content)
+        self.assertIn('bottom: 86px', music_style_content)
 
     def test_base_links_pwa_manifest_and_registers_service_worker(self):
         response = self.client.get(reverse('index'))
