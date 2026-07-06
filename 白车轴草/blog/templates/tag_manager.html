@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block title %}标签管理 - 白车轴草{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tag-manager-page {
+        max-width: 1040px;
+        margin: 42px auto 64px;
+        padding: 0 16px;
+    }
+
+    .tag-manager-hero {
+        align-items: flex-start;
+        background: #ffffff;
+        border: 1px solid #dcebd8;
+        border-radius: 8px;
+        box-shadow: 0 14px 34px rgba(46, 125, 50, 0.08);
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 22px;
+        padding: 24px;
+    }
+
+    .tag-manager-hero h1 {
+        color: #1f3a24;
+        font-size: 1.8rem;
+        font-weight: 800;
+        margin: 0 0 8px;
+    }
+
+    .tag-manager-panel {
+        background: #ffffff;
+        border: 1px solid #dcebd8;
+        border-radius: 8px;
+        margin-bottom: 22px;
+        padding: 22px;
+    }
+
+    .tag-manager-form {
+        align-items: end;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+    }
+
+    .tag-manager-table {
+        margin-bottom: 0;
+    }
+
+    .tag-manager-tag {
+        color: #1f5f2a;
+        font-weight: 700;
+    }
+
+    @media (max-width: 768px) {
+        .tag-manager-hero {
+            flex-direction: column;
+        }
+
+        .tag-manager-form {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="tag-manager-page">
+    <section class="tag-manager-hero">
+        <div>
+            <h1><i class="fas fa-tags me-2"></i>标签管理</h1>
+            <p class="text-muted mb-0">合并重复标签，整理文章检索入口。</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'tags' %}">
+            <i class="fas fa-arrow-left me-1"></i>返回标签页
+        </a>
+    </section>
+
+    <section class="tag-manager-panel">
+        <h2 class="h5 mb-3">合并标签</h2>
+        <form class="tag-manager-form" method="post" action="{% url 'tag_manager' %}">
+            {% csrf_token %}
+            <div>
+                <label class="form-label fw-semibold" for="sourceTag">旧标签</label>
+                <select class="form-select" id="sourceTag" name="source_tag" required>
+                    <option value="">选择要合并的标签</option>
+                    {% for tag in tag_counts %}
+                    <option value="{{ tag.name }}">{{ tag.name }}（{{ tag.count }} 篇）</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label fw-semibold" for="targetTag">合并为</label>
+                <input class="form-control" id="targetTag" type="text" name="target_tag" maxlength="50" placeholder="输入保留的标签名" required>
+            </div>
+            <button class="btn btn-success" type="submit" {% if not tag_counts %}disabled{% endif %}>
+                <i class="fas fa-code-merge me-1"></i>合并
+            </button>
+        </form>
+    </section>
+
+    <section class="tag-manager-panel">
+        <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+            <h2 class="h5 mb-0">当前标签</h2>
+            <span class="badge text-bg-success">{{ tag_total }} 个</span>
+        </div>
+        {% if tag_counts %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle tag-manager-table">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">标签</th>
+                        <th scope="col" class="text-end">文章数</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tag in tag_counts %}
+                    <tr>
+                        <td class="tag-manager-tag"># {{ tag.name }}</td>
+                        <td class="text-end">{{ tag.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">还没有可管理的标签。</p>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

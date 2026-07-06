@@ -1858,6 +1858,102 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'href="/index/?tag=Python"')
         self.assertNotContains(response, '# 生活')
 
+    def test_tag_manager_requires_superuser(self):
+        User.objects.create_user(username='tag-reader', password='StrongPass12345')
+        self.client.login(username='tag-reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('tag_manager'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_superuser_can_view_tag_manager_inventory(self):
+        admin = User.objects.create_superuser(username='tag-admin', password='StrongPass12345')
+        self.client.login(username='tag-admin', password='StrongPass12345')
+        Post.objects.create(
+            author=admin,
+            title='可管理标签文章一',
+            category='tech',
+            tags='Python,Django,daily:2026-07-06',
+            content='正文',
+            status='published',
+            visibility='public',
+        )
+        Post.objects.create(
+            author=admin,
+            title='可管理标签文章二',
+            category='life',
+            tags='Python,生活',
+            content='正文',
+            status='draft',
+            visibility='private',
+        )
+
+        response = self.client.get(reverse('tag_manager'))
+        tags_response = self.client.get(reverse('tags'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['tag_total'], 3)
+        self.assertContains(response, '标签管理')
+        self.assertContains(response, 'Python（2 篇）')
+        self.assertContains(response, '# Django')
+        self.assertNotContains(response, 'daily:2026-07-06')
+        self.assertContains(tags_response, reverse('tag_manager'))
+
+    def test_tag_manager_merges_source_tag_into_target_tag(self):
+        admin = User.objects.create_superuser(username='tag-merge-admin', password='StrongPass12345')
+        self.client.login(username='tag-merge-admin', password='StrongPass12345')
+        first_post = Post.objects.create(
+            author=admin,
+            title='第一篇',
+            category='tech',
+            tags='Python,Django',
+            content='正文',
+            status='published',
+            visibility='public',
+        )
+        second_post = Post.objects.create(
+            author=admin,
+            title='第二篇',
+            category='life',
+            tags='Python,学习',
+            content='正文',
+            status='published',
+            visibility='public',
+        )
+        third_post = Post.objects.create(
+            author=admin,
+            title='第三篇',
+            category='study',
+            tags='Django,Python',
+            content='正文',
+            status='draft',
+            visibility='private',
+        )
+        system_tag_post = Post.objects.create(
+            author=admin,
+            title='系统标签文章',
+            category='life',
+            tags='daily:2026-07-06',
+            content='正文',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.post(reverse('tag_manager'), {
+            'source_tag': 'Python',
+            'target_tag': 'Django',
+        })
+
+        self.assertRedirects(response, reverse('tag_manager'))
+        first_post.refresh_from_db()
+        second_post.refresh_from_db()
+        third_post.refresh_from_db()
+        system_tag_post.refresh_from_db()
+        self.assertEqual(first_post.tags, 'Django')
+        self.assertEqual(second_post.tags, 'Django,学习')
+        self.assertEqual(third_post.tags, 'Django')
+        self.assertEqual(system_tag_post.tags, 'daily:2026-07-06')
+
     def test_base_navigation_links_to_archive_and_tags_pages(self):
         response = self.client.get(reverse('index'))
 

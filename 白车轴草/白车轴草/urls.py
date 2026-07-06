@@ -11,6 +11,7 @@ urlpatterns = [
     path('index/', views.index, name='index'),
     path('archive/', views.archive_view, name='archive'),
     path('tags/', views.tags_view, name='tags'),
+    path('tags/manage/', views.tag_manager, name='tag_manager'),
     path('users/<str:username>/', views.author_profile, name='author_profile'),
     path('register/', views.register, name='register'),
     path('register/complete/', views.complete_registration, name='complete_registration'),

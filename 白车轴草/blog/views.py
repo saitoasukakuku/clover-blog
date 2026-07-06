@@ -901,6 +901,50 @@ def build_tag_counts(posts):
     ]
 
 
+def normalize_managed_tag(raw_tag):
+    return (raw_tag or '').strip()
+
+
+def is_invalid_managed_tag(tag):
+    return bool(re.search(r'[,，;；\s]', tag))
+
+
+def is_reserved_system_tag(tag):
+    return tag.casefold().startswith('daily:')
+
+
+def replace_post_tag(post, source_tag, target_tag):
+    new_tags = []
+    changed = False
+
+    for current_tag in post.tag_list:
+        if current_tag == source_tag:
+            next_tag = target_tag
+            changed = True
+        else:
+            next_tag = current_tag
+
+        if next_tag and next_tag not in new_tags:
+            new_tags.append(next_tag)
+
+    if not changed:
+        return False
+
+    post.tags = ','.join(new_tags)
+    post.save(update_fields=['tags'])
+    return True
+
+
+def merge_post_tag(source_tag, target_tag):
+    updated_post_count = 0
+    with transaction.atomic():
+        candidate_posts = Post.objects.select_for_update().filter(tags__icontains=source_tag)
+        for post in candidate_posts:
+            if replace_post_tag(post, source_tag, target_tag):
+                updated_post_count += 1
+    return updated_post_count
+
+
 def get_display_tags(post):
     display_tags = []
     for tag in post.tag_list:
@@ -1364,6 +1408,44 @@ def tags_view(request):
         'tag_search_query': tag_search_query,
         'tag_sort': tag_sort,
         'selected_tag': selected_tag,
+    })
+
+
+@login_required
+def tag_manager(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    if request.method == 'POST':
+        source_tag = normalize_managed_tag(request.POST.get('source_tag', ''))
+        target_tag = normalize_managed_tag(request.POST.get('target_tag', ''))
+
+        if not source_tag or not target_tag:
+            messages.error(request, '请选择旧标签，并填写要合并成的新标签。')
+        elif source_tag == target_tag:
+            messages.info(request, '旧标签和新标签相同，不需要合并。')
+        elif is_reserved_system_tag(source_tag) or is_reserved_system_tag(target_tag):
+            messages.error(request, '系统标签不能在这里合并。')
+        elif is_invalid_managed_tag(source_tag) or is_invalid_managed_tag(target_tag):
+            messages.error(request, '标签名不能包含空格、逗号或分号。')
+        else:
+            updated_post_count = merge_post_tag(source_tag, target_tag)
+            if updated_post_count:
+                messages.success(
+                    request,
+                    f'已把 {updated_post_count} 篇文章里的“{source_tag}”合并为“{target_tag}”。',
+                )
+            else:
+                messages.info(request, '没有文章包含这个旧标签。')
+
+        return redirect('tag_manager')
+
+    all_posts = Post.objects.all()
+    tag_counts = build_tag_counts(all_posts)
+    return render(request, 'tag_manager.html', {
+        'tag_counts': tag_counts,
+        'tag_total': len(tag_counts),
     })
 
 
