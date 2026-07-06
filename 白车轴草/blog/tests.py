@@ -193,6 +193,28 @@ class PostContentFilterTests(TestCase):
         self.assertIn('<p>第二段</p>', rendered_content)
         self.assertNotIn('## 小标题', rendered_content)
 
+    def test_post_content_renders_toc_code_blocks_and_tables(self):
+        rendered_content = str(post_content(
+            '## 第一节\n'
+            '先看一段代码。\n\n'
+            '```python\n'
+            'print("<hi>")\n'
+            '```\n\n'
+            '## 表格\n'
+            '| 名称 | 数量 |\n'
+            '| --- | ---: |\n'
+            '| 苹果 | **3** |'
+        ))
+
+        self.assertIn('<nav class="post-content-toc" aria-label="文章目录">', rendered_content)
+        self.assertIn('href="#post-section-', rendered_content)
+        self.assertIn('<pre><code class="language-python">print(&quot;&lt;hi&gt;&quot;)</code></pre>', rendered_content)
+        self.assertIn('<table>', rendered_content)
+        self.assertIn('<thead>', rendered_content)
+        self.assertIn('<th>名称</th>', rendered_content)
+        self.assertIn('<td><strong>3</strong></td>', rendered_content)
+        self.assertNotIn('| --- |', rendered_content)
+
     def test_post_content_escapes_html_and_blocks_unsafe_urls(self):
         rendered_content = str(post_content(
             '<script>alert(1)</script>\n\n'
@@ -974,6 +996,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'renderMarkdownLines')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-action="code-block"')
+        self.assertContains(response, 'data-markdown-action="table"')
         self.assertContains(response, 'data-markdown-image-trigger')
         self.assertContains(response, 'data-markdown-image-upload')
         self.assertContains(response, 'for="markdownImageUpload-postContent"')
@@ -981,6 +1005,7 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'class="markdown-file-input"')
         self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
         self.assertContains(response, 'markdown-modal-preview')
+        self.assertContains(response, 'data-markdown-action="fullscreen-preview"')
         self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
         self.assertNotContains(response, 'class="d-none" data-markdown-image-upload')
         self.assertNotContains(response, 'uploadInput.click();')
@@ -995,6 +1020,10 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'undoMarkdownHistory')
         self.assertContains(response, 'redoMarkdownHistory')
         self.assertContains(response, 'MAX_MARKDOWN_HISTORY_STATES')
+        self.assertContains(response, 'renderMarkdownCodeBlock')
+        self.assertContains(response, 'renderMarkdownTable')
+        self.assertContains(response, 'buildMarkdownToc')
+        self.assertContains(response, 'is-preview-fullscreen')
         self.assertContains(response, 'handlePaste')
         self.assertContains(response, 'clipboardData.items')
         self.assertContains(response, '粘贴图片上传中...')
@@ -1031,6 +1060,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'renderMarkdownLines')
         self.assertContains(response, 'data-markdown-action="link"')
         self.assertContains(response, 'data-markdown-action="image-url"')
+        self.assertContains(response, 'data-markdown-action="code-block"')
+        self.assertContains(response, 'data-markdown-action="table"')
         self.assertContains(response, 'data-markdown-image-trigger')
         self.assertContains(response, 'data-markdown-image-upload')
         self.assertContains(response, 'for="markdownImageUpload-postContent"')
@@ -1038,6 +1069,7 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'class="markdown-file-input"')
         self.assertContains(response, f'data-markdown-upload-url="{reverse("upload_post_image")}"')
         self.assertContains(response, 'markdown-modal-preview')
+        self.assertContains(response, 'data-markdown-action="fullscreen-preview"')
         self.assertNotContains(response, '<div class="markdown-editor-panel" data-markdown-editor-for="postContent"')
         self.assertNotContains(response, 'class="d-none" data-markdown-image-upload')
         self.assertContains(response, 'position: sticky')
@@ -1047,6 +1079,10 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'undoMarkdownHistory')
         self.assertContains(response, 'redoMarkdownHistory')
         self.assertContains(response, 'MAX_MARKDOWN_HISTORY_STATES')
+        self.assertContains(response, 'renderMarkdownCodeBlock')
+        self.assertContains(response, 'renderMarkdownTable')
+        self.assertContains(response, 'buildMarkdownToc')
+        self.assertContains(response, 'is-preview-fullscreen')
         self.assertContains(response, 'handlePaste')
         self.assertContains(response, 'clipboardData.items')
         self.assertNotContains(response, 'https://example.com/image.jpg')

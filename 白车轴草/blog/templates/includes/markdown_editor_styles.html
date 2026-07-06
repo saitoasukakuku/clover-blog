@@ -152,6 +152,25 @@
         margin-bottom: 1rem;
     }
 
+    .markdown-modal-preview .post-content-toc {
+        background: #eef8ef;
+        border: 1px solid #d8ead9;
+        border-radius: 8px;
+        margin: 0 0 18px;
+        padding: 14px 16px;
+    }
+
+    .markdown-modal-preview .post-content-toc-title {
+        color: #1b5e20;
+        font-weight: 800;
+        margin-bottom: 8px;
+    }
+
+    .markdown-modal-preview .post-content-toc ol {
+        margin: 0;
+        padding-left: 20px;
+    }
+
     .markdown-modal-preview a {
         color: #2e7d32;
         font-weight: 700;
@@ -162,6 +181,62 @@
         border-radius: 8px;
         display: block;
         margin: 14px 0;
+    }
+
+    .markdown-modal-preview pre {
+        background: #17241b;
+        border-radius: 8px;
+        color: #edf7ed;
+        overflow-x: auto;
+        padding: 14px 16px;
+    }
+
+    .markdown-modal-preview code {
+        background: #edf8ed;
+        border-radius: 5px;
+        color: #1b5e20;
+        font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+        padding: 2px 5px;
+    }
+
+    .markdown-modal-preview pre code {
+        background: transparent;
+        color: inherit;
+        display: block;
+        padding: 0;
+        white-space: pre;
+    }
+
+    .markdown-modal-preview table {
+        border-collapse: collapse;
+        margin: 16px 0;
+        min-width: 100%;
+    }
+
+    .markdown-modal-preview th,
+    .markdown-modal-preview td {
+        border: 1px solid #dbe8dc;
+        padding: 9px 11px;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .markdown-modal-preview th {
+        background: #edf8ed;
+        color: #1b5e20;
+        font-weight: 800;
+    }
+
+    .markdown-editor-modal.is-preview-fullscreen .markdown-modal-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .markdown-editor-modal.is-preview-fullscreen .markdown-modal-editor-pane {
+        display: none;
+    }
+
+    .markdown-editor-modal.is-preview-fullscreen .markdown-modal-preview-pane {
+        min-height: 72vh;
     }
 
     .markdown-modal-footer {

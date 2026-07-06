@@ -292,6 +292,40 @@
         margin-bottom: 1.4rem;
     }
 
+    .post-content .post-content-toc {
+        background: rgba(232, 245, 233, 0.7);
+        border: 1px solid rgba(var(--theme-primary), 0.14);
+        border-radius: 8px;
+        margin: 0 0 26px;
+        padding: 18px 20px;
+    }
+
+    .post-content .post-content-toc-title {
+        color: #1b5e20;
+        font-size: 0.95rem;
+        font-weight: 800;
+        margin-bottom: 10px;
+    }
+
+    .post-content .post-content-toc ol {
+        display: grid;
+        gap: 7px;
+        margin: 0;
+        padding-left: 22px;
+    }
+
+    .post-content .post-content-toc a {
+        color: #2e7d32;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .post-content h2,
+    .post-content h3,
+    .post-content h4 {
+        scroll-margin-top: 90px;
+    }
+
     .post-content img {
         display: block;
         width: auto;
@@ -309,6 +343,53 @@
         font-weight: 800;
         line-height: 1;
         margin-right: 4px;
+    }
+
+    .post-content pre {
+        background: #17241b;
+        border-radius: 8px;
+        color: #edf7ed;
+        line-height: 1.7;
+        margin: 22px 0;
+        overflow-x: auto;
+        padding: 18px 20px;
+    }
+
+    .post-content code {
+        background: #edf8ed;
+        border-radius: 5px;
+        color: #1b5e20;
+        font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+        font-size: 0.92em;
+        padding: 2px 5px;
+    }
+
+    .post-content pre code {
+        background: transparent;
+        color: inherit;
+        display: block;
+        padding: 0;
+        white-space: pre;
+    }
+
+    .post-content table {
+        border-collapse: collapse;
+        margin: 22px 0;
+        min-width: 100%;
+    }
+
+    .post-content th,
+    .post-content td {
+        border: 1px solid #dbe8dc;
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .post-content th {
+        background: #edf8ed;
+        color: #1b5e20;
+        font-weight: 800;
     }
 
     .article-end-mark {

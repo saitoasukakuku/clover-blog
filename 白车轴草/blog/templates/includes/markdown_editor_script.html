@@ -260,7 +260,12 @@
         }
 
         function renderInlineMarkdown(escapedText) {
-            return escapedText
+            var inlineCodeSegments = [];
+            var renderedText = escapedText
+                .replace(/`([^`\n]+)`/g, function (fullMatch, codeText) {
+                    inlineCodeSegments.push('<code>' + codeText + '</code>');
+                    return '\u0000INLINE_CODE_' + (inlineCodeSegments.length - 1) + '\u0000';
+                })
                 .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, function (fullMatch, imageAlt, imageUrl) {
                     return isSafePreviewImage(imageUrl)
                         ? '<img src="' + imageUrl + '" alt="' + imageAlt + '" loading="lazy">'
@@ -272,11 +277,123 @@
                         : fullMatch;
                 })
                 .replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
+            inlineCodeSegments.forEach(function (codeHtml, codeIndex) {
+                renderedText = renderedText.replace('\u0000INLINE_CODE_' + codeIndex + '\u0000', codeHtml);
+            });
+            return renderedText;
+        }
+
+        function sanitizePreviewCodeLanguage(rawLanguage) {
+            return (rawLanguage || '').trim().toLowerCase().replace(/[^a-z0-9_+#.-]/g, '').slice(0, 40);
+        }
+
+        function renderMarkdownCodeBlock(codeLines, rawLanguage) {
+            var codeLanguage = sanitizePreviewCodeLanguage(rawLanguage);
+            var codeContent = codeLines.join('\n');
+            if (codeLanguage) {
+                return '<pre><code class="language-' + codeLanguage + '">' + codeContent + '</code></pre>';
+            }
+            return '<pre><code>' + codeContent + '</code></pre>';
+        }
+
+        function splitMarkdownTableRow(escapedLine) {
+            var tableRow = (escapedLine || '').trim();
+            if (tableRow.indexOf('|') === -1) {
+                return [];
+            }
+            if (tableRow.charAt(0) === '|') {
+                tableRow = tableRow.slice(1);
+            }
+            if (tableRow.charAt(tableRow.length - 1) === '|') {
+                tableRow = tableRow.slice(0, -1);
+            }
+            return tableRow.split('|').map(function (tableCell) {
+                return tableCell.trim();
+            });
+        }
+
+        function isMarkdownTableSeparator(escapedLine) {
+            var separatorCells = splitMarkdownTableRow(escapedLine);
+            return separatorCells.length >= 2 && separatorCells.every(function (separatorCell) {
+                return /^:?-{3,}:?$/.test(separatorCell.trim());
+            });
+        }
+
+        function isMarkdownTableStart(escapedLines, lineIndex) {
+            if (lineIndex + 1 >= escapedLines.length) {
+                return false;
+            }
+            return splitMarkdownTableRow(escapedLines[lineIndex]).length >= 2
+                && isMarkdownTableSeparator(escapedLines[lineIndex + 1]);
+        }
+
+        function normalizeMarkdownTableRow(rowCells, columnCount) {
+            var normalizedCells = rowCells.slice(0, columnCount);
+            while (normalizedCells.length < columnCount) {
+                normalizedCells.push('');
+            }
+            return normalizedCells;
+        }
+
+        function renderMarkdownTable(tableLines) {
+            var headerCells = splitMarkdownTableRow(tableLines[0]);
+            var headerHtml = headerCells.map(function (headerCell) {
+                return '<th>' + renderInlineMarkdown(headerCell) + '</th>';
+            }).join('');
+            var bodyHtml = tableLines.slice(2).map(function (tableLine) {
+                var rowCells = normalizeMarkdownTableRow(splitMarkdownTableRow(tableLine), headerCells.length);
+                if (!rowCells.some(function (rowCell) { return rowCell.trim(); })) {
+                    return '';
+                }
+                return '<tr>' + rowCells.map(function (rowCell) {
+                    return '<td>' + renderInlineMarkdown(rowCell) + '</td>';
+                }).join('') + '</tr>';
+            }).join('');
+            return '<table><thead><tr>' + headerHtml + '</tr></thead><tbody>' + bodyHtml + '</tbody></table>';
+        }
+
+        function stripMarkdownPreviewMarkup(escapedText) {
+            return (escapedText || '')
+                .replace(/!\[([^\]\n]*)\]\([^)]+\)/g, '$1')
+                .replace(/\[([^\]\n]+)\]\([^)]+\)/g, '$1')
+                .replace(/[*_`]+/g, '')
+                .trim() || '小节';
+        }
+
+        function buildMarkdownHeadingId(plainHeadingText, headingIdCounts) {
+            var headingSlug = plainHeadingText.toLowerCase()
+                .replace(/[^\w\u4e00-\u9fff-]+/g, '-')
+                .replace(/^-+|-+$/g, '') || 'section';
+            headingIdCounts[headingSlug] = (headingIdCounts[headingSlug] || 0) + 1;
+            if (headingIdCounts[headingSlug] === 1) {
+                return 'post-section-' + headingSlug;
+            }
+            return 'post-section-' + headingSlug + '-' + headingIdCounts[headingSlug];
+        }
+
+        function buildMarkdownToc(tocItems) {
+            if (!tocItems.length) {
+                return '';
+            }
+            return '<nav class="post-content-toc" aria-label="文章目录">'
+                + '<div class="post-content-toc-title">目录</div>'
+                + '<ol>'
+                + tocItems.map(function (tocItem) {
+                    return '<li class="toc-level-' + tocItem.level + '">'
+                        + '<a href="#' + tocItem.id + '">' + tocItem.text + '</a>'
+                        + '</li>';
+                }).join('')
+                + '</ol></nav>';
         }
 
         function renderMarkdownLines(escapedLines) {
             var renderedBlocks = [];
             var pendingParagraphLines = [];
+            var headingIdCounts = {};
+            var tocItems = [];
+            var shouldBuildToc = escapedLines.filter(function (escapedLine) {
+                return /^(#{1,3})\s+(.+)$/.test(escapedLine.trim());
+            }).length >= 2;
 
             function flushPendingParagraph() {
                 if (!pendingParagraphLines.length) {
@@ -289,26 +406,76 @@
                 pendingParagraphLines = [];
             }
 
-            escapedLines.forEach(function (escapedLine) {
+            var lineIndex = 0;
+            while (lineIndex < escapedLines.length) {
+                var escapedLine = escapedLines[lineIndex];
+                var codeFenceMatch = escapedLine.trim().match(/^```([A-Za-z0-9_+#.-]*)\s*$/);
+                if (codeFenceMatch) {
+                    flushPendingParagraph();
+                    var codeLines = [];
+                    lineIndex += 1;
+                    while (lineIndex < escapedLines.length) {
+                        if (/^```\s*$/.test(escapedLines[lineIndex].trim())) {
+                            break;
+                        }
+                        codeLines.push(escapedLines[lineIndex]);
+                        lineIndex += 1;
+                    }
+                    renderedBlocks.push(renderMarkdownCodeBlock(codeLines, codeFenceMatch[1]));
+                    if (lineIndex < escapedLines.length) {
+                        lineIndex += 1;
+                    }
+                    continue;
+                }
+
+                if (isMarkdownTableStart(escapedLines, lineIndex)) {
+                    flushPendingParagraph();
+                    var tableLines = [escapedLine, escapedLines[lineIndex + 1]];
+                    lineIndex += 2;
+                    while (lineIndex < escapedLines.length && escapedLines[lineIndex].trim() && escapedLines[lineIndex].indexOf('|') !== -1) {
+                        tableLines.push(escapedLines[lineIndex]);
+                        lineIndex += 1;
+                    }
+                    renderedBlocks.push(renderMarkdownTable(tableLines));
+                    continue;
+                }
+
                 var headingMatch = escapedLine.trim().match(/^(#{1,3})\s+(.+)$/);
                 if (headingMatch) {
                     flushPendingParagraph();
                     var headingLevel = headingMatch[1].length + 1;
-                    renderedBlocks.push(
-                        '<h' + headingLevel + '>' + renderInlineMarkdown(headingMatch[2].trim()) + '</h' + headingLevel + '>'
-                    );
-                    return;
+                    var escapedHeadingText = headingMatch[2].trim();
+                    var renderedHeadingText = renderInlineMarkdown(escapedHeadingText);
+                    if (shouldBuildToc) {
+                        var plainHeadingText = stripMarkdownPreviewMarkup(escapedHeadingText);
+                        var headingId = buildMarkdownHeadingId(plainHeadingText, headingIdCounts);
+                        tocItems.push({ id: headingId, level: headingLevel, text: plainHeadingText });
+                        renderedBlocks.push(
+                            '<h' + headingLevel + ' id="' + headingId + '">' + renderedHeadingText + '</h' + headingLevel + '>'
+                        );
+                    } else {
+                        renderedBlocks.push(
+                            '<h' + headingLevel + '>' + renderedHeadingText + '</h' + headingLevel + '>'
+                        );
+                    }
+                    lineIndex += 1;
+                    continue;
                 }
 
                 if (!escapedLine.trim()) {
                     flushPendingParagraph();
-                    return;
+                    lineIndex += 1;
+                    continue;
                 }
 
                 pendingParagraphLines.push(escapedLine);
-            });
+                lineIndex += 1;
+            }
 
             flushPendingParagraph();
+            if (tocItems.length) {
+                renderedBlocks.unshift(buildMarkdownToc(tocItems));
+            }
             return renderedBlocks;
         }
 
@@ -393,6 +560,10 @@
                 insertMarkdown(textarea, '**', '加粗文字', '**');
             } else if (action === 'link') {
                 insertMarkdown(textarea, '[', '链接文字', '](https://example.com)');
+            } else if (action === 'code-block') {
+                insertMarkdownBlock(textarea, '```text\n代码内容\n```');
+            } else if (action === 'table') {
+                insertMarkdownBlock(textarea, '| 名称 | 内容 |\n| --- | --- |\n| 示例 | 说明 |');
             } else if (action === 'image-url') {
                 var imageUrl = promptMarkdownImageUrl();
                 if (imageUrl) {
@@ -403,6 +574,16 @@
                 if (previewPane) {
                     previewPane.classList.toggle('d-none');
                     actionButton.classList.toggle('is-active', !previewPane.classList.contains('d-none'));
+                }
+                updatePreview(modal);
+            } else if (action === 'fullscreen-preview') {
+                var fullscreenPreviewPane = modal ? modal.querySelector('[data-markdown-preview-pane]') : null;
+                if (fullscreenPreviewPane) {
+                    fullscreenPreviewPane.classList.remove('d-none');
+                }
+                if (modal) {
+                    modal.classList.toggle('is-preview-fullscreen');
+                    actionButton.classList.toggle('is-active', modal.classList.contains('is-preview-fullscreen'));
                 }
                 updatePreview(modal);
             }
