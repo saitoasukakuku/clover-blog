@@ -905,6 +905,106 @@ class AuthViewsTests(TestCase):
         self.assertContains(detail_response, '文章系列')
         self.assertContains(detail_response, 'Django 入门')
 
+    def test_create_post_schedules_future_publish_as_draft(self):
+        user = User.objects.create_user(username='schedule-writer', password='StrongPass12345')
+        self.client.login(username='schedule-writer', password='StrongPass12345')
+        scheduled_publish_at = timezone.localtime(timezone.now() + timedelta(days=1)).replace(
+            second=0,
+            microsecond=0,
+        )
+        scheduled_publish_value = scheduled_publish_at.strftime('%Y-%m-%dT%H:%M')
+
+        response = self.client.post(reverse('create_post'), {
+            'title': '明天发布的文章',
+            'category': 'life',
+            'tags': '计划',
+            'content': '这篇文章还没到发布时间。',
+            'visibility': 'public',
+            'scheduled_publish_at': scheduled_publish_value,
+            'action': 'publish',
+        })
+
+        self.assertRedirects(response, reverse('drafts'))
+        post = Post.objects.get(title='明天发布的文章')
+        self.assertEqual(post.author, user)
+        self.assertEqual(post.status, 'draft')
+        self.assertEqual(
+            timezone.localtime(post.scheduled_publish_at).strftime('%Y-%m-%dT%H:%M'),
+            scheduled_publish_value,
+        )
+
+        public_response = self.client.get(reverse('index'))
+        self.assertNotContains(public_response, '明天发布的文章')
+
+    def test_edit_post_can_schedule_future_publish(self):
+        author = User.objects.create_user(username='schedule-editor', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='先发后定时',
+            category='life',
+            content='旧正文',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='schedule-editor', password='StrongPass12345')
+        scheduled_publish_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(
+            second=0,
+            microsecond=0,
+        )
+        scheduled_publish_value = scheduled_publish_at.strftime('%Y-%m-%dT%H:%M')
+
+        response = self.client.post(reverse('edit_post', args=[post.id]), {
+            'title': '先发后定时',
+            'category': 'life',
+            'tags': '',
+            'content': '重新排期的正文',
+            'visibility': 'public',
+            'scheduled_publish_at': scheduled_publish_value,
+            'action': 'publish',
+        })
+
+        self.assertRedirects(response, reverse('drafts'))
+        post.refresh_from_db()
+        self.assertEqual(post.status, 'draft')
+        self.assertEqual(
+            timezone.localtime(post.scheduled_publish_at).strftime('%Y-%m-%dT%H:%M'),
+            scheduled_publish_value,
+        )
+        revision = PostRevision.objects.get(post=post)
+        self.assertEqual(revision.status, 'published')
+
+    def test_publish_scheduled_posts_command_publishes_due_posts_only(self):
+        author = User.objects.create_user(username='schedule-command', password='StrongPass12345')
+        due_post = Post.objects.create(
+            author=author,
+            title='已经到点的文章',
+            category='life',
+            content='到点正文',
+            status='draft',
+            visibility='public',
+            scheduled_publish_at=timezone.now() - timedelta(minutes=5),
+        )
+        future_post = Post.objects.create(
+            author=author,
+            title='还没到点的文章',
+            category='life',
+            content='未来正文',
+            status='draft',
+            visibility='public',
+            scheduled_publish_at=timezone.now() + timedelta(hours=2),
+        )
+        command_output = StringIO()
+
+        call_command('publish_scheduled_posts', stdout=command_output)
+
+        due_post.refresh_from_db()
+        future_post.refresh_from_db()
+        self.assertEqual(due_post.status, 'published')
+        self.assertIsNone(due_post.scheduled_publish_at)
+        self.assertEqual(future_post.status, 'draft')
+        self.assertIsNotNone(future_post.scheduled_publish_at)
+        self.assertIn('Published scheduled posts: 1', command_output.getvalue())
+
     def test_edit_post_creates_revision_snapshot_before_changes(self):
         author = User.objects.create_user(username='revision-writer', password='StrongPass12345')
         post = Post.objects.create(
@@ -1139,6 +1239,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'clearPostAutosaveDraft')
         self.assertContains(response, 'series_title')
         self.assertContains(response, 'series_order')
+        self.assertContains(response, 'scheduled_publish_at')
+        self.assertContains(response, 'type="datetime-local"')
         self.assertContains(response, 'localStorage')
 
     def test_post_detail_edit_form_shows_markdown_editor_modal(self):
@@ -1198,6 +1300,8 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'clearPostAutosaveDraft')
         self.assertContains(response, 'series_title')
         self.assertContains(response, 'series_order')
+        self.assertContains(response, 'scheduled_publish_at')
+        self.assertContains(response, 'type="datetime-local"')
         self.assertContains(response, 'localStorage')
 
     def test_post_detail_constrains_markdown_body_images(self):

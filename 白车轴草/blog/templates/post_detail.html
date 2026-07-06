@@ -1357,6 +1357,14 @@
                         </select>
                     </div>
 
+                    <div class="mb-4">
+                        <label for="postScheduledPublishAt" class="form-label">
+                            <i class="far fa-clock me-1"></i>定时发布时间
+                        </label>
+                        <input type="datetime-local" class="form-control" id="postScheduledPublishAt"
+                            name="scheduled_publish_at" value="{{ post.scheduled_publish_at|date:'Y-m-d\\TH:i' }}">
+                    </div>
+
                     <!-- 封面图片 -->
                     <div class="mb-4">
                         <label class="form-label"><i class="fas fa-image me-1"></i>更换封面图片</label>
@@ -1447,6 +1455,12 @@
                     <span>状态</span>
                     <strong>{{ post.get_status_display }}</strong>
                 </div>
+                {% if post.scheduled_publish_at %}
+                <div class="detail-stat">
+                    <span>定时发布</span>
+                    <strong>{{ post.scheduled_publish_at|date:"Y-m-d H:i" }}</strong>
+                </div>
+                {% endif %}
                 {% if post_revisions %}
                 <section class="revision-history" aria-label="版本历史">
                     <h3><i class="fas fa-history me-2"></i>版本历史</h3>

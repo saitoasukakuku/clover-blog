@@ -67,6 +67,7 @@ from blog.registration_approval import (
 )
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
+from datetime import datetime
 from io import BytesIO, StringIO
 import base64
 import binascii
@@ -346,6 +347,39 @@ def parse_series_order(raw_series_order):
     if series_order < 1:
         return None
     return min(series_order, 9999)
+
+
+def parse_scheduled_publish_at(raw_scheduled_publish_at):
+    cleaned_scheduled_publish_at = (raw_scheduled_publish_at or '').strip()
+    if not cleaned_scheduled_publish_at:
+        return None
+    try:
+        naive_scheduled_publish_at = datetime.strptime(
+            cleaned_scheduled_publish_at,
+            '%Y-%m-%dT%H:%M',
+        )
+    except ValueError:
+        return None
+    return timezone.make_aware(
+        naive_scheduled_publish_at,
+        timezone.get_current_timezone(),
+    )
+
+
+def resolve_post_status_and_schedule(action, raw_scheduled_publish_at):
+    scheduled_publish_at = parse_scheduled_publish_at(raw_scheduled_publish_at)
+    if action != 'publish':
+        return 'draft', None
+    if scheduled_publish_at and scheduled_publish_at > timezone.now():
+        return 'draft', scheduled_publish_at
+    return 'published', None
+
+
+def get_currently_published_query():
+    return Q(status='published') & (
+        Q(scheduled_publish_at__isnull=True)
+        | Q(scheduled_publish_at__lte=timezone.now())
+    )
 
 
 def normalize_image_extension(raw_extension):
@@ -790,6 +824,7 @@ def build_post_form_context(
     visibility,
     series_title='',
     series_order=None,
+    scheduled_publish_at=None,
 ):
     post = Post(
         title=title or '',
@@ -797,6 +832,7 @@ def build_post_form_context(
         tags=tags or '',
         series_title=series_title or '',
         series_order=series_order,
+        scheduled_publish_at=scheduled_publish_at,
         content=content or '',
         visibility=visibility or 'private',
     )
@@ -826,14 +862,15 @@ def get_ai_cover_data(ai_cover_token):
 
 
 def filter_readable_posts(posts, request_user):
+    currently_published_query = get_currently_published_query()
     if request_user.is_authenticated:
         return posts.filter(
-            Q(status='published', visibility='public')
-            | Q(author=request_user, status='published')
+            Q(currently_published_query, visibility='public')
+            | Q(author=request_user) & currently_published_query
         ).distinct()
 
     return posts.filter(
-        status='published',
+        currently_published_query,
         visibility='public',
     )
 
@@ -2378,7 +2415,10 @@ def create_post(request):
         ai_cover_token = request.POST.get('ai_cover_token', '')
         action = request.POST.get('action') # 'draft' or 'publish'
 
-        status = 'published' if action == 'publish' else 'draft'
+        status, scheduled_publish_at = resolve_post_status_and_schedule(
+            action,
+            request.POST.get('scheduled_publish_at'),
+        )
         visibility = request.POST.get('visibility', 'private')
 
         if cropped_cover_data:
@@ -2397,6 +2437,7 @@ def create_post(request):
                         visibility,
                         series_title,
                         series_order,
+                        scheduled_publish_at,
                     ),
                 )
         elif cover:
@@ -2415,6 +2456,7 @@ def create_post(request):
                         visibility,
                         series_title,
                         series_order,
+                        scheduled_publish_at,
                     ),
                 )
 
@@ -2443,6 +2485,7 @@ def create_post(request):
             content=content,
             cover=cover,
             status=status,
+            scheduled_publish_at=scheduled_publish_at,
             visibility=visibility
         )
         post.save()
@@ -2566,6 +2609,10 @@ def edit_post(request, post_id):
     
     if request.method == 'POST':
         action = request.POST.get('action')
+        updated_status, updated_scheduled_publish_at = resolve_post_status_and_schedule(
+            action,
+            request.POST.get('scheduled_publish_at'),
+        )
         updated_post_values = {
             'title': request.POST.get('title') or '',
             'category': resolve_category(request),
@@ -2573,7 +2620,8 @@ def edit_post(request, post_id):
             'series_title': (request.POST.get('series_title') or '').strip()[:100],
             'series_order': parse_series_order(request.POST.get('series_order')),
             'content': request.POST.get('content') or '',
-            'status': 'published' if action == 'publish' else 'draft',
+            'status': updated_status,
+            'scheduled_publish_at': updated_scheduled_publish_at,
             'visibility': request.POST.get('visibility', 'private'),
         }
         cover = request.FILES.get('cover')
@@ -2636,14 +2684,13 @@ def post_detail(request, post_id):
         post = get_object_or_404(
             Post,
             Q(id=post_id),
-            Q(status='published', visibility='public') | Q(author=request.user)
+            Q(get_currently_published_query(), visibility='public') | Q(author=request.user)
         )
     else:
         post = get_object_or_404(
             Post,
-            id=post_id,
-            status='published',
-            visibility='public'
+            Q(id=post_id),
+            Q(get_currently_published_query(), visibility='public')
         )
 
     Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)

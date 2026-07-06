@@ -38,6 +38,12 @@ class Post(models.Model):
     cover = models.ImageField(upload_to='covers/', null=True, blank=True, verbose_name='封面图片')
     content = models.TextField(verbose_name='文章内容')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name='状态')
+    scheduled_publish_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name='定时发布时间',
+    )
     visibility = models.CharField(
         max_length=20,
         choices=VISIBILITY_CHOICES,
@@ -86,6 +92,7 @@ class PostRevision(models.Model):
         choices=Post.STATUS_CHOICES,
         verbose_name='状态',
     )
+    scheduled_publish_at = models.DateTimeField(null=True, blank=True, verbose_name='定时发布时间')
     visibility = models.CharField(
         max_length=20,
         choices=Post.VISIBILITY_CHOICES,
@@ -110,6 +117,7 @@ class PostRevision(models.Model):
             series_order=post.series_order,
             content=post.content,
             status=post.status,
+            scheduled_publish_at=post.scheduled_publish_at,
             visibility=post.visibility,
         )
 

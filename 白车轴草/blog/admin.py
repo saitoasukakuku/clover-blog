@@ -19,16 +19,16 @@ from blog.models import (
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ('title', 'author', 'category', 'series_title', 'series_order', 'status', 'visibility', 'views_count', 'created_at', 'updated_at')
-    list_filter = ('status', 'category', 'visibility', 'series_title', 'created_at')
+    list_display = ('title', 'author', 'category', 'series_title', 'series_order', 'status', 'scheduled_publish_at', 'visibility', 'views_count', 'created_at', 'updated_at')
+    list_filter = ('status', 'category', 'visibility', 'series_title', 'scheduled_publish_at', 'created_at')
     search_fields = ('title', 'content', 'tags', 'series_title')
     ordering = ('-created_at',)
 
 
 @admin.register(PostRevision)
 class PostRevisionAdmin(admin.ModelAdmin):
-    list_display = ('post', 'title', 'editor', 'series_title', 'series_order', 'status', 'visibility', 'created_at')
-    list_filter = ('status', 'visibility', 'series_title', 'created_at')
+    list_display = ('post', 'title', 'editor', 'series_title', 'series_order', 'status', 'scheduled_publish_at', 'visibility', 'created_at')
+    list_filter = ('status', 'visibility', 'series_title', 'scheduled_publish_at', 'created_at')
     search_fields = ('post__title', 'title', 'content', 'tags', 'series_title', 'editor__username')
     ordering = ('-created_at',)
     readonly_fields = (
@@ -41,6 +41,7 @@ class PostRevisionAdmin(admin.ModelAdmin):
         'series_order',
         'content',
         'status',
+        'scheduled_publish_at',
         'visibility',
         'created_at',
     )
