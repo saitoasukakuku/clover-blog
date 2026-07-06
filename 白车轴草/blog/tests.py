@@ -781,6 +781,92 @@ class AuthViewsTests(TestCase):
 
         self.assertContains(response, '只有待审核申请可以通过。')
 
+    def test_resend_registration_code_rejects_get(self):
+        User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+            status=RegistrationRequest.STATUS_APPROVED,
+            code_expires_at=timezone.now() + timedelta(days=7),
+        )
+        registration_request.set_invite_code('ABC123CODE456')
+        registration_request.save()
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        response = self.client.get(reverse(
+            'resend_registration_code',
+            args=[registration_request.id],
+        ))
+
+        self.assertEqual(response.status_code, 405)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='default@example.com',
+    )
+    def test_superuser_can_resend_registration_code_for_approved_request(self):
+        reviewer = User.objects.create_superuser(
+            username='白车轴草',
+            email='owner@example.com',
+            password='StrongPass12345',
+        )
+        registration_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+            status=RegistrationRequest.STATUS_APPROVED,
+            code_expires_at=timezone.now() - timedelta(days=1),
+            approved_by=reviewer,
+            reviewed_at=timezone.now() - timedelta(days=8),
+        )
+        registration_request.set_invite_code('ABC123CODE456')
+        registration_request.save()
+        original_invite_code_hash = registration_request.invite_code_hash
+        self.client.login(username='白车轴草', password='StrongPass12345')
+
+        response = self.client.post(reverse(
+            'resend_registration_code',
+            args=[registration_request.id],
+        ), follow=True)
+
+        self.assertRedirects(response, reverse('registration_requests'))
+        registration_request.refresh_from_db()
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
+        self.assertEqual(registration_request.approved_by, reviewer)
+        self.assertNotEqual(registration_request.invite_code_hash, original_invite_code_hash)
+        self.assertFalse(registration_request.can_use_invite_code('ABC123CODE456'))
+        self.assertGreater(registration_request.code_expires_at, timezone.now())
+        self.assertEqual(len(mail.outbox), 1)
+        resend_email = mail.outbox[0]
+        self.assertEqual(resend_email.to, ['reader@example.com'])
+        self.assertIn(reverse('complete_registration'), resend_email.body)
+        self.assertNotIn(registration_request.invite_code_hash, resend_email.body)
+        self.assertContains(response, '已重新发送注册码。')
+
+    def test_resend_registration_code_only_allows_approved_requests(self):
+        reviewer = User.objects.create_superuser(
+            username='reviewer',
+            email='reviewer@example.com',
+            password='StrongPass12345',
+        )
+        used_request = RegistrationRequest.objects.create(
+            email='reader@example.com',
+            status=RegistrationRequest.STATUS_USED,
+            used_at=timezone.now(),
+        )
+        self.client.login(username='reviewer', password='StrongPass12345')
+
+        response = self.client.post(reverse(
+            'resend_registration_code',
+            args=[used_request.id],
+        ), follow=True)
+
+        used_request.refresh_from_db()
+        self.assertEqual(used_request.status, RegistrationRequest.STATUS_USED)
+        self.assertEqual(used_request.invite_code_hash, '')
+        self.assertContains(response, '只有已通过且未使用的申请可以重发注册码。')
+
     def test_reject_registration_request_rejects_get(self):
         User.objects.create_superuser(
             username='reviewer',

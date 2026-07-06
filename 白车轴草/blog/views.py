@@ -62,8 +62,10 @@ from blog.models import (
 )
 from blog.registration_approval import (
     RegistrationRequestAlreadyReviewed,
+    RegistrationRequestCannotResend,
     approve_registration_request as approve_registration_request_service,
     reject_registration_request as reject_registration_request_service,
+    resend_registration_code as resend_registration_code_service,
 )
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
@@ -1858,6 +1860,36 @@ def approve_registration_request(request, request_id):
         return redirect('registration_requests')
 
     messages.success(request, '已通过并发送注册码。')
+    return redirect('registration_requests')
+
+
+@login_required
+@require_POST
+def resend_registration_code(request, request_id):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    registration_request = get_object_or_404(RegistrationRequest, id=request_id)
+    if registration_request.status != RegistrationRequest.STATUS_APPROVED:
+        messages.info(request, '只有已通过且未使用的申请可以重发注册码。')
+        return redirect('registration_requests')
+
+    completion_url = request.build_absolute_uri(reverse('complete_registration'))
+    try:
+        resend_registration_code_service(
+            registration_request,
+            request.user,
+            completion_url,
+        )
+    except RegistrationRequestCannotResend:
+        messages.info(request, '只有已通过且未使用的申请可以重发注册码。')
+        return redirect('registration_requests')
+    except Exception:
+        messages.error(request, '邮件发送失败，注册码没有更新。')
+        return redirect('registration_requests')
+
+    messages.success(request, '已重新发送注册码。')
     return redirect('registration_requests')
 
 

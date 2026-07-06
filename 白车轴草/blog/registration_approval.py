@@ -21,6 +21,10 @@ class RegistrationRequestAlreadyReviewed(Exception):
     pass
 
 
+class RegistrationRequestCannotResend(Exception):
+    pass
+
+
 def generate_registration_code():
     return ''.join(
         secrets.choice(REGISTRATION_CODE_ALPHABET)
@@ -85,6 +89,43 @@ def approve_registration_request(registration_request, reviewer, completion_url)
         locked_request.save(
             update_fields=[
                 'status',
+                'invite_code_hash',
+                'code_expires_at',
+                'approved_by',
+                'reviewed_at',
+                'used_at',
+                'updated_at',
+            ]
+        )
+
+        send_registration_code_email(
+            locked_request,
+            raw_invite_code,
+            completion_url,
+        )
+
+    return raw_invite_code
+
+
+def resend_registration_code(registration_request, reviewer, completion_url):
+    raw_invite_code = generate_registration_code()
+
+    with transaction.atomic():
+        locked_request = type(registration_request).objects.select_for_update().get(
+            pk=registration_request.pk,
+        )
+        if locked_request.status != locked_request.STATUS_APPROVED:
+            raise RegistrationRequestCannotResend
+
+        locked_request.set_invite_code(raw_invite_code)
+        locked_request.code_expires_at = (
+            timezone.now() + timedelta(days=REGISTRATION_CODE_EXPIRATION_DAYS)
+        )
+        locked_request.approved_by = reviewer
+        locked_request.reviewed_at = timezone.now()
+        locked_request.used_at = None
+        locked_request.save(
+            update_fields=[
                 'invite_code_hash',
                 'code_expires_at',
                 'approved_by',

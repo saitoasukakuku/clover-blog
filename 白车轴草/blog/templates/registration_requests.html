@@ -77,6 +77,13 @@
                                     </button>
                                 </form>
                             </div>
+                            {% elif status_value == 'approved' %}
+                            <form method="post" action="{% url 'resend_registration_code' registration_request.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-paper-plane me-1"></i>重发注册码
+                                </button>
+                            </form>
                             {% else %}
                             <span class="text-muted">无需操作</span>
                             {% endif %}
