@@ -66,6 +66,17 @@ class ModelIndexTests(TestCase):
         ])
 
 
+class StaticFilesConfigTests(TestCase):
+    def test_collectstatic_ignores_unused_local_fontawesome_package(self):
+        from blog.staticfiles import CloverStaticFilesConfig
+
+        self.assertIn('blog.staticfiles.CloverStaticFilesConfig', settings.INSTALLED_APPS)
+        self.assertIn(
+            'plugins/fontawesome-free-7.1.0-web/*',
+            CloverStaticFilesConfig.ignore_patterns,
+        )
+
+
 def encode_id3_syncsafe_size(value):
     return bytes([
         (value >> 21) & 0x7F,
