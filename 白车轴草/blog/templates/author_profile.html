@@ -176,6 +176,21 @@
                 <a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-success">
                     <i class="fas fa-user-plus me-1"></i>登录后加好友
                 </a>
+                {% elif relationship_status == 'blocked' %}
+                <span class="btn btn-sm btn-light disabled">
+                    <i class="fas fa-ban me-1"></i>已屏蔽
+                </span>
+                <form method="post" action="{% url 'unblock_user' author_profile_user.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="btn btn-sm btn-outline-success">
+                        <i class="fas fa-unlock me-1"></i>解除屏蔽
+                    </button>
+                </form>
+                {% elif relationship_status == 'blocked_by' %}
+                <span class="btn btn-sm btn-light disabled">
+                    <i class="fas fa-ban me-1"></i>对方已限制互动
+                </span>
                 {% elif relationship_status == 'friend' %}
                 <a href="{% url 'conversation' author_profile_user.id %}" class="btn btn-sm btn-success">
                     <i class="fas fa-envelope me-1"></i>发私信
@@ -194,6 +209,16 @@
                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="fas fa-user-plus me-1"></i>加好友
+                    </button>
+                </form>
+                {% endif %}
+                {% if user.is_authenticated and relationship_status != 'blocked' and relationship_status != 'blocked_by' and relationship_status != 'guest' %}
+                <form method="post" action="{% url 'block_user' author_profile_user.id %}"
+                    onsubmit="return confirm('确定要屏蔽这个用户吗？屏蔽后会停止你们之间的好友、私信和评论互动。');">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="fas fa-ban me-1"></i>屏蔽
                     </button>
                 </form>
                 {% endif %}

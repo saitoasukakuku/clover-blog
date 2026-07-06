@@ -56,6 +56,7 @@ from blog.models import (
     PostRevision,
     PrivateMessage,
     RegistrationRequest,
+    UserBlock,
     UserProfile,
 )
 from blog.registration_approval import (
@@ -201,11 +202,38 @@ def are_friends(first_user, second_user):
     ).exists()
 
 
+def user_has_blocked(blocker, blocked):
+    if not blocker.is_authenticated or blocker.id == blocked.id:
+        return False
+    return UserBlock.objects.filter(blocker=blocker, blocked=blocked).exists()
+
+
+def users_are_blocked_between(first_user, second_user):
+    if first_user.id == second_user.id:
+        return False
+    return UserBlock.objects.filter(
+        Q(blocker=first_user, blocked=second_user)
+        | Q(blocker=second_user, blocked=first_user)
+    ).exists()
+
+
+def delete_friendship_between(first_user, second_user):
+    user_low_id, user_high_id = sorted((first_user.id, second_user.id))
+    Friendship.objects.filter(
+        user_low_id=user_low_id,
+        user_high_id=user_high_id,
+    ).delete()
+
+
 def get_relationship_status(current_user, target_user):
     if not current_user.is_authenticated:
         return 'guest'
     if current_user.id == target_user.id:
         return 'self'
+    if user_has_blocked(current_user, target_user):
+        return 'blocked'
+    if user_has_blocked(target_user, current_user):
+        return 'blocked_by'
     if are_friends(current_user, target_user):
         return 'friend'
 
@@ -1821,6 +1849,9 @@ def send_friend_request(request, user_id):
     if target_user == request.user:
         messages.error(request, '不能添加自己为好友。')
         return redirect(redirect_url)
+    if users_are_blocked_between(request.user, target_user):
+        messages.error(request, '你们之间已存在屏蔽关系，不能发送好友申请。')
+        return redirect(redirect_url)
     if are_friends(request.user, target_user):
         messages.info(request, '你们已经是好友。')
         return redirect(redirect_url)
@@ -1862,6 +1893,11 @@ def accept_friend_request(request, request_id):
             receiver=request.user,
             status='pending',
         )
+        if users_are_blocked_between(friend_request.sender, friend_request.receiver):
+            friend_request.status = 'rejected'
+            friend_request.save(update_fields=['status', 'updated_at'])
+            messages.error(request, '你们之间已存在屏蔽关系，不能接受好友申请。')
+            return redirect('friends')
         Friendship.connect(friend_request.sender, friend_request.receiver)
         friend_request.status = 'accepted'
         friend_request.save(update_fields=['status', 'updated_at'])
@@ -1916,16 +1952,47 @@ def cancel_friend_request(request, request_id):
 @require_POST
 def remove_friend(request, user_id):
     target_user = get_object_or_404(User, id=user_id)
-    user_low_id, user_high_id = sorted((request.user.id, target_user.id))
     deleted_count, _ = Friendship.objects.filter(
-        user_low_id=user_low_id,
-        user_high_id=user_high_id,
+        user_low_id=min(request.user.id, target_user.id),
+        user_high_id=max(request.user.id, target_user.id),
     ).delete()
     if deleted_count:
         messages.success(request, '好友已删除。')
     else:
         messages.error(request, '当前用户不是你的好友。')
     return redirect('friends')
+
+
+@login_required
+@require_POST
+def block_user(request, user_id):
+    target_user = get_object_or_404(User, id=user_id)
+    fallback_url = reverse('author_profile', args=[target_user.username])
+    redirect_url = get_safe_post_next_url(request, fallback_url)
+    if target_user == request.user:
+        messages.error(request, '不能屏蔽自己。')
+        return redirect(redirect_url)
+
+    UserBlock.objects.get_or_create(blocker=request.user, blocked=target_user)
+    delete_friendship_between(request.user, target_user)
+    FriendRequest.objects.filter(
+        Q(sender=request.user, receiver=target_user)
+        | Q(sender=target_user, receiver=request.user),
+        status='pending',
+    ).update(status='cancelled', updated_at=timezone.now())
+    messages.success(request, '已屏蔽这个用户，并停止你们之间的互动。')
+    return redirect(redirect_url)
+
+
+@login_required
+@require_POST
+def unblock_user(request, user_id):
+    target_user = get_object_or_404(User, id=user_id)
+    fallback_url = reverse('author_profile', args=[target_user.username])
+    redirect_url = get_safe_post_next_url(request, fallback_url)
+    UserBlock.objects.filter(blocker=request.user, blocked=target_user).delete()
+    messages.success(request, '已解除屏蔽。')
+    return redirect(redirect_url)
 
 
 @login_required
@@ -1962,6 +2029,9 @@ def conversations_view(request):
 @login_required
 def conversation_view(request, user_id):
     friend = get_object_or_404(User.objects.select_related('profile'), id=user_id)
+    if users_are_blocked_between(request.user, friend):
+        messages.error(request, '你们之间已存在屏蔽关系，不能发送私信。')
+        return redirect('friends')
     if not are_friends(request.user, friend):
         messages.error(request, '只有好友之间可以发送私信。')
         return redirect('friends')
@@ -2548,6 +2618,9 @@ def add_comment(request, post_id):
         status='published',
         visibility='public',
     )
+    if request.user.id != post.author_id and users_are_blocked_between(request.user, post.author):
+        messages.error(request, '你们之间已存在屏蔽关系，不能在这篇文章下评论。')
+        return redirect('post_detail', post_id=post.id)
 
     comment_form = CommentForm(request.POST)
     parent_id = request.POST.get('parent_id')

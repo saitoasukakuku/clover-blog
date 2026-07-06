@@ -379,6 +379,40 @@ class Friendship(models.Model):
         super().save(*args, **kwargs)
 
 
+class UserBlock(models.Model):
+    blocker = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='blocking_users',
+        verbose_name='屏蔽人',
+    )
+    blocked = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='blocked_by_users',
+        verbose_name='被屏蔽人',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='屏蔽时间')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('blocker', 'blocked'),
+                name='unique_user_block_direction',
+            ),
+            models.CheckConstraint(
+                check=~models.Q(blocker=models.F('blocked')),
+                name='user_block_users_differ',
+            ),
+        ]
+        ordering = ['-created_at']
+        verbose_name = '用户屏蔽'
+        verbose_name_plural = '用户屏蔽'
+
+    def __str__(self):
+        return f'{self.blocker.username} 屏蔽 {self.blocked.username}'
+
+
 class PrivateMessage(models.Model):
     sender = models.ForeignKey(
         User,

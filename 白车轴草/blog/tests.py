@@ -3265,6 +3265,84 @@ class AuthorProfileTests(TestCase):
         )
 
 
+class UserBlockTests(TestCase):
+    def get_block_model(self):
+        return apps.get_model('blog', 'UserBlock')
+
+    def test_user_can_block_and_unblock_from_author_profile(self):
+        current_user = User.objects.create_user(username='block-current', password='StrongPass12345')
+        target_user = User.objects.create_user(username='block-target', password='StrongPass12345')
+        Friendship.connect(current_user, target_user)
+        author_profile_url = reverse('author_profile', args=[target_user.username])
+        self.client.login(username='block-current', password='StrongPass12345')
+
+        block_response = self.client.post(reverse('block_user', args=[target_user.id]), {
+            'next': author_profile_url,
+        })
+        blocked_profile_response = self.client.get(author_profile_url)
+        unblock_response = self.client.post(reverse('unblock_user', args=[target_user.id]), {
+            'next': author_profile_url,
+        })
+
+        UserBlock = self.get_block_model()
+        self.assertRedirects(block_response, author_profile_url)
+        self.assertEqual(blocked_profile_response.context['relationship_status'], 'blocked')
+        self.assertContains(blocked_profile_response, '解除屏蔽')
+        self.assertFalse(are_friendship_exists(current_user, target_user))
+        self.assertRedirects(unblock_response, author_profile_url)
+        self.assertFalse(UserBlock.objects.filter(blocker=current_user, blocked=target_user).exists())
+
+    def test_blocking_user_prevents_friend_request_and_private_message(self):
+        blocker = User.objects.create_user(username='interaction-blocker', password='StrongPass12345')
+        blocked_user = User.objects.create_user(username='interaction-blocked', password='StrongPass12345')
+        Friendship.connect(blocker, blocked_user)
+        UserBlock = self.get_block_model()
+        UserBlock.objects.create(blocker=blocker, blocked=blocked_user)
+        self.client.login(username='interaction-blocked', password='StrongPass12345')
+
+        friend_response = self.client.post(reverse('send_friend_request', args=[blocker.id]))
+        message_response = self.client.post(reverse('conversation', args=[blocker.id]), {
+            'content': 'Blocked message',
+        })
+
+        self.assertRedirects(friend_response, reverse('friends'))
+        self.assertRedirects(message_response, reverse('friends'))
+        self.assertFalse(
+            FriendRequest.objects.filter(sender=blocked_user, receiver=blocker, status='pending').exists()
+        )
+        self.assertFalse(PrivateMessage.objects.filter(content='Blocked message').exists())
+
+    def test_blocked_user_cannot_comment_on_blocker_post(self):
+        author = User.objects.create_user(username='comment-blocker', password='StrongPass12345')
+        commenter = User.objects.create_user(username='comment-blocked', password='StrongPass12345')
+        UserBlock = self.get_block_model()
+        UserBlock.objects.create(blocker=author, blocked=commenter)
+        post = Post.objects.create(
+            author=author,
+            title='Blocked comment post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='comment-blocked', password='StrongPass12345')
+
+        response = self.client.post(reverse('add_comment', args=[post.id]), {
+            'content': 'Blocked comment',
+        })
+
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        self.assertFalse(Comment.objects.filter(post=post, content='Blocked comment').exists())
+
+
+def are_friendship_exists(first_user, second_user):
+    user_low_id, user_high_id = sorted((first_user.id, second_user.id))
+    return Friendship.objects.filter(
+        user_low_id=user_low_id,
+        user_high_id=user_high_id,
+    ).exists()
+
+
 class CommentModerationTests(TestCase):
     def create_post_with_comment(self):
         author = User.objects.create_user(username='moderation-author', password='StrongPass12345')

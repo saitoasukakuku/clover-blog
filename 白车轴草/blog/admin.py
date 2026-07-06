@@ -12,6 +12,7 @@ from blog.models import (
     PostRevision,
     PrivateMessage,
     RegistrationRequest,
+    UserBlock,
     UserProfile,
 )
 
@@ -85,6 +86,13 @@ class FriendRequestAdmin(admin.ModelAdmin):
 class FriendshipAdmin(admin.ModelAdmin):
     list_display = ('user_low', 'user_high', 'created_at')
     search_fields = ('user_low__username', 'user_high__username')
+    ordering = ('-created_at',)
+
+
+@admin.register(UserBlock)
+class UserBlockAdmin(admin.ModelAdmin):
+    list_display = ('blocker', 'blocked', 'created_at')
+    search_fields = ('blocker__username', 'blocked__username')
     ordering = ('-created_at',)
 
 

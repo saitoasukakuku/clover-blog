@@ -147,7 +147,16 @@
                     </div>
                 </div>
                 <div class="row-actions">
-                    {% if found_user.relationship_status == 'friend' %}
+                    {% if found_user.relationship_status == 'blocked' %}
+                    <span class="btn btn-sm btn-light disabled">已屏蔽</span>
+                    <form method="post" action="{% url 'unblock_user' found_user.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button type="submit" class="btn btn-sm btn-outline-success">解除屏蔽</button>
+                    </form>
+                    {% elif found_user.relationship_status == 'blocked_by' %}
+                    <span class="btn btn-sm btn-light disabled">对方已限制互动</span>
+                    {% elif found_user.relationship_status == 'friend' %}
                     <a href="{% url 'conversation' found_user.id %}" class="btn btn-sm btn-outline-success">发私信</a>
                     <span class="btn btn-sm btn-light disabled">已是好友</span>
                     {% elif found_user.relationship_status == 'incoming' %}
