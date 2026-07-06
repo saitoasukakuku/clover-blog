@@ -4636,6 +4636,29 @@ class SiteMusicPlayerTests(TestCase):
         self.assertNotContains(response, 'background-size: contain;')
         self.assertNotContains(response, 'aspect-ratio: 1 / 1;')
 
+    def test_base_template_renders_music_queue_modes(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'first.mp3'), 'wb') as first_music_file:
+                first_music_file.write(b'fake first mp3')
+            with open(os.path.join(music_directory, 'second.mp3'), 'wb') as second_music_file:
+                second_music_file.write(b'fake second mp3')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'id="siteMusicShuffle"')
+        self.assertContains(response, 'id="siteMusicRepeat"')
+        self.assertContains(response, 'getNextSiteMusicIndex')
+        self.assertContains(response, 'getPreviousSiteMusicIndex')
+        self.assertContains(response, 'siteMusicShuffleEnabled')
+        self.assertContains(response, 'siteMusicRepeatMode')
+        self.assertContains(response, 'repeatMode: siteMusicRepeatMode')
+        self.assertContains(response, 'shuffleEnabled: siteMusicShuffleEnabled')
+        self.assertContains(response, 'aria-label="随机播放"')
+        self.assertContains(response, 'aria-label="循环全部"')
+
 
 class MusicPlaybackCommandTests(TestCase):
     def test_prepare_music_playback_creates_missing_web_versions(self):

@@ -631,6 +631,18 @@
             text-shadow: 0 2px 12px rgba(0, 0, 0, .35);
         }
 
+        .site-music-actions {
+            align-items: center;
+            display: flex;
+            flex: 0 0 auto;
+            gap: 6px;
+        }
+
+        .site-music-actions .site-music-control {
+            height: 32px;
+            width: 32px;
+        }
+
         .site-music-controls {
             display: grid;
             gap: 9px;
@@ -1350,9 +1362,17 @@
                 <div class="site-music-body">
                     <div class="site-music-heading">
                         <div class="site-music-title" id="siteMusicTitle">音乐</div>
-                        <button class="site-music-control" type="button" id="siteMusicListToggle" aria-label="打开播放列表">
-                            <i class="fas fa-list"></i>
-                        </button>
+                        <div class="site-music-actions">
+                            <button class="site-music-control" type="button" id="siteMusicShuffle" aria-label="随机播放" title="随机播放">
+                                <i class="fas fa-random"></i>
+                            </button>
+                            <button class="site-music-control" type="button" id="siteMusicRepeat" aria-label="循环全部" title="循环全部">
+                                <i class="fas fa-redo-alt"></i>
+                            </button>
+                            <button class="site-music-control" type="button" id="siteMusicListToggle" aria-label="打开播放列表" title="播放列表">
+                                <i class="fas fa-list"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="site-music-controls">
                         <div class="site-music-control-strip">
@@ -1436,6 +1456,8 @@
             const siteMusicPrev = document.getElementById('siteMusicPrev');
             const siteMusicNext = document.getElementById('siteMusicNext');
             const siteMusicProgress = document.getElementById('siteMusicProgress');
+            const siteMusicShuffle = document.getElementById('siteMusicShuffle');
+            const siteMusicRepeat = document.getElementById('siteMusicRepeat');
             const siteMusicListToggle = document.getElementById('siteMusicListToggle');
             const siteMusicList = document.getElementById('siteMusicList');
             let siteMusicCurrentIndex = 0;
@@ -1443,6 +1465,8 @@
             let siteMusicActiveLyricIndex = -1;
             let siteMusicLastSavedSecond = -1;
             let siteMusicHoverCloseTimer = null;
+            let siteMusicShuffleEnabled = false;
+            let siteMusicRepeatMode = 'all';
             const siteMusicNextPreloader = new Audio();
 
             if (!siteMusicPlayer || !siteMusicAudio || !siteMusicTracks.length) {
@@ -1468,6 +1492,8 @@
                     currentTime: siteMusicAudio.currentTime || 0,
                     wasPlaying: !siteMusicAudio.paused,
                     listOpen: !siteMusicList.hidden,
+                    repeatMode: siteMusicRepeatMode,
+                    shuffleEnabled: siteMusicShuffleEnabled,
                 };
                 sessionStorage.setItem(SITE_MUSIC_STATE_KEY, JSON.stringify(state));
             }
@@ -1523,6 +1549,48 @@
                 const progressPercent = Math.max(0, Math.min(100, Number(percent) || 0));
                 siteMusicProgress.style.setProperty('--site-music-progress-percent', `${progressPercent}%`);
                 siteMusicProgress.setAttribute('aria-valuenow', String(Math.round(progressPercent)));
+            }
+
+            function getRandomSiteMusicIndex() {
+                if (siteMusicTracks.length < 2) {
+                    return siteMusicCurrentIndex;
+                }
+                let nextTrackIndex = siteMusicCurrentIndex;
+                while (nextTrackIndex === siteMusicCurrentIndex) {
+                    nextTrackIndex = Math.floor(Math.random() * siteMusicTracks.length);
+                }
+                return nextTrackIndex;
+            }
+
+            function getNextSiteMusicIndex(options = {}) {
+                if (options.fromEnded && siteMusicRepeatMode === 'one') {
+                    return siteMusicCurrentIndex;
+                }
+                if (siteMusicShuffleEnabled) {
+                    return getRandomSiteMusicIndex();
+                }
+                return (siteMusicCurrentIndex + 1) % siteMusicTracks.length;
+            }
+
+            function getPreviousSiteMusicIndex() {
+                if (siteMusicShuffleEnabled) {
+                    return getRandomSiteMusicIndex();
+                }
+                return (siteMusicCurrentIndex - 1 + siteMusicTracks.length) % siteMusicTracks.length;
+            }
+
+            function updateSiteMusicQueueControls() {
+                siteMusicShuffle.classList.toggle('active', siteMusicShuffleEnabled);
+                siteMusicShuffle.setAttribute('aria-pressed', String(siteMusicShuffleEnabled));
+                siteMusicRepeat.classList.toggle('active', siteMusicRepeatMode === 'one');
+                siteMusicRepeat.setAttribute('aria-pressed', String(siteMusicRepeatMode === 'one'));
+                if (siteMusicRepeatMode === 'one') {
+                    siteMusicRepeat.setAttribute('aria-label', '单曲循环');
+                    siteMusicRepeat.setAttribute('title', '单曲循环');
+                } else {
+                    siteMusicRepeat.setAttribute('aria-label', '循环全部');
+                    siteMusicRepeat.setAttribute('title', '循环全部');
+                }
             }
 
             function preloadSiteMusicTrack(currentTrack) {
@@ -1681,7 +1749,7 @@
 
             siteMusicPrev.addEventListener('click', () => {
                 const wasPlaying = !siteMusicAudio.paused;
-                loadSiteMusicTrack(siteMusicCurrentIndex - 1);
+                loadSiteMusicTrack(getPreviousSiteMusicIndex());
                 if (wasPlaying) {
                     playSiteMusicAudio();
                 }
@@ -1689,10 +1757,22 @@
 
             siteMusicNext.addEventListener('click', () => {
                 const wasPlaying = !siteMusicAudio.paused;
-                loadSiteMusicTrack(siteMusicCurrentIndex + 1);
+                loadSiteMusicTrack(getNextSiteMusicIndex());
                 if (wasPlaying) {
                     playSiteMusicAudio();
                 }
+            });
+
+            siteMusicShuffle.addEventListener('click', () => {
+                siteMusicShuffleEnabled = !siteMusicShuffleEnabled;
+                updateSiteMusicQueueControls();
+                saveSiteMusicState();
+            });
+
+            siteMusicRepeat.addEventListener('click', () => {
+                siteMusicRepeatMode = siteMusicRepeatMode === 'one' ? 'all' : 'one';
+                updateSiteMusicQueueControls();
+                saveSiteMusicState();
             });
 
             siteMusicListToggle.addEventListener('click', () => {
@@ -1716,7 +1796,7 @@
             siteMusicAudio.addEventListener('play', updateSiteMusicPlayIcon);
             siteMusicAudio.addEventListener('pause', updateSiteMusicPlayIcon);
             siteMusicAudio.addEventListener('ended', () => {
-                loadSiteMusicTrack(siteMusicCurrentIndex + 1);
+                loadSiteMusicTrack(getNextSiteMusicIndex({ fromEnded: true }));
                 playSiteMusicAudio();
             });
             siteMusicAudio.addEventListener('timeupdate', () => {
@@ -1967,6 +2047,9 @@
             window.addEventListener('beforeunload', saveSiteMusicState);
 
             const restoredMusicState = readSiteMusicState();
+            siteMusicShuffleEnabled = Boolean(restoredMusicState.shuffleEnabled);
+            siteMusicRepeatMode = restoredMusicState.repeatMode === 'one' ? 'one' : 'all';
+            updateSiteMusicQueueControls();
             const restoredTrackIndex = Number.isInteger(restoredMusicState.trackIndex) ? restoredMusicState.trackIndex : 0;
             loadSiteMusicTrack(restoredTrackIndex, {
                 currentTime: Number(restoredMusicState.currentTime || 0),
