@@ -3536,6 +3536,54 @@ class NotificationCenterTests(TestCase):
         self.assertEqual(notification.actor, replier)
         self.assertEqual(notification.notification_type, 'reply_to_comment')
 
+    def test_comment_mention_notifies_mentioned_user(self):
+        author = User.objects.create_user(username='mention-post-author', password='StrongPass12345')
+        commenter = User.objects.create_user(username='mention-commenter', password='StrongPass12345')
+        mentioned_user = User.objects.create_user(username='mentioned-user', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Mention notification post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='mention-commenter', password='StrongPass12345')
+
+        self.client.post(reverse('add_comment', args=[post.id]), {
+            'content': '这段给 @mentioned-user 看。',
+        })
+
+        Notification = self.get_notification_model()
+        mention_notification = Notification.objects.get(
+            recipient=mentioned_user,
+            notification_type='mention',
+        )
+        self.assertEqual(mention_notification.actor, commenter)
+        self.assertIn(reverse('post_detail', args=[post.id]), mention_notification.target_url)
+
+    def test_mention_does_not_duplicate_post_author_notification(self):
+        author = User.objects.create_user(username='mention-author', password='StrongPass12345')
+        commenter = User.objects.create_user(username='mention-author-commenter', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='Mention author post',
+            category='life',
+            content='Post content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='mention-author-commenter', password='StrongPass12345')
+
+        self.client.post(reverse('add_comment', args=[post.id]), {
+            'content': '这里提到 @mention-author。',
+        })
+
+        Notification = self.get_notification_model()
+        author_notifications = Notification.objects.filter(recipient=author)
+        self.assertEqual(author_notifications.count(), 1)
+        self.assertEqual(author_notifications.get().notification_type, 'comment_on_post')
+
     def test_user_does_not_receive_notification_for_own_action(self):
         author = User.objects.create_user(username='self-notify-author', password='StrongPass12345')
         post = Post.objects.create(

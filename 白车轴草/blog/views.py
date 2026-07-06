@@ -96,6 +96,7 @@ HOMEPAGE_IMAGE_COPY_FILE_NAME = 'index_img_copy.json'
 HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
+MENTION_USERNAME_PATTERN = re.compile(r'@([\w.@+-]{1,150})')
 REACTION_ICON_MAP = {
     'useful': 'fas fa-lightbulb',
     'resonate': 'fas fa-heart',
@@ -849,6 +850,43 @@ def create_notification(
         private_message=private_message,
         friend_request=friend_request,
     )
+
+
+def extract_mentioned_usernames(content):
+    mentioned_usernames = []
+    for username_match in MENTION_USERNAME_PATTERN.finditer(content or ''):
+        mentioned_username = username_match.group(1).strip()
+        if mentioned_username and mentioned_username not in mentioned_usernames:
+            mentioned_usernames.append(mentioned_username)
+    return mentioned_usernames
+
+
+def notify_mentioned_users(comment, post, actor, excluded_user_ids=None):
+    mentioned_usernames = extract_mentioned_usernames(comment.content)
+    if not mentioned_usernames:
+        return
+
+    excluded_user_ids = set(excluded_user_ids or [])
+    mentioned_users = User.objects.filter(username__in=mentioned_usernames).select_related('profile')
+    notification_target_url = reverse('post_detail', args=[post.id])
+    for mentioned_user in mentioned_users:
+        if mentioned_user.id in excluded_user_ids:
+            continue
+        can_read_post = filter_readable_posts(
+            Post.objects.filter(id=post.id),
+            mentioned_user,
+        ).exists()
+        if not can_read_post:
+            continue
+        create_notification(
+            recipient=mentioned_user,
+            actor=actor,
+            notification_type='mention',
+            message=f'{get_user_display_name(actor)} 在文章《{post.title}》的评论里提到了你。',
+            target_url=notification_target_url,
+            post=post,
+            comment=comment,
+        )
 
 
 def get_readable_post_or_404(post_id, user):
@@ -2525,6 +2563,12 @@ def add_comment(request, post_id):
                     post=post,
                     comment=comment,
                 )
+            notify_mentioned_users(
+                comment,
+                post,
+                request.user,
+                excluded_user_ids={parent_comment.author_id, post.author_id},
+            )
             messages.success(request, '回复发表成功。')
         else:
             create_notification(
@@ -2535,6 +2579,12 @@ def add_comment(request, post_id):
                 target_url=notification_target_url,
                 post=post,
                 comment=comment,
+            )
+            notify_mentioned_users(
+                comment,
+                post,
+                request.user,
+                excluded_user_ids={post.author_id},
             )
             messages.success(request, '评论发表成功。')
     else:

@@ -508,6 +508,7 @@ class Notification(models.Model):
     TYPE_CHOICES = (
         ('comment_on_post', '文章评论'),
         ('reply_to_comment', '评论回复'),
+        ('mention', '提到我'),
         ('friend_request_received', '收到好友申请'),
         ('friend_request_accepted', '好友申请通过'),
         ('private_message', '私信'),
