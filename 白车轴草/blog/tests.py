@@ -4311,6 +4311,43 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(len(saved_image_file_names), 1)
         self.assertTrue(saved_image_file_names[0].endswith('.jpg'))
 
+    def test_superuser_can_update_homepage_image_settings_and_copy(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            homepage_image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(homepage_image_directory)
+            Image.new('RGB', (32, 32), color=(120, 160, 200)).save(
+                os.path.join(homepage_image_directory, 'hero.jpg'),
+                format='JPEG',
+            )
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post(reverse('media_manager_update_homepage_image'), {
+                    'file_name': 'hero.jpg',
+                    'sort_order': '7',
+                    'is_hidden': 'on',
+                    'kicker': '夜色 · 安静',
+                    'headline': '把这一张留给慢慢读。',
+                    'lead': '一张适合夜间入口的首页图片。',
+                    'card_title': '夜读入口',
+                    'card_text': '手动保存的首页卡片文案。',
+                    'moods': '夜色, 安静, 慢读',
+                })
+                settings_file_path = os.path.join(temporary_media_root, 'index_img_settings.json')
+                copy_file_path = os.path.join(temporary_media_root, 'index_img_copy.json')
+                with open(settings_file_path, 'r', encoding='utf-8') as settings_file:
+                    saved_image_settings = json.load(settings_file)
+                with open(copy_file_path, 'r', encoding='utf-8') as copy_file:
+                    saved_image_copy = json.load(copy_file)
+
+        self.assertRedirects(response, reverse('media_manager'))
+        self.assertEqual(saved_image_settings['images']['hero.jpg']['sort_order'], 7)
+        self.assertTrue(saved_image_settings['images']['hero.jpg']['is_hidden'])
+        self.assertEqual(saved_image_copy['hero.jpg']['headline'], '把这一张留给慢慢读。')
+        self.assertEqual(saved_image_copy['hero.jpg']['moods'], ['夜色', '安静', '慢读'])
+
     def test_superuser_can_upload_music_assets_from_media_manager(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
         self.client.login(username='media-admin', password='StrongPass12345')
@@ -5071,6 +5108,32 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertEqual(len(carousel_slides), 15)
         self.assertEqual(carousel_slides[0]['file_name'], 'slide-00.jpg')
         self.assertEqual(carousel_slides[-1]['file_name'], 'slide-14.jpg')
+
+    def test_home_carousel_uses_image_settings_for_order_and_visibility(self):
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            image_directory = os.path.join(temporary_media_root, 'index_img')
+            os.makedirs(image_directory)
+            for image_file_name in ['alpha.jpg', 'beta.jpg', 'hidden.jpg']:
+                with open(os.path.join(image_directory, image_file_name), 'wb') as image_file:
+                    image_file.write(b'fake jpg')
+            with open(os.path.join(temporary_media_root, 'index_img_settings.json'), 'w', encoding='utf-8') as settings_file:
+                json.dump({
+                    'images': {
+                        'alpha.jpg': {'sort_order': 20, 'is_hidden': False},
+                        'beta.jpg': {'sort_order': 10, 'is_hidden': False},
+                        'hidden.jpg': {'sort_order': 1, 'is_hidden': True},
+                    },
+                }, settings_file)
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('home'))
+
+        carousel_file_names = [
+            carousel_slide['file_name']
+            for carousel_slide in response.context['carousel_slides']
+        ]
+        self.assertEqual(carousel_file_names, ['beta.jpg', 'alpha.jpg'])
+        self.assertNotContains(response, 'hidden.jpg')
 
     def test_home_carousel_uses_optimized_image_endpoint(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:

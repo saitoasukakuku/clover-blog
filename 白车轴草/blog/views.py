@@ -98,6 +98,7 @@ ALLOWED_IMAGE_EXTENSIONS = {
 HOMEPAGE_IMAGE_DIR_NAME = 'index_img'
 HOMEPAGE_IMAGE_CACHE_DIR_NAME = 'index_img_cache'
 HOMEPAGE_IMAGE_COPY_FILE_NAME = 'index_img_copy.json'
+HOMEPAGE_IMAGE_SETTINGS_FILE_NAME = 'index_img_settings.json'
 HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
@@ -697,10 +698,13 @@ def validate_uploaded_lyrics_file(uploaded_file):
 
 def build_homepage_media_items():
     copy_by_file_name = get_homepage_ai_copy_by_file_name()
+    settings_by_file_name = get_homepage_image_settings_by_file_name()
     media_items = []
-    for image_file_name in get_homepage_image_file_names():
+    for image_file_name in get_homepage_image_file_names(include_hidden=True):
         image_file_path = get_homepage_image_file_path(image_file_name)
         image_stat = os.stat(image_file_path)
+        slide_copy = copy_by_file_name.get(image_file_name, {})
+        image_settings = settings_by_file_name.get(image_file_name, {})
         media_items.append({
             'file_name': image_file_name,
             'file_size': image_stat.st_size,
@@ -710,6 +714,14 @@ def build_homepage_media_items():
             ),
             'image_url': reverse('homepage_carousel_image', args=[image_file_name]),
             'has_copy': image_file_name in copy_by_file_name,
+            'sort_order': image_settings.get('sort_order'),
+            'is_hidden': bool(image_settings.get('is_hidden')),
+            'copy_kicker': slide_copy.get('kicker', ''),
+            'copy_headline': slide_copy.get('headline', ''),
+            'copy_lead': slide_copy.get('lead', ''),
+            'copy_card_title': slide_copy.get('card_title', ''),
+            'copy_card_text': slide_copy.get('card_text', ''),
+            'copy_moods_text': '，'.join(slide_copy.get('moods', [])),
         })
     return media_items
 
@@ -854,6 +866,75 @@ def media_manager_upload_homepage_image(request):
         validated_image,
     )
     messages.success(request, f'已上传首页图片：{saved_image_file_name}')
+    return redirect('media_manager')
+
+
+def build_homepage_copy_from_post(post_data):
+    copy_field_values = {
+        field_name: post_data.get(field_name, '').strip()
+        for field_name in HOMEPAGE_COPY_FIELDS
+    }
+    moods_text = post_data.get('moods', '').strip()
+    has_copy_input = any(copy_field_values.values()) or bool(moods_text)
+    if not has_copy_input:
+        return None
+
+    raw_moods = [
+        mood_text.strip()
+        for mood_text in re.split(r'[,，\n]+', moods_text)
+        if mood_text.strip()
+    ]
+    raw_slide_copy = {
+        **copy_field_values,
+        'moods': raw_moods,
+    }
+    return normalize_homepage_slide_copy(raw_slide_copy)
+
+
+@login_required
+@require_POST
+def media_manager_update_homepage_image(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    image_file_name = request.POST.get('file_name', '').strip()
+    if image_file_name not in get_homepage_image_file_names(include_hidden=True):
+        messages.error(request, '首页图片不存在。')
+        return redirect('media_manager')
+
+    sort_order_text = request.POST.get('sort_order', '').strip()
+    if sort_order_text:
+        try:
+            sort_order = int(sort_order_text)
+        except ValueError:
+            messages.error(request, '首页图片排序只能填写整数。')
+            return redirect('media_manager')
+    else:
+        sort_order = None
+
+    homepage_image_copy = build_homepage_copy_from_post(request.POST)
+    has_copy_input = any(
+        request.POST.get(field_name, '').strip()
+        for field_name in HOMEPAGE_COPY_FIELDS
+    ) or bool(request.POST.get('moods', '').strip())
+    if has_copy_input and homepage_image_copy is None:
+        messages.error(request, '请完整填写首页图片文案和 1 到 3 个氛围标签。')
+        return redirect('media_manager')
+
+    settings_by_file_name = get_homepage_image_settings_by_file_name()
+    settings_by_file_name[image_file_name] = {
+        'sort_order': sort_order,
+        'is_hidden': request.POST.get('is_hidden') == 'on',
+    }
+    save_homepage_image_settings_by_file_name(settings_by_file_name)
+
+    if homepage_image_copy is not None:
+        copy_by_file_name = get_homepage_ai_copy_by_file_name()
+        copy_by_file_name[image_file_name] = homepage_image_copy
+        save_homepage_ai_copy_by_file_name(copy_by_file_name)
+
+    messages.success(request, f'已更新首页图片：{image_file_name}')
     return redirect('media_manager')
 
 
@@ -1428,13 +1509,75 @@ def get_series_posts(post, request_user):
     )
 
 
-def get_homepage_image_file_names():
+def get_homepage_image_settings_file_path():
+    return os.path.join(settings.MEDIA_ROOT, HOMEPAGE_IMAGE_SETTINGS_FILE_NAME)
+
+
+def normalize_homepage_image_settings(raw_image_settings):
+    if not isinstance(raw_image_settings, dict):
+        return {}
+
+    raw_images = raw_image_settings.get('images')
+    if not isinstance(raw_images, dict):
+        return {}
+
+    settings_by_file_name = {}
+    for image_file_name, raw_image_config in raw_images.items():
+        if not isinstance(image_file_name, str):
+            continue
+        if not is_homepage_image_file_name_allowed(image_file_name):
+            continue
+        if not isinstance(raw_image_config, dict):
+            continue
+
+        sort_order = raw_image_config.get('sort_order')
+        if sort_order in ('', None):
+            normalized_sort_order = None
+        else:
+            try:
+                normalized_sort_order = int(sort_order)
+            except (TypeError, ValueError):
+                normalized_sort_order = None
+
+        settings_by_file_name[image_file_name] = {
+            'sort_order': normalized_sort_order,
+            'is_hidden': bool(raw_image_config.get('is_hidden')),
+        }
+    return settings_by_file_name
+
+
+def get_homepage_image_settings_by_file_name():
+    try:
+        with open(get_homepage_image_settings_file_path(), 'r', encoding='utf-8') as settings_file:
+            raw_image_settings = json.load(settings_file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return normalize_homepage_image_settings(raw_image_settings)
+
+
+def save_homepage_image_settings_by_file_name(settings_by_file_name):
+    normalized_settings_by_file_name = normalize_homepage_image_settings({
+        'images': settings_by_file_name,
+    })
+    saved_images = {}
+    for image_file_name, image_settings in normalized_settings_by_file_name.items():
+        if image_settings['sort_order'] is None and not image_settings['is_hidden']:
+            continue
+        saved_images[image_file_name] = image_settings
+
+    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+    with open(get_homepage_image_settings_file_path(), 'w', encoding='utf-8') as settings_file:
+        json.dump({'images': saved_images}, settings_file, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def get_homepage_image_file_names(include_hidden=False):
     image_directory = os.path.join(settings.MEDIA_ROOT, HOMEPAGE_IMAGE_DIR_NAME)
     try:
         image_file_names = sorted(os.listdir(image_directory), key=str.lower)
     except OSError:
         return []
 
+    settings_by_file_name = get_homepage_image_settings_by_file_name()
     allowed_file_names = []
     for image_file_name in image_file_names:
         image_file_path = os.path.join(image_directory, image_file_name)
@@ -1443,8 +1586,19 @@ def get_homepage_image_file_names():
             continue
         if not os.path.isfile(image_file_path):
             continue
+        image_settings = settings_by_file_name.get(image_file_name, {})
+        if not include_hidden and image_settings.get('is_hidden'):
+            continue
         allowed_file_names.append(image_file_name)
-    return allowed_file_names
+
+    def homepage_image_sort_key(image_file_name):
+        image_settings = settings_by_file_name.get(image_file_name, {})
+        sort_order = image_settings.get('sort_order')
+        if sort_order is None:
+            return (1, 0, image_file_name.lower())
+        return (0, sort_order, image_file_name.lower())
+
+    return sorted(allowed_file_names, key=homepage_image_sort_key)
 
 
 def is_homepage_image_file_name_allowed(image_file_name):
@@ -1566,6 +1720,22 @@ def get_homepage_ai_copy_by_file_name():
         if normalized_copy:
             copy_by_file_name[image_file_name] = normalized_copy
     return copy_by_file_name
+
+
+def save_homepage_ai_copy_by_file_name(copy_by_file_name):
+    normalized_copy_by_file_name = {}
+    for image_file_name, raw_slide_copy in copy_by_file_name.items():
+        if not isinstance(image_file_name, str):
+            continue
+        if not is_homepage_image_file_name_allowed(image_file_name):
+            continue
+        normalized_copy = normalize_homepage_slide_copy(raw_slide_copy)
+        if normalized_copy:
+            normalized_copy_by_file_name[image_file_name] = normalized_copy
+
+    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+    with open(get_homepage_image_copy_file_path(), 'w', encoding='utf-8') as copy_file:
+        json.dump(normalized_copy_by_file_name, copy_file, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 def build_homepage_slide_copy(image_index, image_file_name, ai_copy_by_file_name):

@@ -43,43 +43,73 @@
             </div>
         </form>
 
-        <div class="table-responsive">
-            <table class="table table-hover align-middle bg-white">
-                <thead class="table-light">
-                    <tr>
-                        <th scope="col">文件名</th>
-                        <th scope="col">大小</th>
-                        <th scope="col">更新时间</th>
-                        <th scope="col">文案</th>
-                        <th scope="col" class="text-end">预览</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for image_item in homepage_media_items %}
-                    <tr>
-                        <td>{{ image_item.file_name }}</td>
-                        <td>{{ image_item.file_size|filesizeformat }}</td>
-                        <td>{{ image_item.updated_at|date:"Y-m-d H:i" }}</td>
-                        <td>
+        <div class="vstack gap-3">
+            {% for image_item in homepage_media_items %}
+            <form class="bg-white border rounded-3 p-3" method="post" action="{% url 'media_manager_update_homepage_image' %}">
+                {% csrf_token %}
+                <input type="hidden" name="file_name" value="{{ image_item.file_name }}">
+                <div class="row g-3 align-items-start">
+                    <div class="col-12 col-xl-3">
+                        <img class="img-fluid rounded-3 border mb-2" src="{{ image_item.image_url }}" alt="{{ image_item.file_name }}">
+                        <div class="fw-semibold text-break">{{ image_item.file_name }}</div>
+                        <div class="small text-muted">{{ image_item.file_size|filesizeformat }} · {{ image_item.updated_at|date:"Y-m-d H:i" }}</div>
+                    </div>
+                    <div class="col-12 col-xl-2">
+                        <label class="form-label fw-semibold" for="homepageImageOrder{{ forloop.counter }}">排序</label>
+                        <input class="form-control" id="homepageImageOrder{{ forloop.counter }}" type="number" name="sort_order" value="{{ image_item.sort_order|default_if_none:'' }}" placeholder="自动">
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" id="homepageImageHidden{{ forloop.counter }}" type="checkbox" name="is_hidden" {% if image_item.is_hidden %}checked{% endif %}>
+                            <label class="form-check-label" for="homepageImageHidden{{ forloop.counter }}">隐藏</label>
+                        </div>
+                        <div class="mt-3">
                             {% if image_item.has_copy %}
-                            <span class="badge text-bg-success">已生成</span>
+                            <span class="badge text-bg-success">已有文案</span>
                             {% else %}
-                            <span class="badge text-bg-secondary">未生成</span>
+                            <span class="badge text-bg-secondary">未写文案</span>
                             {% endif %}
-                        </td>
-                        <td class="text-end">
-                            <a class="btn btn-sm btn-outline-success" href="{{ image_item.image_url }}" target="_blank" rel="noopener">
-                                <i class="fas fa-eye me-1"></i>查看
-                            </a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="5" class="text-center text-muted py-4">还没有首页图片。</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                        </div>
+                    </div>
+                    <div class="col-12 col-xl-7">
+                        <div class="row g-2">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="homepageCopyKicker{{ forloop.counter }}">小标题</label>
+                                <input class="form-control" id="homepageCopyKicker{{ forloop.counter }}" type="text" name="kicker" value="{{ image_item.copy_kicker }}">
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="homepageCopyMoods{{ forloop.counter }}">氛围标签</label>
+                                <input class="form-control" id="homepageCopyMoods{{ forloop.counter }}" type="text" name="moods" value="{{ image_item.copy_moods_text }}" placeholder="最多 3 个，用逗号隔开">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="homepageCopyHeadline{{ forloop.counter }}">主标题</label>
+                                <input class="form-control" id="homepageCopyHeadline{{ forloop.counter }}" type="text" name="headline" value="{{ image_item.copy_headline }}">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="homepageCopyLead{{ forloop.counter }}">首屏说明</label>
+                                <input class="form-control" id="homepageCopyLead{{ forloop.counter }}" type="text" name="lead" value="{{ image_item.copy_lead }}">
+                            </div>
+                            <div class="col-12 col-md-5">
+                                <label class="form-label" for="homepageCopyCardTitle{{ forloop.counter }}">卡片标题</label>
+                                <input class="form-control" id="homepageCopyCardTitle{{ forloop.counter }}" type="text" name="card_title" value="{{ image_item.copy_card_title }}">
+                            </div>
+                            <div class="col-12 col-md-7">
+                                <label class="form-label" for="homepageCopyCardText{{ forloop.counter }}">卡片文字</label>
+                                <input class="form-control" id="homepageCopyCardText{{ forloop.counter }}" type="text" name="card_text" value="{{ image_item.copy_card_text }}">
+                            </div>
+                            <div class="col-12 d-flex flex-wrap justify-content-end gap-2 pt-2">
+                                <a class="btn btn-outline-success" href="{{ image_item.image_url }}" target="_blank" rel="noopener">
+                                    <i class="fas fa-eye me-1"></i>查看
+                                </a>
+                                <button class="btn btn-primary" type="submit">
+                                    <i class="fas fa-save me-1"></i>保存
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+            {% empty %}
+            <div class="bg-white border rounded-3 p-4 text-center text-muted">还没有首页图片。</div>
+            {% endfor %}
         </div>
     </section>
 

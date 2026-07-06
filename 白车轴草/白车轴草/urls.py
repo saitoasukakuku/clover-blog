@@ -25,6 +25,7 @@ urlpatterns = [
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('media-manager/', views.media_manager, name='media_manager'),
     path('media-manager/homepage-images/upload/', views.media_manager_upload_homepage_image, name='media_manager_upload_homepage_image'),
+    path('media-manager/homepage-images/update/', views.media_manager_update_homepage_image, name='media_manager_update_homepage_image'),
     path('media-manager/music/upload/', views.media_manager_upload_music, name='media_manager_upload_music'),
     path('media-manager/actions/run/', views.media_manager_run_action, name='media_manager_run_action'),
     path('login/', views.login_view, name='login'),
