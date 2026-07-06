@@ -4151,6 +4151,69 @@ class NotificationCenterTests(TestCase):
 
 
 class SiteMusicPlayerTests(TestCase):
+    def test_admin_dashboard_requires_superuser(self):
+        User.objects.create_user(username='reader', password='StrongPass12345')
+        self.client.login(username='reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('admin_dashboard'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_superuser_can_view_admin_dashboard_stats(self):
+        admin_user = User.objects.create_superuser(username='dashboard-admin', password='StrongPass12345')
+        author = User.objects.create_user(username='dashboard-author', password='StrongPass12345')
+        Post.objects.create(
+            author=author,
+            title='公开文章',
+            category='life',
+            content='公开正文',
+            status='published',
+            visibility='public',
+            views_count=12,
+        )
+        Post.objects.create(
+            author=author,
+            title='草稿文章',
+            category='life',
+            content='草稿正文',
+            status='draft',
+            views_count=5,
+        )
+        RegistrationRequest.objects.create(email='pending@example.com')
+        self.client.login(username='dashboard-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'ready.flac'), 'wb') as music_file:
+                music_file.write(b'fLaC ready audio')
+            with open(os.path.join(music_directory, 'ready.web.m4a'), 'wb') as playback_file:
+                playback_file.write(b'web playback')
+            with open(os.path.join(music_directory, 'missing.mp3'), 'wb') as music_file:
+                music_file.write(b'mp3 missing playback')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('admin_dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '管理员仪表盘')
+        self.assertContains(response, '文章总数')
+        self.assertContains(response, '用户数')
+        self.assertContains(response, '总浏览量')
+        self.assertContains(response, '待审核注册')
+        self.assertContains(response, '音乐播放版')
+        self.assertContains(response, '1 / 2')
+        self.assertContains(response, '17')
+        self.assertEqual(response.context['dashboard_stats']['total_posts'], 2)
+        self.assertEqual(response.context['dashboard_stats']['published_posts'], 1)
+        self.assertEqual(response.context['dashboard_stats']['draft_posts'], 1)
+        self.assertEqual(response.context['dashboard_stats']['total_users'], 2)
+        self.assertEqual(response.context['dashboard_stats']['total_views'], 17)
+        self.assertEqual(response.context['dashboard_stats']['pending_registration_requests'], 1)
+        self.assertEqual(response.context['music_playback_summary']['total_tracks'], 2)
+        self.assertEqual(response.context['music_playback_summary']['ready_tracks'], 1)
+        self.assertEqual(response.context['music_playback_summary']['pending_tracks'], 1)
+
     def test_media_manager_requires_superuser(self):
         User.objects.create_user(username='reader', password='StrongPass12345')
         self.client.login(username='reader', password='StrongPass12345')

@@ -21,6 +21,7 @@ urlpatterns = [
     path('registration-requests/<int:request_id>/approve/', views.approve_registration_request, name='approve_registration_request'),
     path('registration-requests/<int:request_id>/resend-code/', views.resend_registration_code, name='resend_registration_code'),
     path('registration-requests/<int:request_id>/reject/', views.reject_registration_request, name='reject_registration_request'),
+    path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('media-manager/', views.media_manager, name='media_manager'),
     path('media-manager/homepage-images/upload/', views.media_manager_upload_homepage_image, name='media_manager_upload_homepage_image'),
     path('media-manager/music/upload/', views.media_manager_upload_music, name='media_manager_upload_music'),

@@ -686,6 +686,49 @@ def build_music_media_items():
     return media_items
 
 
+def build_admin_dashboard_stats():
+    post_counts = Post.objects.aggregate(
+        total_posts=Count('id'),
+        published_posts=Count('id', filter=Q(status='published')),
+        draft_posts=Count('id', filter=Q(status='draft')),
+        total_views=Sum('views_count'),
+    )
+    return {
+        'total_posts': post_counts['total_posts'] or 0,
+        'published_posts': post_counts['published_posts'] or 0,
+        'draft_posts': post_counts['draft_posts'] or 0,
+        'total_views': post_counts['total_views'] or 0,
+        'total_users': User.objects.count(),
+        'pending_registration_requests': RegistrationRequest.objects.filter(
+            status=RegistrationRequest.STATUS_PENDING,
+        ).count(),
+    }
+
+
+def build_music_playback_summary():
+    music_items = build_music_media_items()
+    ready_tracks = sum(1 for music_item in music_items if music_item['has_web_playback'])
+    total_tracks = len(music_items)
+    return {
+        'total_tracks': total_tracks,
+        'ready_tracks': ready_tracks,
+        'pending_tracks': total_tracks - ready_tracks,
+        'recent_items': music_items[:8],
+    }
+
+
+@login_required
+def admin_dashboard(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    return render(request, 'admin_dashboard.html', {
+        'dashboard_stats': build_admin_dashboard_stats(),
+        'music_playback_summary': build_music_playback_summary(),
+    })
+
+
 @login_required
 def media_manager(request):
     forbidden_response = require_superuser(request)

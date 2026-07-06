@@ -1233,6 +1233,7 @@
                                 </a>
                             </li>
                             {% if user.is_superuser %}
+                            <li><a class="dropdown-item py-2" href="{% url 'admin_dashboard' %}"><i class="fas fa-chart-line me-2"></i>仪表盘</a></li>
                             <li><a class="dropdown-item py-2" href="{% url 'media_manager' %}"><i class="fas fa-photo-video me-2"></i>媒体管理</a></li>
                             <li><a class="dropdown-item py-2" href="{% url 'tag_manager' %}"><i class="fas fa-tags me-2"></i>标签管理</a></li>
                             <li><a class="dropdown-item py-2" href="{% url 'registration_requests' %}"><i class="fas fa-user-check me-2"></i>注册审核</a></li>

@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+
+{% block title %}管理员仪表盘{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-page {
+        background: linear-gradient(180deg, #f7fbf6 0%, #eef7ef 100%);
+        min-height: 100vh;
+        padding: 34px 0 54px;
+    }
+
+    .dashboard-header {
+        align-items: center;
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        margin-bottom: 22px;
+    }
+
+    .dashboard-header h1 {
+        color: #1d2b20;
+        font-size: 1.8rem;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .dashboard-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: 22px;
+    }
+
+    .dashboard-card,
+    .dashboard-panel {
+        background: rgba(255, 255, 255, .94);
+        border: 1px solid #dcefd8;
+        border-radius: 8px;
+        box-shadow: 0 12px 28px rgba(32, 83, 40, .08);
+    }
+
+    .dashboard-card {
+        padding: 18px;
+    }
+
+    .dashboard-card-label {
+        color: #667368;
+        font-size: .9rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .dashboard-card-value {
+        color: #162218;
+        font-size: 1.8rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .dashboard-card-subtitle {
+        color: #7c887d;
+        font-size: .82rem;
+        margin-top: 8px;
+    }
+
+    .dashboard-panel {
+        padding: 20px;
+    }
+
+    .dashboard-panel h2 {
+        color: #1b5e20;
+        font-size: 1.05rem;
+        font-weight: 800;
+        margin-bottom: 14px;
+    }
+
+    .dashboard-table {
+        margin-bottom: 0;
+    }
+
+    .dashboard-status-ready {
+        color: #2e7d32;
+        font-weight: 800;
+    }
+
+    .dashboard-status-pending {
+        color: #9a6412;
+        font-weight: 800;
+    }
+
+    @media (max-width: 991.98px) {
+        .dashboard-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .dashboard-header {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="dashboard-page">
+    <div class="container">
+        <div class="dashboard-header">
+            <h1><i class="fas fa-chart-line me-2 text-success"></i>管理员仪表盘</h1>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-success rounded-pill" href="{% url 'media_manager' %}">
+                    <i class="fas fa-photo-video me-1"></i>媒体管理
+                </a>
+                <a class="btn btn-outline-secondary rounded-pill" href="{% url 'index' %}">
+                    <i class="fas fa-arrow-left me-1"></i>返回首页
+                </a>
+            </div>
+        </div>
+
+        <section class="dashboard-grid" aria-label="站点统计">
+            <article class="dashboard-card">
+                <div class="dashboard-card-label">文章总数</div>
+                <div class="dashboard-card-value">{{ dashboard_stats.total_posts }}</div>
+                <div class="dashboard-card-subtitle">已发布 {{ dashboard_stats.published_posts }} · 草稿 {{ dashboard_stats.draft_posts }}</div>
+            </article>
+            <article class="dashboard-card">
+                <div class="dashboard-card-label">用户数</div>
+                <div class="dashboard-card-value">{{ dashboard_stats.total_users }}</div>
+                <div class="dashboard-card-subtitle">包含管理员账号</div>
+            </article>
+            <article class="dashboard-card">
+                <div class="dashboard-card-label">总浏览量</div>
+                <div class="dashboard-card-value">{{ dashboard_stats.total_views }}</div>
+                <div class="dashboard-card-subtitle">文章浏览累计</div>
+            </article>
+            <article class="dashboard-card">
+                <div class="dashboard-card-label">待审核注册</div>
+                <div class="dashboard-card-value">{{ dashboard_stats.pending_registration_requests }}</div>
+                <div class="dashboard-card-subtitle">
+                    <a href="{% url 'registration_requests' %}" class="text-success text-decoration-none">进入审核</a>
+                </div>
+            </article>
+        </section>
+
+        <section class="dashboard-panel">
+            <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+                <h2><i class="fas fa-music me-2"></i>音乐播放版</h2>
+                <div class="fw-bold text-success">
+                    {{ music_playback_summary.ready_tracks }} / {{ music_playback_summary.total_tracks }}
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table dashboard-table align-middle">
+                    <thead>
+                        <tr>
+                            <th>歌曲文件</th>
+                            <th>播放版文件</th>
+                            <th class="text-end">状态</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for music_item in music_playback_summary.recent_items %}
+                        <tr>
+                            <td>{{ music_item.file_name }}</td>
+                            <td>{{ music_item.web_playback_file_name }}</td>
+                            <td class="text-end">
+                                {% if music_item.has_web_playback %}
+                                <span class="dashboard-status-ready">已生成</span>
+                                {% else %}
+                                <span class="dashboard-status-pending">待生成</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted py-4">暂无音乐文件</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}
