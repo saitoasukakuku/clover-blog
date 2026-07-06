@@ -25,6 +25,7 @@ from blog.models import (
     FriendRequest,
     Friendship,
     Post,
+    PostRevision,
     PrivateMessage,
     RegistrationRequest,
     UserProfile,
@@ -857,6 +858,106 @@ class AuthViewsTests(TestCase):
         post = Post.objects.get(title='我的文章')
         self.assertEqual(post.author, user)
         self.assertEqual(post.tags, '生活,记录')
+
+    def test_edit_post_creates_revision_snapshot_before_changes(self):
+        author = User.objects.create_user(username='revision-writer', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='旧标题',
+            category='life',
+            tags='旧标签',
+            content='旧正文',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='revision-writer', password='StrongPass12345')
+
+        response = self.client.post(reverse('edit_post', args=[post.id]), {
+            'title': '新标题',
+            'category': 'tech',
+            'tags': '新标签',
+            'content': '新正文',
+            'visibility': 'private',
+            'action': 'publish',
+        })
+
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        post.refresh_from_db()
+        revision = PostRevision.objects.get(post=post)
+        self.assertEqual(revision.editor, author)
+        self.assertEqual(revision.title, '旧标题')
+        self.assertEqual(revision.category, 'life')
+        self.assertEqual(revision.tags, '旧标签')
+        self.assertEqual(revision.content, '旧正文')
+        self.assertEqual(revision.status, 'published')
+        self.assertEqual(revision.visibility, 'public')
+        self.assertEqual(post.title, '新标题')
+        self.assertEqual(post.category, 'tech')
+        self.assertEqual(post.tags, '新标签')
+        self.assertEqual(post.content, '新正文')
+        self.assertEqual(post.visibility, 'private')
+
+    def test_edit_post_does_not_create_revision_when_content_is_unchanged(self):
+        author = User.objects.create_user(username='unchanged-writer', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='原文章',
+            category='life',
+            tags='日记',
+            content='原正文',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='unchanged-writer', password='StrongPass12345')
+
+        response = self.client.post(reverse('edit_post', args=[post.id]), {
+            'title': '原文章',
+            'category': 'life',
+            'tags': '日记',
+            'content': '原正文',
+            'visibility': 'public',
+            'action': 'publish',
+        })
+
+        self.assertRedirects(response, reverse('post_detail', args=[post.id]))
+        self.assertFalse(PostRevision.objects.filter(post=post).exists())
+
+    def test_post_detail_shows_revision_history_to_author_only(self):
+        author = User.objects.create_user(username='history-author', password='StrongPass12345')
+        reader = User.objects.create_user(username='history-reader', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='当前标题',
+            category='life',
+            content='当前正文',
+            status='published',
+            visibility='public',
+        )
+        PostRevision.objects.create(
+            post=post,
+            editor=author,
+            title='旧标题',
+            category='life',
+            tags='旧标签',
+            content='旧正文',
+            status='published',
+            visibility='public',
+        )
+
+        self.client.login(username='history-author', password='StrongPass12345')
+        author_response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertContains(author_response, '版本历史')
+        self.assertContains(author_response, '旧标题')
+        self.assertEqual(list(author_response.context['post_revisions']), list(post.revisions.all()[:5]))
+
+        self.client.logout()
+        self.client.login(username='history-reader', password='StrongPass12345')
+        reader_response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertNotContains(reader_response, '版本历史')
+        self.assertNotContains(reader_response, '旧标题')
+        self.assertEqual(list(reader_response.context['post_revisions']), [])
 
     def test_create_post_shows_markdown_editor_modal(self):
         user = User.objects.create_user(username='markdown-writer', password='StrongPass12345')

@@ -225,6 +225,46 @@
         font-weight: 700;
     }
 
+    .revision-history {
+        border-top: 1px solid #e8f5e9;
+        margin-top: 16px;
+        padding-top: 16px;
+    }
+
+    .revision-history h3 {
+        color: #1b5e20;
+        font-size: 0.96rem;
+        font-weight: 800;
+        margin-bottom: 12px;
+    }
+
+    .revision-list {
+        display: grid;
+        gap: 10px;
+    }
+
+    .revision-card {
+        background: rgba(232, 245, 233, 0.52);
+        border: 1px solid rgba(var(--theme-primary), 0.12);
+        border-radius: 8px;
+        padding: 12px;
+    }
+
+    .revision-title {
+        color: var(--detail-ink);
+        font-size: 0.92rem;
+        font-weight: 800;
+        line-height: 1.35;
+        margin-bottom: 6px;
+        word-break: break-word;
+    }
+
+    .revision-meta {
+        color: var(--detail-muted);
+        font-size: 0.78rem;
+        line-height: 1.55;
+    }
+
     .action-toolbar {
         display: flex;
         align-items: center;
@@ -1012,6 +1052,26 @@
                     <span>状态</span>
                     <strong>{{ post.get_status_display }}</strong>
                 </div>
+                {% if post_revisions %}
+                <section class="revision-history" aria-label="版本历史">
+                    <h3><i class="fas fa-history me-2"></i>版本历史</h3>
+                    <div class="revision-list">
+                        {% for revision in post_revisions %}
+                        <article class="revision-card">
+                            <div class="revision-title">{{ revision.title }}</div>
+                            <div class="revision-meta">
+                                {{ revision.created_at|date:"Y-m-d H:i" }}
+                                · {{ revision.get_status_display }}
+                                · {{ revision.get_visibility_display }}
+                                {% if revision.editor %}
+                                <br>由 {{ revision.editor.profile.display_name|default:revision.editor.username }} 保存
+                                {% endif %}
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                </section>
+                {% endif %}
             </aside>
         </div>
     </main>

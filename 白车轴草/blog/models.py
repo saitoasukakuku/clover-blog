@@ -57,6 +57,60 @@ class Post(models.Model):
     def __str__(self):
         return self.title
 
+
+class PostRevision(models.Model):
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='revisions',
+        verbose_name='文章',
+    )
+    editor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='post_revisions',
+        verbose_name='编辑者',
+    )
+    title = models.CharField(max_length=200, verbose_name='文章标题')
+    category = models.CharField(max_length=50, verbose_name='文章分类')
+    tags = models.CharField(max_length=200, blank=True, verbose_name='文章标签')
+    content = models.TextField(verbose_name='文章内容')
+    status = models.CharField(
+        max_length=20,
+        choices=Post.STATUS_CHOICES,
+        verbose_name='状态',
+    )
+    visibility = models.CharField(
+        max_length=20,
+        choices=Post.VISIBILITY_CHOICES,
+        verbose_name='可见范围',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='保存时间')
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = '文章版本'
+        verbose_name_plural = '文章版本'
+
+    @classmethod
+    def create_from_post(cls, post, editor):
+        return cls.objects.create(
+            post=post,
+            editor=editor,
+            title=post.title,
+            category=post.category,
+            tags=post.tags,
+            content=post.content,
+            status=post.status,
+            visibility=post.visibility,
+        )
+
+    def __str__(self):
+        return f'{self.post.title} 的历史版本：{self.title}'
+
+
 class Comment(models.Model):
     post = models.ForeignKey(
         Post,

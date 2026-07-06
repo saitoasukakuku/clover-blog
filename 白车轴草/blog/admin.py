@@ -7,6 +7,7 @@ from blog.models import (
     Notification,
     Post,
     PostFavorite,
+    PostRevision,
     PrivateMessage,
     RegistrationRequest,
     UserProfile,
@@ -19,6 +20,25 @@ class PostAdmin(admin.ModelAdmin):
     list_filter = ('status', 'category', 'visibility', 'created_at')
     search_fields = ('title', 'content', 'tags')
     ordering = ('-created_at',)
+
+
+@admin.register(PostRevision)
+class PostRevisionAdmin(admin.ModelAdmin):
+    list_display = ('post', 'title', 'editor', 'status', 'visibility', 'created_at')
+    list_filter = ('status', 'visibility', 'created_at')
+    search_fields = ('post__title', 'title', 'content', 'tags', 'editor__username')
+    ordering = ('-created_at',)
+    readonly_fields = (
+        'post',
+        'editor',
+        'title',
+        'category',
+        'tags',
+        'content',
+        'status',
+        'visibility',
+        'created_at',
+    )
 
 
 @admin.register(UserProfile)

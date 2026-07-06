@@ -50,6 +50,7 @@ from blog.models import (
     Notification,
     Post,
     PostFavorite,
+    PostRevision,
     PrivateMessage,
     RegistrationRequest,
     UserProfile,
@@ -1959,17 +1960,24 @@ def edit_post(request, post_id):
     post = get_object_or_404(Post, id=post_id, author=request.user)
     
     if request.method == 'POST':
-        post.title = request.POST.get('title')
-        post.category = resolve_category(request)
-        post.tags = (request.POST.get('tags') or '').strip()[:200]
-        post.content = request.POST.get('content')
-        
+        action = request.POST.get('action')
+        updated_post_values = {
+            'title': request.POST.get('title') or '',
+            'category': resolve_category(request),
+            'tags': (request.POST.get('tags') or '').strip()[:200],
+            'content': request.POST.get('content') or '',
+            'status': 'published' if action == 'publish' else 'draft',
+            'visibility': request.POST.get('visibility', 'private'),
+        }
         cover = request.FILES.get('cover')
         cropped_cover_data = request.POST.get('cropped_cover')
+        should_update_cover = False
+        updated_cover = None
         
         if cropped_cover_data:
             try:
-                post.cover = build_image_file_from_data_url(cropped_cover_data, 'cover')
+                updated_cover = build_image_file_from_data_url(cropped_cover_data, 'cover')
+                should_update_cover = True
             except ValueError as error:
                 messages.error(request, str(error))
                 context = {'post': post}
@@ -1977,18 +1985,27 @@ def edit_post(request, post_id):
                 return render(request, 'create_post.html', context)
         elif cover:
             try:
-                post.cover = validate_uploaded_image_file(cover)
+                updated_cover = validate_uploaded_image_file(cover)
+                should_update_cover = True
             except ValueError as error:
                 messages.error(request, str(error))
                 context = {'post': post}
                 context.update(get_category_context(post))
                 return render(request, 'create_post.html', context)
         elif request.POST.get('clear_cover') == 'true':
-            post.cover = None
+            should_update_cover = True
 
-        action = request.POST.get('action')
-        post.status = 'published' if action == 'publish' else 'draft'
-        post.visibility = request.POST.get('visibility', 'private')
+        has_revision_changes = any(
+            getattr(post, field_name) != field_value
+            for field_name, field_value in updated_post_values.items()
+        )
+        if has_revision_changes:
+            PostRevision.create_from_post(post, request.user)
+
+        for field_name, field_value in updated_post_values.items():
+            setattr(post, field_name, field_value)
+        if should_update_cover:
+            post.cover = updated_cover
         post.save()
         
         if post.status == 'draft':
@@ -2051,6 +2068,13 @@ def post_detail(request, post_id):
     else:
         comment_form = None
 
+    can_view_revisions = request.user.is_authenticated and post.author == request.user
+    post_revisions = (
+        post.revisions.select_related('editor')[:5]
+        if can_view_revisions
+        else []
+    )
+
     context = {
         'post': post,
         'comments_enabled': comments_enabled,
@@ -2059,6 +2083,7 @@ def post_detail(request, post_id):
         'comment_form': comment_form,
         'display_tags': get_display_tags(post),
         'related_posts': get_related_posts(post, request.user),
+        'post_revisions': post_revisions,
         'is_favorited': (
             request.user.is_authenticated
             and PostFavorite.objects.filter(user=request.user, post=post).exists()
