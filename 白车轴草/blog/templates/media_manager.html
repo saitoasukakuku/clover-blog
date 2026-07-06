@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+
+{% block title %}媒体管理{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+            <h1 class="h3 mb-2">媒体管理</h1>
+            <p class="text-muted mb-0">管理首页图片、音乐文件、封面、歌词和浏览器播放版状态。</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'index' %}">
+            <i class="fas fa-arrow-left me-1"></i>返回文章
+        </a>
+    </div>
+
+    <section class="mb-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+            <div>
+                <h2 class="h5 mb-1">首页图片</h2>
+                <p class="text-muted mb-0">上传后会出现在首页轮播；文案可用下方按钮批量生成。</p>
+            </div>
+            <form method="post" action="{% url 'media_manager_run_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="generate_homepage_copy">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-wand-magic-sparkles me-1"></i>生成首页文案
+                </button>
+            </form>
+        </div>
+
+        <form class="row g-3 align-items-end bg-white border rounded-3 p-3 mb-3" method="post" action="{% url 'media_manager_upload_homepage_image' %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="col-12 col-lg-8">
+                <label class="form-label fw-semibold" for="homepageImageUpload">上传首页图</label>
+                <input class="form-control" id="homepageImageUpload" type="file" name="image" accept="image/jpeg,image/png,image/webp" required>
+                <div class="form-text">支持 JPG / PNG / WebP，单张不超过 5MB。</div>
+            </div>
+            <div class="col-12 col-lg-4 text-lg-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload me-1"></i>上传图片
+                </button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle bg-white">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">文件名</th>
+                        <th scope="col">大小</th>
+                        <th scope="col">更新时间</th>
+                        <th scope="col">文案</th>
+                        <th scope="col" class="text-end">预览</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for image_item in homepage_media_items %}
+                    <tr>
+                        <td>{{ image_item.file_name }}</td>
+                        <td>{{ image_item.file_size|filesizeformat }}</td>
+                        <td>{{ image_item.updated_at|date:"Y-m-d H:i" }}</td>
+                        <td>
+                            {% if image_item.has_copy %}
+                            <span class="badge text-bg-success">已生成</span>
+                            {% else %}
+                            <span class="badge text-bg-secondary">未生成</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-success" href="{{ image_item.image_url }}" target="_blank" rel="noopener">
+                                <i class="fas fa-eye me-1"></i>查看
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">还没有首页图片。</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+            <div>
+                <h2 class="h5 mb-1">音乐资源</h2>
+                <p class="text-muted mb-0">音频、封面和歌词会按同名文件保存，播放器会自动识别。</p>
+            </div>
+            <form method="post" action="{% url 'media_manager_run_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="prepare_music_playback">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-gauge-high me-1"></i>生成播放版
+                </button>
+            </form>
+        </div>
+
+        <form class="row g-3 bg-white border rounded-3 p-3 mb-3" method="post" action="{% url 'media_manager_upload_music' %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="col-12 col-lg-4">
+                <label class="form-label fw-semibold" for="musicAudioUpload">音频文件</label>
+                <input class="form-control" id="musicAudioUpload" type="file" name="audio" accept=".mp3,.flac,.wav,.m4a,.ogg,audio/*" required>
+                <div class="form-text">支持 MP3 / FLAC / WAV / M4A / OGG，单首不超过 200MB。</div>
+            </div>
+            <div class="col-12 col-lg-4">
+                <label class="form-label fw-semibold" for="musicCoverUpload">同名封面</label>
+                <input class="form-control" id="musicCoverUpload" type="file" name="cover" accept="image/jpeg,image/png,image/webp">
+            </div>
+            <div class="col-12 col-lg-4">
+                <label class="form-label fw-semibold" for="musicLyricsUpload">同名歌词</label>
+                <input class="form-control" id="musicLyricsUpload" type="file" name="lyrics" accept=".lrc,.txt,text/plain">
+            </div>
+            <div class="col-12 text-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload me-1"></i>上传音乐
+                </button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle bg-white">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">音频</th>
+                        <th scope="col">大小</th>
+                        <th scope="col">播放版</th>
+                        <th scope="col">封面</th>
+                        <th scope="col">歌词</th>
+                        <th scope="col">更新时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for music_item in music_media_items %}
+                    <tr>
+                        <td>{{ music_item.file_name }}</td>
+                        <td>{{ music_item.file_size|filesizeformat }}</td>
+                        <td>
+                            {% if music_item.has_web_playback %}
+                            <span class="badge text-bg-success">已生成</span>
+                            <span class="small text-muted ms-1">{{ music_item.web_playback_file_name }}</span>
+                            {% else %}
+                            <span class="badge text-bg-warning">未生成</span>
+                            <span class="small text-muted ms-1">{{ music_item.web_playback_file_name }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if music_item.cover_file_name %}
+                            {{ music_item.cover_file_name }}
+                            {% else %}
+                            <span class="text-muted">无</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if music_item.lyrics_file_name %}
+                            {{ music_item.lyrics_file_name }}
+                            {% else %}
+                            <span class="text-muted">无</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ music_item.updated_at|date:"Y-m-d H:i" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">还没有音乐文件。</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

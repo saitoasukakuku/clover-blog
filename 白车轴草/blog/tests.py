@@ -3156,6 +3156,176 @@ class NotificationCenterTests(TestCase):
 
 
 class SiteMusicPlayerTests(TestCase):
+    def test_media_manager_requires_superuser(self):
+        User.objects.create_user(username='reader', password='StrongPass12345')
+        self.client.login(username='reader', password='StrongPass12345')
+
+        response = self.client.get(reverse('media_manager'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_superuser_can_view_media_manager_inventory(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            homepage_image_directory = os.path.join(temporary_media_root, 'index_img')
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(homepage_image_directory)
+            os.makedirs(music_directory)
+            Image.new('RGB', (32, 32), color=(120, 160, 200)).save(
+                os.path.join(homepage_image_directory, 'home.jpg'),
+                format='JPEG',
+            )
+            with open(os.path.join(temporary_media_root, 'index_img_copy.json'), 'w', encoding='utf-8') as copy_file:
+                json.dump({'home.jpg': {'headline': 'cached'}}, copy_file)
+            with open(os.path.join(music_directory, 'song.flac'), 'wb') as music_file:
+                music_file.write(b'fLaC fake audio')
+            with open(os.path.join(music_directory, 'song.web.m4a'), 'wb') as playback_file:
+                playback_file.write(b'web playback')
+            with open(os.path.join(music_directory, 'song.jpg'), 'wb') as cover_file:
+                cover_file.write(b'cover')
+            with open(os.path.join(music_directory, 'song.lrc'), 'w', encoding='utf-8') as lyrics_file:
+                lyrics_file.write('[00:01.00]line')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('media_manager'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '媒体管理')
+        self.assertContains(response, 'home.jpg')
+        self.assertContains(response, 'song.flac')
+        self.assertContains(response, 'song.web.m4a')
+        self.assertContains(response, '已生成')
+
+    def test_superuser_can_upload_homepage_image_from_media_manager(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post(reverse('media_manager_upload_homepage_image'), {
+                    'image': build_uploaded_test_image('new-home.jpg'),
+                })
+                saved_image_directory = os.path.join(temporary_media_root, 'index_img')
+                saved_image_file_names = os.listdir(saved_image_directory)
+
+        self.assertRedirects(response, reverse('media_manager'))
+        self.assertEqual(len(saved_image_file_names), 1)
+        self.assertTrue(saved_image_file_names[0].endswith('.jpg'))
+
+    def test_superuser_can_upload_music_assets_from_media_manager(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        uploaded_audio = SimpleUploadedFile(
+            'new-song.mp3',
+            b'fake mp3 audio',
+            content_type='audio/mpeg',
+        )
+        uploaded_lyrics = SimpleUploadedFile(
+            'new-song.lrc',
+            '[00:01.00]hello'.encode('utf-8'),
+            content_type='text/plain',
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post(reverse('media_manager_upload_music'), {
+                    'audio': uploaded_audio,
+                    'cover': build_uploaded_test_image('cover.jpg'),
+                    'lyrics': uploaded_lyrics,
+                })
+                saved_music_directory = os.path.join(temporary_media_root, 'music')
+                saved_music_file_names = sorted(os.listdir(saved_music_directory))
+
+        self.assertRedirects(response, reverse('media_manager'))
+        self.assertEqual(saved_music_file_names, ['new-song.jpg', 'new-song.lrc', 'new-song.mp3'])
+
+    def test_media_manager_music_upload_does_not_save_partial_files_when_cover_is_invalid(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        uploaded_audio = SimpleUploadedFile(
+            'partial-song.mp3',
+            b'fake mp3 audio',
+            content_type='audio/mpeg',
+        )
+        invalid_cover = SimpleUploadedFile(
+            'partial-song.jpg',
+            b'this is not an image',
+            content_type='image/jpeg',
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post(reverse('media_manager_upload_music'), {
+                    'audio': uploaded_audio,
+                    'cover': invalid_cover,
+                })
+                saved_music_directory = os.path.join(temporary_media_root, 'music')
+                saved_music_file_names = (
+                    os.listdir(saved_music_directory)
+                    if os.path.isdir(saved_music_directory)
+                    else []
+                )
+
+        self.assertRedirects(response, reverse('media_manager'))
+        self.assertEqual(saved_music_file_names, [])
+
+    def test_media_manager_can_trigger_media_commands(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        with patch('blog.views.call_command') as call_command_mock:
+            response = self.client.post(reverse('media_manager_run_action'), {
+                'action': 'prepare_music_playback',
+            })
+
+        self.assertRedirects(response, reverse('media_manager'))
+        call_command_mock.assert_called_once()
+        self.assertEqual(call_command_mock.call_args.args[:2], ('prepare_music_playback', '--continue-on-error'))
+
+        with patch('blog.views.call_command') as call_command_mock:
+            response = self.client.post(reverse('media_manager_run_action'), {
+                'action': 'generate_homepage_copy',
+            })
+
+        self.assertRedirects(response, reverse('media_manager'))
+        call_command_mock.assert_called_once()
+        self.assertEqual(call_command_mock.call_args.args[:3], ('generate_homepage_copy', '--batch-size', '8'))
+
+    def test_media_manager_post_actions_require_superuser_and_post(self):
+        User.objects.create_user(username='reader', password='StrongPass12345')
+        self.client.login(username='reader', password='StrongPass12345')
+
+        with patch('blog.views.call_command') as call_command_mock:
+            response = self.client.post(reverse('media_manager_run_action'), {
+                'action': 'prepare_music_playback',
+            })
+
+        self.assertEqual(response.status_code, 403)
+        call_command_mock.assert_not_called()
+
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        response = self.client.get(reverse('media_manager_run_action'))
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_media_manager_rejects_unknown_action(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        with patch('blog.views.call_command') as call_command_mock:
+            response = self.client.post(reverse('media_manager_run_action'), {
+                'action': 'delete_everything',
+            })
+
+        self.assertRedirects(response, reverse('media_manager'))
+        call_command_mock.assert_not_called()
+
     def test_music_tracks_use_same_name_cover_and_lyrics_files(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
             music_directory = os.path.join(temporary_media_root, 'music')

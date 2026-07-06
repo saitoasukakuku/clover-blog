@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core import signing
+from django.core.management import call_command
 from django.core.paginator import Paginator
 from django.conf import settings
 from django.contrib import messages
@@ -32,6 +33,15 @@ from blog.forms import (
 from blog.management.commands.create_startup_post import (
     DEFAULT_DEEPSEEK_MODEL,
     Command as StartupPostCommand,
+)
+from blog.management.commands.prepare_music_playback import get_web_playback_file_name
+from blog.context_processors import (
+    MUSIC_AUDIO_EXTENSIONS,
+    MUSIC_COVER_EXTENSIONS,
+    MUSIC_DIR_NAME,
+    MUSIC_LYRICS_EXTENSIONS,
+    find_same_name_file,
+    split_music_file_name,
 )
 from blog.models import (
     Comment,
@@ -68,6 +78,8 @@ AI_GENERATION_COOLDOWN_SECONDS = 60
 AI_COVER_TOKEN_SALT = 'blog.ai-cover'
 AI_COVER_TOKEN_MAX_AGE_SECONDS = 7200
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_MUSIC_UPLOAD_BYTES = 200 * 1024 * 1024
+MAX_LYRICS_UPLOAD_BYTES = 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = {
     'jpeg': 'jpg',
     'jpg': 'jpg',
@@ -81,6 +93,10 @@ HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
 HOMEPAGE_COPY_FIELDS = ('kicker', 'headline', 'lead', 'card_title', 'card_text')
+INVALID_AUDIO_FILE_MESSAGE = '请上传 MP3、FLAC、WAV、M4A 或 OGG 音频文件。'
+OVERSIZED_AUDIO_MESSAGE = '音频文件不能超过 200MB。'
+INVALID_LYRICS_FILE_MESSAGE = '歌词文件只支持 LRC 或 TXT。'
+OVERSIZED_LYRICS_MESSAGE = '歌词文件不能超过 1MB。'
 HOMEPAGE_THEME_PRESETS = [
     {
         'accent': '#5f8fc8',
@@ -355,6 +371,254 @@ def upload_post_image(request):
         'url': image_url,
         'markdown': f'![{image_alt_text}]({image_url})',
     })
+
+
+def get_upload_file_extension(uploaded_file):
+    return os.path.splitext(os.path.basename(uploaded_file.name or ''))[1].lower()
+
+
+def build_safe_media_file_stem(raw_file_name, fallback_stem):
+    raw_file_stem = os.path.splitext(os.path.basename(raw_file_name or ''))[0]
+    safe_file_stem = re.sub(r'[\\/:*?"<>|\r\n]+', '-', raw_file_stem).strip(' .-_')
+    safe_file_stem = re.sub(r'\s+', '-', safe_file_stem)
+    return safe_file_stem[:80] or fallback_stem
+
+
+def save_media_upload(directory_name, file_name, uploaded_file):
+    os.makedirs(os.path.join(settings.MEDIA_ROOT, directory_name), exist_ok=True)
+    saved_relative_path = default_storage.save(f'{directory_name}/{file_name}', uploaded_file)
+    return os.path.basename(saved_relative_path)
+
+
+def build_homepage_image_upload_name(uploaded_image, image_extension):
+    safe_file_stem = build_safe_media_file_stem(uploaded_image.name, 'homepage-image')
+    return f'{safe_file_stem}-{uuid.uuid4().hex[:8]}.{image_extension}'
+
+
+def validate_uploaded_music_file(uploaded_file):
+    if uploaded_file.size > MAX_MUSIC_UPLOAD_BYTES:
+        raise ValueError(OVERSIZED_AUDIO_MESSAGE)
+    audio_extension = get_upload_file_extension(uploaded_file)
+    if audio_extension not in MUSIC_AUDIO_EXTENSIONS:
+        raise ValueError(INVALID_AUDIO_FILE_MESSAGE)
+    return audio_extension
+
+
+def validate_uploaded_lyrics_file(uploaded_file):
+    if uploaded_file.size > MAX_LYRICS_UPLOAD_BYTES:
+        raise ValueError(OVERSIZED_LYRICS_MESSAGE)
+    lyrics_extension = get_upload_file_extension(uploaded_file)
+    if lyrics_extension not in MUSIC_LYRICS_EXTENSIONS:
+        raise ValueError(INVALID_LYRICS_FILE_MESSAGE)
+    return lyrics_extension
+
+
+def build_homepage_media_items():
+    copy_by_file_name = get_homepage_ai_copy_by_file_name()
+    media_items = []
+    for image_file_name in get_homepage_image_file_names():
+        image_file_path = get_homepage_image_file_path(image_file_name)
+        image_stat = os.stat(image_file_path)
+        media_items.append({
+            'file_name': image_file_name,
+            'file_size': image_stat.st_size,
+            'updated_at': timezone.datetime.fromtimestamp(
+                image_stat.st_mtime,
+                tz=timezone.get_current_timezone(),
+            ),
+            'image_url': reverse('homepage_carousel_image', args=[image_file_name]),
+            'has_copy': image_file_name in copy_by_file_name,
+        })
+    return media_items
+
+
+def build_music_media_items():
+    music_directory = os.path.join(settings.MEDIA_ROOT, MUSIC_DIR_NAME)
+    try:
+        music_file_names = sorted(os.listdir(music_directory), key=str.lower)
+    except OSError:
+        return []
+
+    source_file_stems = set()
+    for music_file_name in music_file_names:
+        music_file_path = os.path.join(music_directory, music_file_name)
+        file_stem, audio_extension, is_web_playback_file = split_music_file_name(music_file_name)
+        if audio_extension.lower() not in MUSIC_AUDIO_EXTENSIONS:
+            continue
+        if not os.path.isfile(music_file_path):
+            continue
+        if not is_web_playback_file:
+            source_file_stems.add(file_stem.casefold())
+
+    media_items = []
+    for music_file_name in music_file_names:
+        music_file_path = os.path.join(music_directory, music_file_name)
+        file_stem, audio_extension, is_web_playback_file = split_music_file_name(music_file_name)
+        if audio_extension.lower() not in MUSIC_AUDIO_EXTENSIONS:
+            continue
+        if not os.path.isfile(music_file_path):
+            continue
+        if is_web_playback_file and file_stem.casefold() in source_file_stems:
+            continue
+
+        web_playback_file_name = get_web_playback_file_name(music_file_name)
+        web_playback_path = os.path.join(music_directory, web_playback_file_name)
+        cover_file_name, _ = find_same_name_file(
+            music_directory,
+            file_stem,
+            MUSIC_COVER_EXTENSIONS,
+        )
+        lyrics_file_name, _ = find_same_name_file(
+            music_directory,
+            file_stem,
+            MUSIC_LYRICS_EXTENSIONS,
+        )
+        music_file_stat = os.stat(music_file_path)
+        media_items.append({
+            'file_name': music_file_name,
+            'file_size': music_file_stat.st_size,
+            'updated_at': timezone.datetime.fromtimestamp(
+                music_file_stat.st_mtime,
+                tz=timezone.get_current_timezone(),
+            ),
+            'web_playback_file_name': web_playback_file_name,
+            'has_web_playback': os.path.exists(web_playback_path),
+            'cover_file_name': cover_file_name,
+            'lyrics_file_name': lyrics_file_name,
+        })
+    return media_items
+
+
+@login_required
+def media_manager(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    return render(request, 'media_manager.html', {
+        'homepage_media_items': build_homepage_media_items(),
+        'music_media_items': build_music_media_items(),
+    })
+
+
+@login_required
+@require_POST
+def media_manager_upload_homepage_image(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    uploaded_image = request.FILES.get('image')
+    if uploaded_image is None:
+        messages.error(request, INVALID_IMAGE_FILE_MESSAGE)
+        return redirect('media_manager')
+
+    try:
+        validated_image = validate_uploaded_image_file(uploaded_image)
+        image_extension = normalize_image_extension(
+            get_upload_file_extension(uploaded_image).lstrip('.') or 'jpg',
+        )
+    except ValueError as error:
+        messages.error(request, str(error))
+        return redirect('media_manager')
+
+    image_file_name = build_homepage_image_upload_name(uploaded_image, image_extension)
+    saved_image_file_name = save_media_upload(
+        HOMEPAGE_IMAGE_DIR_NAME,
+        image_file_name,
+        validated_image,
+    )
+    messages.success(request, f'已上传首页图片：{saved_image_file_name}')
+    return redirect('media_manager')
+
+
+@login_required
+@require_POST
+def media_manager_upload_music(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    uploaded_audio = request.FILES.get('audio')
+    if uploaded_audio is None:
+        messages.error(request, INVALID_AUDIO_FILE_MESSAGE)
+        return redirect('media_manager')
+
+    try:
+        audio_extension = validate_uploaded_music_file(uploaded_audio)
+    except ValueError as error:
+        messages.error(request, str(error))
+        return redirect('media_manager')
+
+    uploaded_cover = request.FILES.get('cover')
+    validated_cover = None
+    cover_extension = ''
+    if uploaded_cover is not None:
+        try:
+            validated_cover = validate_uploaded_image_file(uploaded_cover)
+            cover_extension = normalize_image_extension(
+                get_upload_file_extension(uploaded_cover).lstrip('.') or 'jpg',
+            )
+        except ValueError as error:
+            messages.error(request, str(error))
+            return redirect('media_manager')
+
+    uploaded_lyrics = request.FILES.get('lyrics')
+    lyrics_extension = ''
+    if uploaded_lyrics is not None:
+        try:
+            lyrics_extension = validate_uploaded_lyrics_file(uploaded_lyrics)
+        except ValueError as error:
+            messages.error(request, str(error))
+            return redirect('media_manager')
+
+    audio_file_stem = build_safe_media_file_stem(uploaded_audio.name, 'music-track')
+    audio_file_name = f'{audio_file_stem}{audio_extension}'
+    saved_audio_file_name = save_media_upload(MUSIC_DIR_NAME, audio_file_name, uploaded_audio)
+    saved_audio_file_stem, _ = os.path.splitext(saved_audio_file_name)
+
+    if validated_cover is not None:
+        save_media_upload(MUSIC_DIR_NAME, f'{saved_audio_file_stem}.{cover_extension}', validated_cover)
+
+    if uploaded_lyrics is not None:
+        save_media_upload(MUSIC_DIR_NAME, f'{saved_audio_file_stem}{lyrics_extension}', uploaded_lyrics)
+
+    messages.success(request, f'已上传音乐：{saved_audio_file_name}')
+    return redirect('media_manager')
+
+
+@login_required
+@require_POST
+def media_manager_run_action(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    action = request.POST.get('action')
+    command_output = StringIO()
+    try:
+        if action == 'prepare_music_playback':
+            call_command(
+                'prepare_music_playback',
+                '--continue-on-error',
+                stdout=command_output,
+                stderr=command_output,
+            )
+            messages.success(request, '已触发音乐播放版生成。')
+        elif action == 'generate_homepage_copy':
+            call_command(
+                'generate_homepage_copy',
+                '--batch-size',
+                '8',
+                stdout=command_output,
+                stderr=command_output,
+            )
+            messages.success(request, '已触发首页文案生成。')
+        else:
+            messages.error(request, '未知的媒体管理操作。')
+    except CommandError as error:
+        messages.error(request, str(error))
+    return redirect('media_manager')
 
 
 def build_post_form_context(title, category, tags, content, visibility):
