@@ -111,6 +111,13 @@
         color: #2e7d32;
     }
 
+    .search-highlight {
+        background: #fff3b0;
+        border-radius: 4px;
+        color: #1b5e20;
+        padding: 0 2px;
+    }
+
     .post-category {
         display: inline-block;
         background: #eef7ef;
@@ -388,9 +395,9 @@
                         </a>
                         <div class="card-body">
                             <a href="{% url 'post_detail' post.id %}" style="text-decoration: none; color: inherit;">
-                                <h2 class="card-title">{{ post.title }}</h2>
+                                <h2 class="card-title">{{ post.card_title_html }}</h2>
                             </a>
-                            <p class="card-text">{{ post.content|truncatechars:100 }}</p>
+                            <p class="card-text">{{ post.card_excerpt_html }}</p>
                             {% if post.card_display_tags %}
                             <div class="post-card-tags" aria-label="文章标签">
                                 {% for tag in post.card_display_tags %}
@@ -452,6 +459,30 @@
         </div>
 
         <aside class="col-lg-4">
+            {% if recently_read_posts %}
+            <div class="sidebar-card">
+                <h5><i class="fas fa-clock"></i> 最近阅读</h5>
+                {% for recent_read_post in recently_read_posts %}
+                <a href="{% url 'post_detail' recent_read_post.id %}" class="popular-item">
+                    <span class="num">{{ forloop.counter }}</span>
+                    <span>{{ recent_read_post.title }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="sidebar-card">
+                <h5><i class="fas fa-fire"></i> 热门文章</h5>
+                {% for popular_post in popular_posts %}
+                <a href="{% url 'post_detail' popular_post.id %}" class="popular-item">
+                    <span class="num">{{ forloop.counter }}</span>
+                    <span>{{ popular_post.title }}</span>
+                </a>
+                {% empty %}
+                <p class="text-muted mb-0" style="font-size: 0.86rem;">暂无热门文章</p>
+                {% endfor %}
+            </div>
+
             <div class="sidebar-card">
                 <h5><i class="fas fa-fire"></i> 最近文章</h5>
                 {% for recent_post in recent_posts %}

@@ -1932,6 +1932,79 @@ class AuthViewsTests(TestCase):
         self.assertEqual(content_titles, ['普通标题'])
         self.assertEqual(category_titles, ['分类命中文章'])
 
+    def test_index_search_highlights_title_and_excerpt_matches(self):
+        owner = User.objects.create_user(username='highlight-owner', password='StrongPass12345')
+        Post.objects.create(
+            author=owner,
+            title='Django 入门',
+            category='tech',
+            content='学习 Django 模板和视图。',
+            status='published',
+            visibility='public',
+        )
+
+        response = self.client.get(reverse('index'), {'q': 'Django'})
+
+        self.assertContains(response, '<mark class="search-highlight">Django</mark> 入门', html=True)
+        self.assertContains(response, '<mark class="search-highlight">Django</mark>', count=2)
+        self.assertContains(response, '模板和视图')
+
+    def test_index_sidebar_shows_popular_posts_by_views(self):
+        owner = User.objects.create_user(username='popular-owner', password='StrongPass12345')
+        low_post = Post.objects.create(
+            author=owner,
+            title='低浏览文章',
+            category='life',
+            content='低浏览',
+            status='published',
+            visibility='public',
+            views_count=3,
+        )
+        high_post = Post.objects.create(
+            author=owner,
+            title='高浏览文章',
+            category='life',
+            content='高浏览',
+            status='published',
+            visibility='public',
+            views_count=20,
+        )
+
+        response = self.client.get(reverse('index'))
+
+        popular_titles = [post.title for post in response.context['popular_posts']]
+        self.assertEqual(popular_titles[:2], [high_post.title, low_post.title])
+        self.assertContains(response, '热门文章')
+        self.assertContains(response, '高浏览文章')
+
+    def test_index_sidebar_shows_recently_read_posts_from_session(self):
+        owner = User.objects.create_user(username='recent-owner', password='StrongPass12345')
+        first_post = Post.objects.create(
+            author=owner,
+            title='先读文章',
+            category='life',
+            content='先读正文',
+            status='published',
+            visibility='public',
+        )
+        second_post = Post.objects.create(
+            author=owner,
+            title='后读文章',
+            category='life',
+            content='后读正文',
+            status='published',
+            visibility='public',
+        )
+
+        self.client.get(reverse('post_detail', args=[first_post.id]))
+        self.client.get(reverse('post_detail', args=[second_post.id]))
+        response = self.client.get(reverse('index'))
+
+        recent_read_titles = [post.title for post in response.context['recently_read_posts']]
+        self.assertEqual(recent_read_titles, [second_post.title, first_post.title])
+        self.assertContains(response, '最近阅读')
+        self.assertContains(response, '后读文章')
+
     def test_index_search_can_combine_with_category_and_pagination(self):
         owner = User.objects.create_user(username='owner', password='StrongPass12345')
         for index in range(7):

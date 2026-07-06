@@ -18,7 +18,8 @@ from django.views.decorators.http import require_POST
 from django.core.management.base import CommandError
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.utils.html import strip_tags
+from django.utils.html import conditional_escape, strip_tags
+from django.utils.safestring import mark_safe
 from django.utils.xmlutils import SimplerXMLGenerator
 from PIL import Image, ImageOps, UnidentifiedImageError
 from blog.forms import (
@@ -94,6 +95,7 @@ HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
 HOMEPAGE_COPY_FIELDS = ('kicker', 'headline', 'lead', 'card_title', 'card_text')
+RECENTLY_READ_SESSION_KEY = 'recently_read_post_ids'
 INVALID_AUDIO_FILE_MESSAGE = '请上传 MP3、FLAC、WAV、M4A 或 OGG 音频文件。'
 OVERSIZED_AUDIO_MESSAGE = '音频文件不能超过 200MB。'
 INVALID_LYRICS_FILE_MESSAGE = '歌词文件只支持 LRC 或 TXT。'
@@ -712,6 +714,93 @@ def get_readable_published_posts(request_user):
     ).order_by('-created_at')
 
 
+def highlight_search_text(value, search_query):
+    raw_value = str(value or '')
+    cleaned_search_query = (search_query or '').strip()
+    if not cleaned_search_query:
+        return conditional_escape(raw_value)
+
+    highlighted_parts = []
+    previous_end = 0
+    for match in re.finditer(re.escape(cleaned_search_query), raw_value, re.IGNORECASE):
+        highlighted_parts.append(conditional_escape(raw_value[previous_end:match.start()]))
+        highlighted_parts.append(
+            '<mark class="search-highlight">'
+            f'{conditional_escape(match.group(0))}'
+            '</mark>'
+        )
+        previous_end = match.end()
+    highlighted_parts.append(conditional_escape(raw_value[previous_end:]))
+    return mark_safe(''.join(str(part) for part in highlighted_parts))
+
+
+def build_search_excerpt(content, search_query, radius=56):
+    plain_content = strip_tags(content or '').replace('\r\n', '\n').replace('\r', '\n')
+    plain_content = re.sub(r'\s+', ' ', plain_content).strip()
+    cleaned_search_query = (search_query or '').strip()
+    if not cleaned_search_query:
+        return highlight_search_text(plain_content[:100], '')
+
+    match_index = plain_content.lower().find(cleaned_search_query.lower())
+    if match_index < 0:
+        return highlight_search_text(plain_content[:100], cleaned_search_query)
+
+    start_index = max(0, match_index - radius)
+    end_index = min(len(plain_content), match_index + len(cleaned_search_query) + radius)
+    excerpt = plain_content[start_index:end_index]
+    if start_index > 0:
+        excerpt = f'...{excerpt}'
+    if end_index < len(plain_content):
+        excerpt = f'{excerpt}...'
+    return highlight_search_text(excerpt, cleaned_search_query)
+
+
+def prepare_post_card_display(post, search_query):
+    post.card_display_tags = get_display_tags(post)[:3]
+    post.card_title_html = highlight_search_text(post.title, search_query)
+    post.card_excerpt_html = build_search_excerpt(post.content, search_query)
+    return post
+
+
+def record_recently_read_post(request, post):
+    recent_post_ids = request.session.get(RECENTLY_READ_SESSION_KEY, [])
+    normalized_post_ids = []
+    for recent_post_id in recent_post_ids:
+        try:
+            normalized_post_id = int(recent_post_id)
+        except (TypeError, ValueError):
+            continue
+        if normalized_post_id != post.id and normalized_post_id not in normalized_post_ids:
+            normalized_post_ids.append(normalized_post_id)
+    request.session[RECENTLY_READ_SESSION_KEY] = [post.id] + normalized_post_ids[:5]
+    request.session.modified = True
+
+
+def get_recently_read_posts(request):
+    recent_post_ids = request.session.get(RECENTLY_READ_SESSION_KEY, [])
+    normalized_post_ids = []
+    for recent_post_id in recent_post_ids:
+        try:
+            normalized_post_id = int(recent_post_id)
+        except (TypeError, ValueError):
+            continue
+        if normalized_post_id not in normalized_post_ids:
+            normalized_post_ids.append(normalized_post_id)
+    if not normalized_post_ids:
+        return []
+
+    readable_posts = filter_readable_posts(
+        Post.objects.filter(id__in=normalized_post_ids),
+        request.user,
+    ).select_related('author', 'author__profile')
+    post_by_id = {post.id: post for post in readable_posts}
+    return [
+        post_by_id[post_id]
+        for post_id in normalized_post_ids
+        if post_id in post_by_id
+    ]
+
+
 def get_user_display_name(user):
     if hasattr(user, 'profile'):
         return user.profile.display_name
@@ -1170,8 +1259,10 @@ def index(request):
     page_obj = paginator.get_page(page_number)
     page_posts = list(page_obj.object_list)
     for post in page_posts:
-        post.card_display_tags = get_display_tags(post)[:3]
+        prepare_post_card_display(post, search_query)
     page_obj.object_list = page_posts
+    popular_posts = list(author_posts.order_by('-views_count', '-created_at')[:5])
+    recently_read_posts = get_recently_read_posts(request)
     return render(request, 'index.html', {
         'posts': page_obj,
         'page_obj': page_obj,
@@ -1198,6 +1289,8 @@ def index(request):
         'published_count': about_posts.count(),
         'total_views': about_posts.aggregate(total=Sum('views_count'))['total'] or 0,
         'recent_posts': author_posts[:5],
+        'popular_posts': popular_posts,
+        'recently_read_posts': recently_read_posts,
     })
 
 
@@ -2104,6 +2197,7 @@ def post_detail(request, post_id):
 
     Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)
     post.refresh_from_db(fields=['views_count'])
+    record_recently_read_post(request, post)
 
     comments_enabled = (
         post.status == 'published'
