@@ -887,7 +887,8 @@
                 <!-- ================= 编辑模式 ================= -->
                 {% if user.is_authenticated and post.author == user %}
                 <form id="editMode" method="post" action="{% url 'edit_post' post.id %}"
-                    enctype="multipart/form-data" style="display: none;">
+                    enctype="multipart/form-data" style="display: none;" data-post-autosave-form
+                    data-post-autosave-key="clover-post-autosave:edit:{{ post.id }}:{{ user.id }}">
                     {% csrf_token %}
 
                     <h3 class="mb-4 text-success"><i class="fas fa-edit me-2"></i>编辑模式</h3>
@@ -1152,4 +1153,5 @@
     });
 </script>
 {% include 'includes/markdown_editor_script.html' %}
+{% include 'includes/post_autosave_script.html' %}
 {% endblock %}

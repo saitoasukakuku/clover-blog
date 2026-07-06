@@ -859,7 +859,7 @@ class AuthViewsTests(TestCase):
         self.assertEqual(post.tags, '生活,记录')
 
     def test_create_post_shows_markdown_editor_modal(self):
-        User.objects.create_user(username='markdown-writer', password='StrongPass12345')
+        user = User.objects.create_user(username='markdown-writer', password='StrongPass12345')
         self.client.login(username='markdown-writer', password='StrongPass12345')
 
         response = self.client.get(reverse('create_post'))
@@ -899,6 +899,13 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '粘贴图片上传中...')
         self.assertContains(response, '请输入图片地址')
         self.assertNotContains(response, 'https://example.com/image.jpg')
+        self.assertContains(response, 'data-post-autosave-form')
+        self.assertContains(response, f'data-post-autosave-key="clover-post-autosave:create:{user.id}"')
+        self.assertContains(response, 'POST_AUTOSAVE_DELAY_MS')
+        self.assertContains(response, 'restorePostAutosaveDraft')
+        self.assertContains(response, 'savePostAutosaveDraft')
+        self.assertContains(response, 'clearPostAutosaveDraft')
+        self.assertContains(response, 'localStorage')
 
     def test_post_detail_edit_form_shows_markdown_editor_modal(self):
         author = User.objects.create_user(username='markdown-editor', password='StrongPass12345')
@@ -942,6 +949,13 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'handlePaste')
         self.assertContains(response, 'clipboardData.items')
         self.assertNotContains(response, 'https://example.com/image.jpg')
+        self.assertContains(response, 'data-post-autosave-form')
+        self.assertContains(response, f'data-post-autosave-key="clover-post-autosave:edit:{post.id}:{author.id}"')
+        self.assertContains(response, 'POST_AUTOSAVE_DELAY_MS')
+        self.assertContains(response, 'restorePostAutosaveDraft')
+        self.assertContains(response, 'savePostAutosaveDraft')
+        self.assertContains(response, 'clearPostAutosaveDraft')
+        self.assertContains(response, 'localStorage')
 
     def test_post_detail_constrains_markdown_body_images(self):
         author = User.objects.create_user(username='image-post-author', password='StrongPass12345')

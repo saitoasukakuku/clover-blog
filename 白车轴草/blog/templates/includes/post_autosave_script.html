@@ -1,0 +1,144 @@
+<script>
+    (function () {
+        if (window.cloverPostAutosaveController && typeof window.cloverPostAutosaveController.destroy === 'function') {
+            window.cloverPostAutosaveController.destroy();
+        }
+
+        var POST_AUTOSAVE_DELAY_MS = 700;
+        var postAutosaveBindings = [];
+
+        function getPostAutosaveField(form, fieldName) {
+            return form ? form.querySelector('[name="' + fieldName + '"]') : null;
+        }
+
+        function getPostAutosaveValue(form, fieldName) {
+            var field = getPostAutosaveField(form, fieldName);
+            return field ? field.value : '';
+        }
+
+        function setPostAutosaveValue(form, fieldName, fieldValue) {
+            var field = getPostAutosaveField(form, fieldName);
+            if (!field || typeof fieldValue !== 'string') {
+                return;
+            }
+            field.value = fieldValue;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function readPostAutosaveStorage(storageKey) {
+            try {
+                return JSON.parse(localStorage.getItem(storageKey) || 'null');
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function writePostAutosaveStorage(storageKey, autosaveDraft) {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(autosaveDraft));
+            } catch (error) {
+                return false;
+            }
+            return true;
+        }
+
+        function removePostAutosaveStorage(storageKey) {
+            try {
+                localStorage.removeItem(storageKey);
+            } catch (error) {
+                return false;
+            }
+            return true;
+        }
+
+        function buildPostAutosaveDraft(form) {
+            return {
+                title: getPostAutosaveValue(form, 'title'),
+                category: getPostAutosaveValue(form, 'category'),
+                custom_category: getPostAutosaveValue(form, 'custom_category'),
+                tags: getPostAutosaveValue(form, 'tags'),
+                visibility: getPostAutosaveValue(form, 'visibility'),
+                content: getPostAutosaveValue(form, 'content'),
+                savedAt: new Date().toISOString(),
+            };
+        }
+
+        function hasPostAutosaveDraftContent(autosaveDraft) {
+            return Boolean(autosaveDraft && autosaveDraft.savedAt);
+        }
+
+        function restorePostAutosaveDraft(form) {
+            var storageKey = form ? form.getAttribute('data-post-autosave-key') : '';
+            var autosaveDraft = storageKey ? readPostAutosaveStorage(storageKey) : null;
+            if (!hasPostAutosaveDraftContent(autosaveDraft)) {
+                return;
+            }
+
+            form.dataset.postAutosaveRestoring = 'true';
+            setPostAutosaveValue(form, 'title', autosaveDraft.title || '');
+            setPostAutosaveValue(form, 'category', autosaveDraft.category || '');
+            setPostAutosaveValue(form, 'custom_category', autosaveDraft.custom_category || '');
+            setPostAutosaveValue(form, 'tags', autosaveDraft.tags || '');
+            setPostAutosaveValue(form, 'visibility', autosaveDraft.visibility || '');
+            setPostAutosaveValue(form, 'content', autosaveDraft.content || '');
+            delete form.dataset.postAutosaveRestoring;
+        }
+
+        function savePostAutosaveDraft(form) {
+            var storageKey = form ? form.getAttribute('data-post-autosave-key') : '';
+            if (!storageKey || form.dataset.postAutosaveRestoring === 'true') {
+                return;
+            }
+            writePostAutosaveStorage(storageKey, buildPostAutosaveDraft(form));
+        }
+
+        function clearPostAutosaveDraft(form) {
+            var storageKey = form ? form.getAttribute('data-post-autosave-key') : '';
+            if (storageKey) {
+                removePostAutosaveStorage(storageKey);
+            }
+        }
+
+        function bindPostAutosaveForm(form) {
+            var autosaveTimer = null;
+
+            function schedulePostAutosave() {
+                window.clearTimeout(autosaveTimer);
+                autosaveTimer = window.setTimeout(function () {
+                    savePostAutosaveDraft(form);
+                }, POST_AUTOSAVE_DELAY_MS);
+            }
+
+            function handlePostAutosaveSubmit() {
+                window.clearTimeout(autosaveTimer);
+                clearPostAutosaveDraft(form);
+            }
+
+            form.addEventListener('input', schedulePostAutosave);
+            form.addEventListener('change', schedulePostAutosave);
+            form.addEventListener('submit', handlePostAutosaveSubmit);
+            restorePostAutosaveDraft(form);
+
+            postAutosaveBindings.push({
+                clear: function () {
+                    window.clearTimeout(autosaveTimer);
+                    form.removeEventListener('input', schedulePostAutosave);
+                    form.removeEventListener('change', schedulePostAutosave);
+                    form.removeEventListener('submit', handlePostAutosaveSubmit);
+                },
+            });
+        }
+
+        document.querySelectorAll('[data-post-autosave-form]').forEach(bindPostAutosaveForm);
+
+        window.cloverPostAutosaveController = {
+            destroy: function () {
+                postAutosaveBindings.forEach(function (binding) {
+                    binding.clear();
+                });
+                postAutosaveBindings = [];
+            }
+        };
+    })();
+</script>

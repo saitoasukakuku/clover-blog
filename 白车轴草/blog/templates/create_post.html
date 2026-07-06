@@ -160,7 +160,8 @@
                     </button>
                 </div>
                 {% endif %}
-                <form method="post" enctype="multipart/form-data">
+                <form method="post" enctype="multipart/form-data" data-post-autosave-form
+                    data-post-autosave-key="clover-post-autosave:create:{{ user.id }}">
                     {% csrf_token %}
 
                     <!-- 文章标题 -->
@@ -510,4 +511,5 @@
     });
 </script>
 {% include 'includes/markdown_editor_script.html' %}
+{% include 'includes/post_autosave_script.html' %}
 {% endblock %}
