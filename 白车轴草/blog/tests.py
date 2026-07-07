@@ -4515,7 +4515,18 @@ class SiteMusicPlayerTests(TestCase):
         response = self.client.get(reverse('media_manager'))
 
         self.assertContains(response, 'action="/media-manager/actions/run/"')
-        self.assertContains(response, 'data-no-site-navigation', count=2)
+        self.assertContains(response, 'data-no-site-navigation', count=5)
+
+    def test_media_manager_compresses_homepage_image_before_upload(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        response = self.client.get(reverse('media_manager'))
+
+        self.assertContains(response, 'data-media-compress-image-form')
+        self.assertContains(response, 'data-media-compress-image-input')
+        self.assertContains(response, 'compressMediaManagerImage')
+        self.assertContains(response, 'MAX_HOMEPAGE_UPLOAD_EDGE')
 
     def test_media_manager_shows_command_errors_on_same_page(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')

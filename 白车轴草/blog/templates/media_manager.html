@@ -141,12 +141,12 @@
                 </form>
             </div>
 
-            <form class="row g-3 align-items-end media-upload-card mb-3" method="post" action="{% url 'media_manager_upload_homepage_image' %}" enctype="multipart/form-data">
+            <form class="row g-3 align-items-end media-upload-card mb-3" method="post" action="{% url 'media_manager_upload_homepage_image' %}" enctype="multipart/form-data" data-no-site-navigation data-media-compress-image-form>
                 {% csrf_token %}
                 <div class="col-12 col-lg-8">
                     <label class="form-label fw-semibold" for="homepageImageUpload">上传首页图</label>
-                    <input class="form-control" id="homepageImageUpload" type="file" name="image" accept="image/jpeg,image/png,image/webp" required>
-                    <div class="form-text">支持 JPG / PNG / WebP，单张不超过 5MB。</div>
+                    <input class="form-control" id="homepageImageUpload" type="file" name="image" accept="image/jpeg,image/png,image/webp" required data-media-compress-image-input>
+                    <div class="form-text" data-media-compress-status>支持 JPG / PNG / WebP，上传前会自动压缩大图。</div>
                 </div>
                 <div class="col-12 col-lg-4 text-lg-end">
                     <button type="submit" class="btn btn-primary">
@@ -200,7 +200,7 @@
                 </form>
             </div>
 
-            <form class="row g-3 media-upload-card mb-3" method="post" action="{% url 'media_manager_upload_music' %}" enctype="multipart/form-data">
+            <form class="row g-3 media-upload-card mb-3" method="post" action="{% url 'media_manager_upload_music' %}" enctype="multipart/form-data" data-no-site-navigation>
                 {% csrf_token %}
                 <div class="col-12 col-lg-4">
                     <label class="form-label fw-semibold" for="musicAudioUpload">音频文件</label>
@@ -278,7 +278,7 @@
 
 <div class="modal fade" id="homepageImageEditModal" tabindex="-1" aria-labelledby="homepageImageEditModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <form class="modal-content" method="post" action="{% url 'media_manager_update_homepage_image' %}">
+        <form class="modal-content" method="post" action="{% url 'media_manager_update_homepage_image' %}" data-no-site-navigation>
             {% csrf_token %}
             <input id="modalHomepageFileName" type="hidden" name="file_name" value="">
             <div class="modal-header">
@@ -352,6 +352,123 @@
 {% block extra_js %}
 <script>
     (() => {
+        const MAX_HOMEPAGE_UPLOAD_EDGE = 1920;
+        const HOMEPAGE_UPLOAD_JPEG_QUALITY = 0.82;
+        const HOMEPAGE_UPLOAD_SKIP_BYTES = 900 * 1024;
+
+        function buildCompressedMediaImageName(fileName) {
+            const baseName = (fileName || 'homepage-image').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'homepage-image';
+            return `${baseName}.jpg`;
+        }
+
+        function updateMediaUploadStatus(formElement, statusText) {
+            const statusElement = formElement.querySelector('[data-media-compress-status]');
+            if (statusElement) statusElement.textContent = statusText;
+        }
+
+        function setMediaUploadButtonBusy(formElement, isBusy) {
+            const submitButton = formElement.querySelector('button[type="submit"]');
+            if (!submitButton) return;
+            if (!submitButton.dataset.originalText) submitButton.dataset.originalText = submitButton.innerHTML;
+            submitButton.disabled = isBusy;
+            submitButton.innerHTML = isBusy
+                ? '<i class="fas fa-spinner fa-spin me-1"></i>处理中'
+                : submitButton.dataset.originalText;
+        }
+
+        function replaceMediaUploadFile(fileInput, compressedFile) {
+            if (!window.DataTransfer || !compressedFile) return false;
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(compressedFile);
+            fileInput.files = dataTransfer.files;
+            return true;
+        }
+
+        function compressMediaManagerImage(imageFile) {
+            if (!imageFile || imageFile.size <= HOMEPAGE_UPLOAD_SKIP_BYTES || !/^image\//.test(imageFile.type) || imageFile.type === 'image/gif') {
+                return Promise.resolve(imageFile);
+            }
+
+            if (!window.FileReader || !window.Image || !document.createElement('canvas').toBlob) {
+                return Promise.resolve(imageFile);
+            }
+
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const image = new Image();
+                    image.onload = () => {
+                        const width = image.naturalWidth || image.width;
+                        const height = image.naturalHeight || image.height;
+                        const scale = Math.min(1, MAX_HOMEPAGE_UPLOAD_EDGE / Math.max(width, height));
+                        const targetWidth = Math.max(1, Math.round(width * scale));
+                        const targetHeight = Math.max(1, Math.round(height * scale));
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+
+                        if (!context) {
+                            resolve(imageFile);
+                            return;
+                        }
+
+                        canvas.width = targetWidth;
+                        canvas.height = targetHeight;
+                        context.fillStyle = '#ffffff';
+                        context.fillRect(0, 0, targetWidth, targetHeight);
+                        context.drawImage(image, 0, 0, targetWidth, targetHeight);
+                        canvas.toBlob((imageBlob) => {
+                            if (!imageBlob || imageBlob.size >= imageFile.size) {
+                                resolve(imageFile);
+                                return;
+                            }
+                            resolve(new File([imageBlob], buildCompressedMediaImageName(imageFile.name), {
+                                type: 'image/jpeg',
+                                lastModified: Date.now(),
+                            }));
+                        }, 'image/jpeg', HOMEPAGE_UPLOAD_JPEG_QUALITY);
+                    };
+                    image.onerror = () => resolve(imageFile);
+                    image.src = reader.result;
+                };
+                reader.onerror = () => resolve(imageFile);
+                reader.readAsDataURL(imageFile);
+            });
+        }
+
+        function submitMediaUploadForm(formElement) {
+            HTMLFormElement.prototype.submit.call(formElement);
+        }
+
+        document.querySelectorAll('[data-media-compress-image-form]').forEach((formElement) => {
+            formElement.addEventListener('submit', (event) => {
+                const fileInput = formElement.querySelector('[data-media-compress-image-input]');
+                const imageFile = fileInput && fileInput.files ? fileInput.files[0] : null;
+                if (!imageFile || formElement.dataset.mediaCompressReady === 'true') {
+                    return;
+                }
+
+                event.preventDefault();
+                setMediaUploadButtonBusy(formElement, true);
+                updateMediaUploadStatus(formElement, '正在压缩图片...');
+
+                compressMediaManagerImage(imageFile)
+                    .then((compressedFile) => {
+                        if (compressedFile && compressedFile.size < imageFile.size && replaceMediaUploadFile(fileInput, compressedFile)) {
+                            updateMediaUploadStatus(formElement, '图片已压缩，正在上传...');
+                        } else {
+                            updateMediaUploadStatus(formElement, '图片上传中...');
+                        }
+                        formElement.dataset.mediaCompressReady = 'true';
+                        submitMediaUploadForm(formElement);
+                    })
+                    .catch(() => {
+                        updateMediaUploadStatus(formElement, '图片上传中...');
+                        formElement.dataset.mediaCompressReady = 'true';
+                        submitMediaUploadForm(formElement);
+                    });
+            });
+        });
+
         const editModal = document.getElementById('homepageImageEditModal');
         if (!editModal) return;
 
