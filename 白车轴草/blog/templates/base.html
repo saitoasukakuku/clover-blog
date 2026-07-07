@@ -131,6 +131,13 @@
             transform: translateY(-1px);
         }
 
+        .quick-nav .quick-nav-link.is-active {
+            background: #e8f5e9;
+            border-color: #9ccc9c;
+            box-shadow: inset 0 0 0 1px rgba(46, 125, 50, .18);
+            color: #1b5e20;
+        }
+
         @media (max-width: 991.98px) {
             .quick-nav {
                 border-top: 1px solid #edf4ed;
@@ -440,9 +447,14 @@
             }
 
             .mobile-bottom-link:hover,
-            .mobile-bottom-link:focus {
+            .mobile-bottom-link:focus,
+            .mobile-bottom-link.is-active {
                 background: #f1f8e9;
                 color: #1b5e20;
+            }
+
+            .mobile-bottom-link.is-active {
+                box-shadow: inset 0 0 0 1px rgba(46, 125, 50, .16);
             }
 
             .mobile-bottom-link i {
@@ -641,53 +653,23 @@
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
-                aria-label="Toggle navigation">
+                aria-label="展开导航">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <!-- <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="#">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">Link</a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            Dropdown
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link disabled">Disabled</a>
-                    </li>
-                </ul> -->
-                <!-- <form class="d-flex" role="search">
-                    <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search">
-                    <button class="btn btn-outline-success" type="submit">Search</button>
-                </form> -->
-
                 <ul class="navbar-nav quick-nav ms-lg-auto me-lg-3 mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link quick-nav-link" href="{% url 'index' %}">
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' or request.resolver_match.url_name == 'favorite_posts' %} is-active{% endif %}" href="{% url 'index' %}"{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' or request.resolver_match.url_name == 'favorite_posts' %} aria-current="page"{% endif %}>
                             <i class="fas fa-book-open me-1"></i>阅读
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link quick-nav-link" href="{% url 'archive' %}">
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'archive' %} is-active{% endif %}" href="{% url 'archive' %}"{% if request.resolver_match.url_name == 'archive' %} aria-current="page"{% endif %}>
                             <i class="far fa-calendar-alt me-1"></i>归档
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link quick-nav-link" href="{% url 'tags' %}">
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'tags' %} is-active{% endif %}" href="{% url 'tags' %}"{% if request.resolver_match.url_name == 'tags' %} aria-current="page"{% endif %}>
                             <i class="fas fa-tags me-1"></i>标签
                         </a>
                     </li>
@@ -762,7 +744,7 @@
         {% for message in messages %}
         <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
             {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
         </div>
         {% endfor %}
     </div>
@@ -791,24 +773,24 @@
     </div>
 
     <nav class="mobile-bottom-nav" aria-label="手机底部导航">
-        <a class="mobile-bottom-link" href="{% url 'home' %}">
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'home' %} is-active{% endif %}" href="{% url 'home' %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap"><i class="fas fa-home"></i></span>
             <span>首页</span>
         </a>
-        <a class="mobile-bottom-link" href="{% url 'index' %}">
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' or request.resolver_match.url_name == 'favorite_posts' %} is-active{% endif %}" href="{% url 'index' %}"{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' or request.resolver_match.url_name == 'favorite_posts' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap"><i class="fas fa-book-open"></i></span>
             <span>阅读</span>
         </a>
-        <a class="mobile-bottom-link" href="{% url 'archive' %}">
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'archive' %} is-active{% endif %}" href="{% url 'archive' %}"{% if request.resolver_match.url_name == 'archive' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap"><i class="far fa-calendar-alt"></i></span>
             <span>归档</span>
         </a>
-        <a class="mobile-bottom-link" href="{% url 'tags' %}">
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'tags' %} is-active{% endif %}" href="{% url 'tags' %}"{% if request.resolver_match.url_name == 'tags' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap"><i class="fas fa-tags"></i></span>
             <span>标签</span>
         </a>
         {% if user.is_authenticated %}
-        <a class="mobile-bottom-link" href="{% url 'notifications' %}">
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'notifications' %} is-active{% endif %}" href="{% url 'notifications' %}"{% if request.resolver_match.url_name == 'notifications' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap">
                 <i class="fas fa-bell"></i>
                 {% if unread_notification_count %}
@@ -818,7 +800,7 @@
             <span>通知</span>
         </a>
         {% else %}
-        <a class="mobile-bottom-link" href="{% url 'login' %}">
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'login' or request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} is-active{% endif %}" href="{% url 'login' %}"{% if request.resolver_match.url_name == 'login' or request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap"><i class="fas fa-user"></i></span>
             <span>登录</span>
         </a>

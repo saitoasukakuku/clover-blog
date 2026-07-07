@@ -2417,6 +2417,24 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, '?q=Django&amp;category=life&amp;page=2')
         self.assertContains(response, 'value="Django"')
 
+    def test_index_pagination_uses_elided_page_range(self):
+        owner = User.objects.create_user(username='many-pages-owner', password='StrongPass12345')
+        for post_index in range(70):
+            Post.objects.create(
+                author=owner,
+                title=f'分页文章 {post_index:02d}',
+                category='life',
+                content='分页正文',
+                status='published',
+                visibility='public',
+            )
+
+        response = self.client.get(reverse('index'))
+
+        self.assertContains(response, 'pagination-ellipsis')
+        self.assertContains(response, '?page=12')
+        self.assertNotContains(response, '?page=6">6</a>')
+
     def test_index_shows_filtered_result_count(self):
         owner = User.objects.create_user(username='result-count-owner', password='StrongPass12345')
         Post.objects.create(author=owner, title='Django 入门', category='tech', content='筛选', status='published', visibility='public')
@@ -4757,6 +4775,8 @@ class SiteMusicPlayerTests(TestCase):
         self.assertIn('scheduleSiteMusicHoverClose', script_content)
         self.assertIn('clearSiteMusicHoverCloseTimer', script_content)
         self.assertIn('site-music-player.is-hovering .site-music-card', style_content)
+        self.assertIn('.site-page-loading::before', style_content)
+        self.assertIn('site-page-loading-progress', style_content)
 
     def test_base_template_loads_music_player_static_assets(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
@@ -5001,12 +5021,24 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, f'href="{reverse("index")}"')
         self.assertContains(response, f'href="{reverse("archive")}"')
         self.assertContains(response, f'href="{reverse("tags")}"')
+        self.assertContains(response, f'class="nav-link quick-nav-link is-active" href="{reverse("index")}" aria-current="page"')
+        self.assertContains(response, f'class="mobile-bottom-link is-active" href="{reverse("index")}" aria-current="page"')
         self.assertContains(response, 'body.has-mobile-bottom-nav')
         self.assertContains(response, 'css/site-music-player.css')
         music_style_path = settings.BASE_DIR / 'blog' / 'static' / 'css' / 'site-music-player.css'
         music_style_content = music_style_path.read_text(encoding='utf-8')
         self.assertIn('.site-music-player', music_style_content)
-        self.assertIn('bottom: 86px', music_style_content)
+        self.assertIn('bottom: calc(86px + env(safe-area-inset-bottom))', music_style_content)
+
+    def test_base_does_not_render_bootstrap_placeholder_navigation(self):
+        response = self.client.get(reverse('index'))
+
+        self.assertNotContains(response, 'Dropdown')
+        self.assertNotContains(response, 'Another action')
+        self.assertNotContains(response, 'placeholder="Search"')
+        self.assertNotContains(response, 'Disabled')
+        self.assertNotContains(response, 'Toggle navigation')
+        self.assertContains(response, 'aria-label="展开导航"')
 
     def test_base_links_pwa_manifest_and_registers_service_worker(self):
         response = self.client.get(reverse('index'))

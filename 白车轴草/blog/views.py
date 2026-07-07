@@ -1142,6 +1142,14 @@ def get_recently_read_posts(request):
     ]
 
 
+def build_elided_page_range(page_obj):
+    return page_obj.paginator.get_elided_page_range(
+        page_obj.number,
+        on_each_side=1,
+        on_ends=1,
+    )
+
+
 def get_user_display_name(user):
     if hasattr(user, 'profile'):
         return user.profile.display_name
@@ -1583,6 +1591,7 @@ def index(request):
     return render(request, 'index.html', {
         'posts': page_obj,
         'page_obj': page_obj,
+        'pagination_page_range': build_elided_page_range(page_obj),
         'selected_category': selected_category,
         'selected_category_label': selected_category_label,
         'selected_author': selected_author,
@@ -1638,6 +1647,7 @@ def author_profile(request, username):
         'relationship_status': get_relationship_status(request.user, author),
         'posts': page_obj,
         'page_obj': page_obj,
+        'pagination_page_range': build_elided_page_range(page_obj),
         'published_count': readable_posts.count(),
         'total_views': readable_posts.aggregate(total=Sum('views_count'))['total'] or 0,
     })
@@ -2259,6 +2269,7 @@ def favorite_posts(request):
     return render(request, 'favorites.html', {
         'favorites': page_obj,
         'page_obj': page_obj,
+        'pagination_page_range': build_elided_page_range(page_obj),
     })
 
 
@@ -2373,6 +2384,7 @@ def notifications_view(request):
     return render(request, 'notifications.html', {
         'notifications': page_obj,
         'page_obj': page_obj,
+        'pagination_page_range': build_elided_page_range(page_obj),
         'notification_status_options': [
             {'value': 'all', 'label': '全部状态'},
             {'value': 'unread', 'label': '未读'},
