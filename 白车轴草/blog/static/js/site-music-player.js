@@ -241,8 +241,15 @@
                 siteMusicAudio.currentTime = Math.min(options.currentTime, siteMusicAudio.duration || options.currentTime);
             }, { once: true });
         }
-        preloadSiteMusicTrack(currentTrack);
+        if (options.autoPlay) {
+            siteMusicAudio.preload = 'auto';
+        } else {
+            preloadSiteMusicTrack(currentTrack);
+        }
         preloadSiteMusicNeighbor(siteMusicCurrentIndex);
+        if (options.autoPlay) {
+            playSiteMusicAudio();
+        }
         updateSiteMusicPlayIcon();
     }
 
@@ -307,13 +314,11 @@
     });
 
     siteMusicPrev.addEventListener('click', () => {
-        loadSiteMusicTrack(getPreviousSiteMusicIndex());
-        playSiteMusicAudio();
+        loadSiteMusicTrack(getPreviousSiteMusicIndex(), { autoPlay: true });
     });
 
     siteMusicNext.addEventListener('click', () => {
-        loadSiteMusicTrack(getNextSiteMusicIndex());
-        playSiteMusicAudio();
+        loadSiteMusicTrack(getNextSiteMusicIndex(), { autoPlay: true });
     });
 
     siteMusicShuffle.addEventListener('click', () => {
@@ -339,15 +344,13 @@
         if (!trackButton) {
             return;
         }
-        loadSiteMusicTrack(Number(trackButton.dataset.trackIndex));
-        playSiteMusicAudio();
+        loadSiteMusicTrack(Number(trackButton.dataset.trackIndex), { autoPlay: true });
     });
 
     siteMusicAudio.addEventListener('play', updateSiteMusicPlayIcon);
     siteMusicAudio.addEventListener('pause', updateSiteMusicPlayIcon);
     siteMusicAudio.addEventListener('ended', () => {
-        loadSiteMusicTrack(getNextSiteMusicIndex({ fromEnded: true }));
-        playSiteMusicAudio();
+        loadSiteMusicTrack(getNextSiteMusicIndex({ fromEnded: true }), { autoPlay: true });
     });
     siteMusicAudio.addEventListener('timeupdate', () => {
         if (siteMusicAudio.duration) {
