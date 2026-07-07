@@ -323,12 +323,18 @@
 
     siteMusicShuffle.addEventListener('click', () => {
         siteMusicShuffleEnabled = !siteMusicShuffleEnabled;
+        if (siteMusicShuffleEnabled) {
+            siteMusicRepeatMode = 'all';
+        }
         updateSiteMusicQueueControls();
         saveSiteMusicState();
     });
 
     siteMusicRepeat.addEventListener('click', () => {
         siteMusicRepeatMode = siteMusicRepeatMode === 'one' ? 'all' : 'one';
+        if (siteMusicRepeatMode === 'one') {
+            siteMusicShuffleEnabled = false;
+        }
         updateSiteMusicQueueControls();
         saveSiteMusicState();
     });
