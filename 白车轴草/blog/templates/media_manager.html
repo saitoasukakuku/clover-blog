@@ -2,6 +2,104 @@
 
 {% block title %}媒体管理{% endblock %}
 
+{% block extra_css %}
+<style>
+    .media-manager-tabs {
+        position: sticky;
+        top: 74px;
+        z-index: 20;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid rgba(31, 94, 46, 0.12);
+        border-radius: 14px;
+        box-shadow: 0 10px 28px rgba(31, 94, 46, 0.08);
+        padding: 8px;
+        backdrop-filter: blur(10px);
+    }
+
+    .media-manager-tabs .nav-link {
+        color: #31543b;
+        font-weight: 700;
+        border-radius: 10px;
+    }
+
+    .media-manager-tabs .nav-link.active {
+        background: #1f8a4c;
+        color: #fff;
+    }
+
+    .media-manager-panel {
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(31, 94, 46, 0.1);
+        border-radius: 18px;
+        box-shadow: 0 16px 34px rgba(24, 56, 35, 0.08);
+        padding: clamp(16px, 3vw, 26px);
+    }
+
+    .media-homepage-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(188px, 1fr));
+        gap: 14px;
+    }
+
+    .media-image-card {
+        overflow: hidden;
+        background: #fff;
+        border: 1px solid rgba(31, 94, 46, 0.12);
+        border-radius: 14px;
+        box-shadow: 0 10px 22px rgba(22, 54, 34, 0.06);
+    }
+
+    .media-image-thumb-button {
+        display: block;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        text-align: left;
+    }
+
+    .media-image-thumb {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+        transition: transform 0.2s ease;
+    }
+
+    .media-image-thumb-button:hover .media-image-thumb,
+    .media-image-thumb-button:focus-visible .media-image-thumb {
+        transform: scale(1.03);
+    }
+
+    .media-image-card-body {
+        padding: 12px;
+    }
+
+    .media-image-title {
+        min-height: 2.8em;
+        color: #17251c;
+        font-weight: 700;
+        word-break: break-all;
+    }
+
+    .media-upload-card {
+        background: #fff;
+        border: 1px solid rgba(31, 94, 46, 0.12);
+        border-radius: 14px;
+        padding: 16px;
+    }
+
+    .media-modal-preview {
+        width: 100%;
+        max-height: 320px;
+        object-fit: cover;
+        border-radius: 14px;
+        border: 1px solid rgba(31, 94, 46, 0.12);
+        background: #f6faf7;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
@@ -14,192 +112,292 @@
         </a>
     </div>
 
-    <section class="mb-4">
-        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
-            <div>
-                <h2 class="h5 mb-1">首页图片</h2>
-                <p class="text-muted mb-0">上传后会出现在首页轮播；文案可用下方按钮批量生成。</p>
+    <ul class="nav nav-pills media-manager-tabs mb-4" id="mediaManagerTabs" role="tablist">
+        <li class="nav-item flex-fill" role="presentation">
+            <button class="nav-link active w-100" id="homepageImagesTab" data-bs-toggle="pill" data-bs-target="#homepageImagesPanel" type="button" role="tab" aria-controls="homepageImagesPanel" aria-selected="true">
+                <i class="fas fa-images me-1"></i>首页图片
+            </button>
+        </li>
+        <li class="nav-item flex-fill" role="presentation">
+            <button class="nav-link w-100" id="musicAssetsTab" data-bs-toggle="pill" data-bs-target="#musicAssetsPanel" type="button" role="tab" aria-controls="musicAssetsPanel" aria-selected="false">
+                <i class="fas fa-music me-1"></i>音乐资源
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <section class="tab-pane fade show active media-manager-panel mb-4" id="homepageImagesPanel" role="tabpanel" aria-labelledby="homepageImagesTab" tabindex="0">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+                <div>
+                    <h2 class="h5 mb-1">首页图片</h2>
+                    <p class="text-muted mb-0">上传后进入首页轮播，文案和排序在弹窗里修改。</p>
+                </div>
+                <form method="post" action="{% url 'media_manager_run_action' %}" data-no-site-navigation>
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="generate_homepage_copy">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i>生成首页文案
+                    </button>
+                </form>
             </div>
-            <form method="post" action="{% url 'media_manager_run_action' %}">
+
+            <form class="row g-3 align-items-end media-upload-card mb-3" method="post" action="{% url 'media_manager_upload_homepage_image' %}" enctype="multipart/form-data">
                 {% csrf_token %}
-                <input type="hidden" name="action" value="generate_homepage_copy">
-                <button type="submit" class="btn btn-success">
-                    <i class="fas fa-wand-magic-sparkles me-1"></i>生成首页文案
-                </button>
+                <div class="col-12 col-lg-8">
+                    <label class="form-label fw-semibold" for="homepageImageUpload">上传首页图</label>
+                    <input class="form-control" id="homepageImageUpload" type="file" name="image" accept="image/jpeg,image/png,image/webp" required>
+                    <div class="form-text">支持 JPG / PNG / WebP，单张不超过 5MB。</div>
+                </div>
+                <div class="col-12 col-lg-4 text-lg-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload me-1"></i>上传图片
+                    </button>
+                </div>
             </form>
-        </div>
 
-        <form class="row g-3 align-items-end bg-white border rounded-3 p-3 mb-3" method="post" action="{% url 'media_manager_upload_homepage_image' %}" enctype="multipart/form-data">
-            {% csrf_token %}
-            <div class="col-12 col-lg-8">
-                <label class="form-label fw-semibold" for="homepageImageUpload">上传首页图</label>
-                <input class="form-control" id="homepageImageUpload" type="file" name="image" accept="image/jpeg,image/png,image/webp" required>
-                <div class="form-text">支持 JPG / PNG / WebP，单张不超过 5MB。</div>
-            </div>
-            <div class="col-12 col-lg-4 text-lg-end">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-upload me-1"></i>上传图片
-                </button>
-            </div>
-        </form>
-
-        <div class="vstack gap-3">
-            {% for image_item in homepage_media_items %}
-            <form class="bg-white border rounded-3 p-3" method="post" action="{% url 'media_manager_update_homepage_image' %}">
-                {% csrf_token %}
-                <input type="hidden" name="file_name" value="{{ image_item.file_name }}">
-                <div class="row g-3 align-items-start">
-                    <div class="col-12 col-xl-3">
-                        <img class="img-fluid rounded-3 border mb-2" src="{{ image_item.image_url }}" alt="{{ image_item.file_name }}">
-                        <div class="fw-semibold text-break">{{ image_item.file_name }}</div>
-                        <div class="small text-muted">{{ image_item.file_size|filesizeformat }} · {{ image_item.updated_at|date:"Y-m-d H:i" }}</div>
-                    </div>
-                    <div class="col-12 col-xl-2">
-                        <label class="form-label fw-semibold" for="homepageImageOrder{{ forloop.counter }}">排序</label>
-                        <input class="form-control" id="homepageImageOrder{{ forloop.counter }}" type="number" name="sort_order" value="{{ image_item.sort_order|default_if_none:'' }}" placeholder="自动">
-                        <div class="form-check form-switch mt-3">
-                            <input class="form-check-input" id="homepageImageHidden{{ forloop.counter }}" type="checkbox" name="is_hidden" {% if image_item.is_hidden %}checked{% endif %}>
-                            <label class="form-check-label" for="homepageImageHidden{{ forloop.counter }}">隐藏</label>
-                        </div>
-                        <div class="mt-3">
+            <div class="media-homepage-grid">
+                {% for image_item in homepage_media_items %}
+                <article class="media-image-card">
+                    <button class="media-image-thumb-button media-image-modal-trigger" type="button" data-bs-toggle="modal" data-bs-target="#homepageImageEditModal" data-file-name="{{ image_item.file_name }}" data-image-url="{{ image_item.image_url }}" data-file-size="{{ image_item.file_size|filesizeformat }}" data-updated-at="{{ image_item.updated_at|date:'Y-m-d H:i' }}" data-sort-order="{{ image_item.sort_order|default_if_none:'' }}" data-is-hidden="{% if image_item.is_hidden %}true{% else %}false{% endif %}" data-kicker="{{ image_item.copy_kicker }}" data-headline="{{ image_item.copy_headline }}" data-lead="{{ image_item.copy_lead }}" data-card-title="{{ image_item.copy_card_title }}" data-card-text="{{ image_item.copy_card_text }}" data-moods="{{ image_item.copy_moods_text }}">
+                        <img class="media-image-thumb" src="{{ image_item.image_url }}" alt="{{ image_item.file_name }}">
+                    </button>
+                    <div class="media-image-card-body">
+                        <div class="media-image-title">{{ image_item.file_name }}</div>
+                        <div class="small text-muted mb-2">{{ image_item.file_size|filesizeformat }} · {{ image_item.updated_at|date:"Y-m-d H:i" }}</div>
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                             {% if image_item.has_copy %}
                             <span class="badge text-bg-success">已有文案</span>
                             {% else %}
                             <span class="badge text-bg-secondary">未写文案</span>
                             {% endif %}
+                            {% if image_item.is_hidden %}
+                            <span class="badge text-bg-warning">已隐藏</span>
+                            {% endif %}
+                            <button class="btn btn-sm btn-outline-success ms-auto" type="button" data-homepage-edit-proxy>
+                                <i class="fas fa-pen me-1"></i>编辑
+                            </button>
                         </div>
                     </div>
-                    <div class="col-12 col-xl-7">
-                        <div class="row g-2">
+                </article>
+                {% empty %}
+                <div class="bg-white border rounded-3 p-4 text-center text-muted">还没有首页图片。</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="tab-pane fade media-manager-panel mb-4" id="musicAssetsPanel" role="tabpanel" aria-labelledby="musicAssetsTab" tabindex="0">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+                <div>
+                    <h2 class="h5 mb-1">音乐资源</h2>
+                    <p class="text-muted mb-0">音频、封面和歌词会按同名文件保存，播放器会自动识别。</p>
+                </div>
+                <form method="post" action="{% url 'media_manager_run_action' %}" data-no-site-navigation>
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="prepare_music_playback">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-gauge-high me-1"></i>生成播放版
+                    </button>
+                </form>
+            </div>
+
+            <form class="row g-3 media-upload-card mb-3" method="post" action="{% url 'media_manager_upload_music' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="col-12 col-lg-4">
+                    <label class="form-label fw-semibold" for="musicAudioUpload">音频文件</label>
+                    <input class="form-control" id="musicAudioUpload" type="file" name="audio" accept=".mp3,.flac,.wav,.m4a,.ogg,audio/*" required>
+                    <div class="form-text">支持 MP3 / FLAC / WAV / M4A / OGG，单首不超过 200MB。</div>
+                </div>
+                <div class="col-12 col-lg-4">
+                    <label class="form-label fw-semibold" for="musicCoverUpload">同名封面</label>
+                    <input class="form-control" id="musicCoverUpload" type="file" name="cover" accept="image/jpeg,image/png,image/webp">
+                </div>
+                <div class="col-12 col-lg-4">
+                    <label class="form-label fw-semibold" for="musicLyricsUpload">同名歌词</label>
+                    <input class="form-control" id="musicLyricsUpload" type="file" name="lyrics" accept=".lrc,.txt,text/plain">
+                </div>
+                <div class="col-12 text-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload me-1"></i>上传音乐
+                    </button>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle bg-white">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">音频</th>
+                            <th scope="col">大小</th>
+                            <th scope="col">播放版</th>
+                            <th scope="col">封面</th>
+                            <th scope="col">歌词</th>
+                            <th scope="col">更新时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for music_item in music_media_items %}
+                        <tr>
+                            <td>{{ music_item.file_name }}</td>
+                            <td>{{ music_item.file_size|filesizeformat }}</td>
+                            <td>
+                                {% if music_item.has_web_playback %}
+                                <span class="badge text-bg-success">已生成</span>
+                                <span class="small text-muted ms-1">{{ music_item.web_playback_file_name }}</span>
+                                {% else %}
+                                <span class="badge text-bg-warning">未生成</span>
+                                <span class="small text-muted ms-1">{{ music_item.web_playback_file_name }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if music_item.cover_file_name %}
+                                {{ music_item.cover_file_name }}
+                                {% else %}
+                                <span class="text-muted">无</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if music_item.lyrics_file_name %}
+                                {{ music_item.lyrics_file_name }}
+                                {% else %}
+                                <span class="text-muted">无</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ music_item.updated_at|date:"Y-m-d H:i" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">还没有音乐文件。</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="modal fade" id="homepageImageEditModal" tabindex="-1" aria-labelledby="homepageImageEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'media_manager_update_homepage_image' %}">
+            {% csrf_token %}
+            <input id="modalHomepageFileName" type="hidden" name="file_name" value="">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title h5" id="homepageImageEditModalLabel">编辑首页图片</h2>
+                    <div class="small text-muted" id="modalHomepageMeta"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-4">
+                    <div class="col-12 col-lg-5">
+                        <img class="media-modal-preview mb-3" id="modalHomepagePreview" src="" alt="">
+                        <div class="row g-3">
                             <div class="col-12 col-md-6">
-                                <label class="form-label" for="homepageCopyKicker{{ forloop.counter }}">小标题</label>
-                                <input class="form-control" id="homepageCopyKicker{{ forloop.counter }}" type="text" name="kicker" value="{{ image_item.copy_kicker }}">
+                                <label class="form-label fw-semibold" for="modalHomepageSortOrder">排序</label>
+                                <input class="form-control" id="modalHomepageSortOrder" type="number" name="sort_order" placeholder="自动">
+                            </div>
+                            <div class="col-12 col-md-6 d-flex align-items-end">
+                                <div class="form-check form-switch pb-2">
+                                    <input class="form-check-input" id="modalHomepageHidden" type="checkbox" name="is_hidden">
+                                    <label class="form-check-label" for="modalHomepageHidden">隐藏</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-7">
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="modalHomepageCopyKicker">小标题</label>
+                                <input class="form-control" id="modalHomepageCopyKicker" type="text" name="kicker">
                             </div>
                             <div class="col-12 col-md-6">
-                                <label class="form-label" for="homepageCopyMoods{{ forloop.counter }}">氛围标签</label>
-                                <input class="form-control" id="homepageCopyMoods{{ forloop.counter }}" type="text" name="moods" value="{{ image_item.copy_moods_text }}" placeholder="最多 3 个，用逗号隔开">
+                                <label class="form-label" for="modalHomepageCopyMoods">氛围标签</label>
+                                <input class="form-control" id="modalHomepageCopyMoods" type="text" name="moods" placeholder="最多 3 个，用逗号隔开">
                             </div>
                             <div class="col-12">
-                                <label class="form-label" for="homepageCopyHeadline{{ forloop.counter }}">主标题</label>
-                                <input class="form-control" id="homepageCopyHeadline{{ forloop.counter }}" type="text" name="headline" value="{{ image_item.copy_headline }}">
+                                <label class="form-label" for="modalHomepageCopyHeadline">主标题</label>
+                                <input class="form-control" id="modalHomepageCopyHeadline" type="text" name="headline">
                             </div>
                             <div class="col-12">
-                                <label class="form-label" for="homepageCopyLead{{ forloop.counter }}">首屏说明</label>
-                                <input class="form-control" id="homepageCopyLead{{ forloop.counter }}" type="text" name="lead" value="{{ image_item.copy_lead }}">
+                                <label class="form-label" for="modalHomepageCopyLead">首屏说明</label>
+                                <input class="form-control" id="modalHomepageCopyLead" type="text" name="lead">
                             </div>
                             <div class="col-12 col-md-5">
-                                <label class="form-label" for="homepageCopyCardTitle{{ forloop.counter }}">卡片标题</label>
-                                <input class="form-control" id="homepageCopyCardTitle{{ forloop.counter }}" type="text" name="card_title" value="{{ image_item.copy_card_title }}">
+                                <label class="form-label" for="modalHomepageCopyCardTitle">卡片标题</label>
+                                <input class="form-control" id="modalHomepageCopyCardTitle" type="text" name="card_title">
                             </div>
                             <div class="col-12 col-md-7">
-                                <label class="form-label" for="homepageCopyCardText{{ forloop.counter }}">卡片文字</label>
-                                <input class="form-control" id="homepageCopyCardText{{ forloop.counter }}" type="text" name="card_text" value="{{ image_item.copy_card_text }}">
-                            </div>
-                            <div class="col-12 d-flex flex-wrap justify-content-end gap-2 pt-2">
-                                <a class="btn btn-outline-success" href="{{ image_item.image_url }}" target="_blank" rel="noopener">
-                                    <i class="fas fa-eye me-1"></i>查看
-                                </a>
-                                <button class="btn btn-primary" type="submit">
-                                    <i class="fas fa-save me-1"></i>保存
-                                </button>
+                                <label class="form-label" for="modalHomepageCopyCardText">卡片文字</label>
+                                <input class="form-control" id="modalHomepageCopyCardText" type="text" name="card_text">
                             </div>
                         </div>
                     </div>
                 </div>
-            </form>
-            {% empty %}
-            <div class="bg-white border rounded-3 p-4 text-center text-muted">还没有首页图片。</div>
-            {% endfor %}
-        </div>
-    </section>
-
-    <section class="mb-4">
-        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
-            <div>
-                <h2 class="h5 mb-1">音乐资源</h2>
-                <p class="text-muted mb-0">音频、封面和歌词会按同名文件保存，播放器会自动识别。</p>
             </div>
-            <form method="post" action="{% url 'media_manager_run_action' %}">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="prepare_music_playback">
-                <button type="submit" class="btn btn-success">
-                    <i class="fas fa-gauge-high me-1"></i>生成播放版
-                </button>
-            </form>
-        </div>
-
-        <form class="row g-3 bg-white border rounded-3 p-3 mb-3" method="post" action="{% url 'media_manager_upload_music' %}" enctype="multipart/form-data">
-            {% csrf_token %}
-            <div class="col-12 col-lg-4">
-                <label class="form-label fw-semibold" for="musicAudioUpload">音频文件</label>
-                <input class="form-control" id="musicAudioUpload" type="file" name="audio" accept=".mp3,.flac,.wav,.m4a,.ogg,audio/*" required>
-                <div class="form-text">支持 MP3 / FLAC / WAV / M4A / OGG，单首不超过 200MB。</div>
-            </div>
-            <div class="col-12 col-lg-4">
-                <label class="form-label fw-semibold" for="musicCoverUpload">同名封面</label>
-                <input class="form-control" id="musicCoverUpload" type="file" name="cover" accept="image/jpeg,image/png,image/webp">
-            </div>
-            <div class="col-12 col-lg-4">
-                <label class="form-label fw-semibold" for="musicLyricsUpload">同名歌词</label>
-                <input class="form-control" id="musicLyricsUpload" type="file" name="lyrics" accept=".lrc,.txt,text/plain">
-            </div>
-            <div class="col-12 text-end">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-upload me-1"></i>上传音乐
+            <div class="modal-footer">
+                <a class="btn btn-outline-success" id="modalHomepageViewLink" href="#" target="_blank" rel="noopener">
+                    <i class="fas fa-eye me-1"></i>查看
+                </a>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-primary" type="submit">
+                    <i class="fas fa-save me-1"></i>保存
                 </button>
             </div>
         </form>
-
-        <div class="table-responsive">
-            <table class="table table-hover align-middle bg-white">
-                <thead class="table-light">
-                    <tr>
-                        <th scope="col">音频</th>
-                        <th scope="col">大小</th>
-                        <th scope="col">播放版</th>
-                        <th scope="col">封面</th>
-                        <th scope="col">歌词</th>
-                        <th scope="col">更新时间</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for music_item in music_media_items %}
-                    <tr>
-                        <td>{{ music_item.file_name }}</td>
-                        <td>{{ music_item.file_size|filesizeformat }}</td>
-                        <td>
-                            {% if music_item.has_web_playback %}
-                            <span class="badge text-bg-success">已生成</span>
-                            <span class="small text-muted ms-1">{{ music_item.web_playback_file_name }}</span>
-                            {% else %}
-                            <span class="badge text-bg-warning">未生成</span>
-                            <span class="small text-muted ms-1">{{ music_item.web_playback_file_name }}</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if music_item.cover_file_name %}
-                            {{ music_item.cover_file_name }}
-                            {% else %}
-                            <span class="text-muted">无</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if music_item.lyrics_file_name %}
-                            {{ music_item.lyrics_file_name }}
-                            {% else %}
-                            <span class="text-muted">无</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ music_item.updated_at|date:"Y-m-d H:i" }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="6" class="text-center text-muted py-4">还没有音乐文件。</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </section>
+    </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (() => {
+        const editModal = document.getElementById('homepageImageEditModal');
+        if (!editModal) return;
+
+        document.querySelectorAll('[data-homepage-edit-proxy]').forEach((proxyButton) => {
+            proxyButton.addEventListener('click', () => {
+                const imageCard = proxyButton.closest('.media-image-card');
+                const imageTrigger = imageCard ? imageCard.querySelector('.media-image-modal-trigger') : null;
+                if (imageTrigger) imageTrigger.click();
+            });
+        });
+
+        const modalFields = {
+            fileName: document.getElementById('modalHomepageFileName'),
+            meta: document.getElementById('modalHomepageMeta'),
+            preview: document.getElementById('modalHomepagePreview'),
+            viewLink: document.getElementById('modalHomepageViewLink'),
+            sortOrder: document.getElementById('modalHomepageSortOrder'),
+            hidden: document.getElementById('modalHomepageHidden'),
+            kicker: document.getElementById('modalHomepageCopyKicker'),
+            headline: document.getElementById('modalHomepageCopyHeadline'),
+            lead: document.getElementById('modalHomepageCopyLead'),
+            cardTitle: document.getElementById('modalHomepageCopyCardTitle'),
+            cardText: document.getElementById('modalHomepageCopyCardText'),
+            moods: document.getElementById('modalHomepageCopyMoods'),
+        };
+
+        editModal.addEventListener('show.bs.modal', (event) => {
+            const trigger = event.relatedTarget;
+            if (!trigger) return;
+
+            const imageUrl = trigger.dataset.imageUrl || '';
+            const fileName = trigger.dataset.fileName || '';
+            modalFields.fileName.value = fileName;
+            modalFields.meta.textContent = `${fileName} · ${trigger.dataset.fileSize || ''} · ${trigger.dataset.updatedAt || ''}`;
+            modalFields.preview.src = imageUrl;
+            modalFields.preview.alt = fileName;
+            modalFields.viewLink.href = imageUrl || '#';
+            modalFields.sortOrder.value = trigger.dataset.sortOrder || '';
+            modalFields.hidden.checked = trigger.dataset.isHidden === 'true';
+            modalFields.kicker.value = trigger.dataset.kicker || '';
+            modalFields.headline.value = trigger.dataset.headline || '';
+            modalFields.lead.value = trigger.dataset.lead || '';
+            modalFields.cardTitle.value = trigger.dataset.cardTitle || '';
+            modalFields.cardText.value = trigger.dataset.cardText || '';
+            modalFields.moods.value = trigger.dataset.moods || '';
+        });
+    })();
+</script>
 {% endblock %}

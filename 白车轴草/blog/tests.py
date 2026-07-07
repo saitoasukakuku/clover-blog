@@ -4344,6 +4344,36 @@ class SiteMusicPlayerTests(TestCase):
         self.assertContains(response, 'song.web.m4a')
         self.assertContains(response, '已生成')
 
+    def test_media_manager_uses_tabs_and_modal_image_editor(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            homepage_image_directory = os.path.join(temporary_media_root, 'index_img')
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(homepage_image_directory)
+            os.makedirs(music_directory)
+            for image_file_name in ['first.jpg', 'second.jpg']:
+                Image.new('RGB', (32, 32), color=(120, 160, 200)).save(
+                    os.path.join(homepage_image_directory, image_file_name),
+                    format='JPEG',
+                )
+            with open(os.path.join(music_directory, 'song.mp3'), 'wb') as music_file:
+                music_file.write(b'fake mp3')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('media_manager'))
+
+        self.assertContains(response, 'id="mediaManagerTabs"')
+        self.assertContains(response, 'data-bs-target="#homepageImagesPanel"')
+        self.assertContains(response, 'data-bs-target="#musicAssetsPanel"')
+        self.assertContains(response, 'id="homepageImageEditModal"', count=1)
+        self.assertContains(response, 'data-bs-target="#homepageImageEditModal"', count=2)
+        self.assertContains(response, 'media-homepage-grid')
+        self.assertContains(response, 'media-image-card')
+        self.assertNotContains(response, 'homepageCopyKicker1')
+        self.assertContains(response, 'song.mp3')
+
     def test_superuser_can_upload_homepage_image_from_media_manager(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
         self.client.login(username='media-admin', password='StrongPass12345')
@@ -4477,6 +4507,30 @@ class SiteMusicPlayerTests(TestCase):
         self.assertRedirects(response, reverse('media_manager'))
         call_command_mock.assert_called_once()
         self.assertEqual(call_command_mock.call_args.args[:3], ('generate_homepage_copy', '--batch-size', '8'))
+
+    def test_media_manager_action_forms_do_not_use_partial_navigation(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        response = self.client.get(reverse('media_manager'))
+
+        self.assertContains(response, 'action="/media-manager/actions/run/"')
+        self.assertContains(response, 'data-no-site-navigation', count=2)
+
+    def test_media_manager_shows_command_errors_on_same_page(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+
+        with patch('blog.views.call_command', side_effect=CommandError('OpenAI vision API HTTP error 404: not found')):
+            response = self.client.post(
+                reverse('media_manager_run_action'),
+                {'action': 'generate_homepage_copy'},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'media_manager.html')
+        self.assertContains(response, 'OpenAI vision API HTTP error 404')
 
     def test_media_manager_post_actions_require_superuser_and_post(self):
         User.objects.create_user(username='reader', password='StrongPass12345')
