@@ -302,12 +302,27 @@
 .site-music-control.active {
     background: #2e7d32;
     border-color: #2e7d32;
+    box-shadow: 0 0 0 2px rgba(46, 125, 50, .28);
     color: #fff;
+    position: relative;
+}
+
+.site-music-control.active::after {
+    background: currentColor;
+    border-radius: 50%;
+    bottom: -1px;
+    content: '';
+    height: 4px;
+    left: 50%;
+    position: absolute;
+    transform: translateX(-50%);
+    width: 4px;
 }
 
 .site-music-card.has-cover .site-music-control.active {
-    background: rgba(255, 255, 255, .26);
-    border-color: rgba(255, 255, 255, .42);
+    background: rgba(255, 255, 255, .36);
+    border-color: rgba(255, 255, 255, .62);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, .18), inset 0 0 8px rgba(255, 255, 255, .12);
     color: #fff;
 }
 

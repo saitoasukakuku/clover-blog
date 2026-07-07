@@ -307,19 +307,13 @@
     });
 
     siteMusicPrev.addEventListener('click', () => {
-        const wasPlaying = !siteMusicAudio.paused;
         loadSiteMusicTrack(getPreviousSiteMusicIndex());
-        if (wasPlaying) {
-            playSiteMusicAudio();
-        }
+        playSiteMusicAudio();
     });
 
     siteMusicNext.addEventListener('click', () => {
-        const wasPlaying = !siteMusicAudio.paused;
         loadSiteMusicTrack(getNextSiteMusicIndex());
-        if (wasPlaying) {
-            playSiteMusicAudio();
-        }
+        playSiteMusicAudio();
     });
 
     siteMusicShuffle.addEventListener('click', () => {
@@ -345,11 +339,8 @@
         if (!trackButton) {
             return;
         }
-        const wasPlaying = !siteMusicAudio.paused;
         loadSiteMusicTrack(Number(trackButton.dataset.trackIndex));
-        if (wasPlaying) {
-            playSiteMusicAudio();
-        }
+        playSiteMusicAudio();
     });
 
     siteMusicAudio.addEventListener('play', updateSiteMusicPlayIcon);
