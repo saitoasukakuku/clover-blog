@@ -100,6 +100,7 @@ AI_COVER_TOKEN_SALT = 'blog.ai-cover'
 AI_COVER_TOKEN_MAX_AGE_SECONDS = 7200
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_MUSIC_UPLOAD_BYTES = 200 * 1024 * 1024
+MAX_MUSIC_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 MAX_LYRICS_UPLOAD_BYTES = 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = {
     'jpeg': 'jpg',
@@ -715,9 +716,22 @@ def build_music_media_items():
             file_stem,
             MUSIC_LYRICS_EXTENSIONS,
         )
+        lyrics_text = ''
+        if lyrics_file_name:
+            try:
+                with open(
+                    os.path.join(music_directory, lyrics_file_name),
+                    'r',
+                    encoding='utf-8',
+                    errors='replace',
+                ) as lyrics_file:
+                    lyrics_text = lyrics_file.read(MAX_LYRICS_UPLOAD_BYTES + 1)
+            except OSError:
+                lyrics_text = ''
         music_file_stat = os.stat(music_file_path)
         media_items.append({
             'file_name': music_file_name,
+            'file_stem': file_stem,
             'file_size': music_file_stat.st_size,
             'updated_at': timezone.datetime.fromtimestamp(
                 music_file_stat.st_mtime,
@@ -727,8 +741,93 @@ def build_music_media_items():
             'has_web_playback': os.path.exists(web_playback_path),
             'cover_file_name': cover_file_name,
             'lyrics_file_name': lyrics_file_name,
+            'lyrics_text': lyrics_text[:MAX_LYRICS_UPLOAD_BYTES],
         })
     return media_items
+
+
+def redirect_to_music_manager():
+    return redirect(f'{reverse("media_manager")}?tab=music')
+
+
+def get_music_media_item_by_file_name(file_name):
+    normalized_file_name = os.path.basename(file_name or '')
+    if normalized_file_name != file_name:
+        return None
+    return next(
+        (
+            music_item
+            for music_item in build_music_media_items()
+            if music_item['file_name'] == normalized_file_name
+        ),
+        None,
+    )
+
+
+def get_existing_music_asset_file_names(music_item):
+    asset_file_names = [music_item['file_name']]
+    for optional_file_name in (
+        music_item['web_playback_file_name'] if music_item['has_web_playback'] else None,
+        music_item['cover_file_name'],
+        music_item['lyrics_file_name'],
+    ):
+        if optional_file_name:
+            asset_file_names.append(optional_file_name)
+    return asset_file_names
+
+
+def build_music_asset_rename_plan(music_item, target_file_stem):
+    original_file_name = music_item['file_name']
+    original_file_stem = os.path.splitext(original_file_name)[0]
+    return [
+        (
+            source_file_name,
+            f'{target_file_stem}{source_file_name[len(original_file_stem):]}',
+        )
+        for source_file_name in get_existing_music_asset_file_names(music_item)
+    ]
+
+
+def music_rename_plan_has_collision(music_directory, rename_plan):
+    source_file_names = {
+        source_file_name.casefold()
+        for source_file_name, _ in rename_plan
+    }
+    try:
+        current_file_names = {
+            current_file_name.casefold()
+            for current_file_name in os.listdir(music_directory)
+        }
+    except OSError:
+        current_file_names = set()
+    return any(
+        target_file_name.casefold() in current_file_names
+        and target_file_name.casefold() not in source_file_names
+        for _, target_file_name in rename_plan
+    )
+
+
+def move_music_assets(music_directory, rename_plan):
+    for source_file_name, target_file_name in rename_plan:
+        if source_file_name == target_file_name:
+            continue
+        os.replace(
+            os.path.join(music_directory, source_file_name),
+            os.path.join(music_directory, target_file_name),
+        )
+
+
+def remove_music_asset_file(music_directory, file_name):
+    if not file_name:
+        return
+    file_path = os.path.join(music_directory, file_name)
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+
+
+def find_music_asset_file_name(music_directory, file_stem, extensions):
+    file_name, _ = find_same_name_file(music_directory, file_stem, extensions)
+    return file_name
 
 
 def build_admin_dashboard_stats():
@@ -780,9 +879,19 @@ def media_manager(request):
     if forbidden_response is not None:
         return forbidden_response
 
+    music_media_items = build_music_media_items()
     return render(request, 'media_manager.html', {
         'homepage_media_items': build_homepage_media_items(),
-        'music_media_items': build_music_media_items(),
+        'music_media_items': music_media_items,
+        'music_lyrics_by_file_name': {
+            music_item['file_name']: music_item['lyrics_text']
+            for music_item in music_media_items
+        },
+        'active_media_tab': (
+            'music'
+            if request.GET.get('tab') == 'music'
+            else 'homepage'
+        ),
     })
 
 
@@ -896,13 +1005,13 @@ def media_manager_upload_music(request):
     uploaded_audio = request.FILES.get('audio')
     if uploaded_audio is None:
         messages.error(request, INVALID_AUDIO_FILE_MESSAGE)
-        return redirect('media_manager')
+        return redirect_to_music_manager()
 
     try:
         audio_extension = validate_uploaded_music_file(uploaded_audio)
     except ValueError as error:
         messages.error(request, str(error))
-        return redirect('media_manager')
+        return redirect_to_music_manager()
 
     uploaded_cover = request.FILES.get('cover')
     validated_cover = None
@@ -915,7 +1024,7 @@ def media_manager_upload_music(request):
             )
         except ValueError as error:
             messages.error(request, str(error))
-            return redirect('media_manager')
+            return redirect_to_music_manager()
 
     uploaded_lyrics = request.FILES.get('lyrics')
     lyrics_extension = ''
@@ -924,7 +1033,7 @@ def media_manager_upload_music(request):
             lyrics_extension = validate_uploaded_lyrics_file(uploaded_lyrics)
         except ValueError as error:
             messages.error(request, str(error))
-            return redirect('media_manager')
+            return redirect_to_music_manager()
 
     audio_file_stem = build_safe_media_file_stem(uploaded_audio.name, 'music-track')
     audio_file_name = f'{audio_file_stem}{audio_extension}'
@@ -938,7 +1047,233 @@ def media_manager_upload_music(request):
         save_media_upload(MUSIC_DIR_NAME, f'{saved_audio_file_stem}{lyrics_extension}', uploaded_lyrics)
 
     messages.success(request, f'已上传音乐：{saved_audio_file_name}')
-    return redirect('media_manager')
+    return redirect_to_music_manager()
+
+
+def parse_music_chunk_integer(raw_value, field_name):
+    try:
+        parsed_value = int(raw_value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f'{field_name}无效。') from error
+    if parsed_value < 0:
+        raise ValueError(f'{field_name}无效。')
+    return parsed_value
+
+
+def build_music_chunk_upload_path(user_id, upload_id):
+    if not re.fullmatch(r'[a-f0-9]{32}', upload_id or ''):
+        raise ValueError('上传标识无效，请重新选择文件。')
+    upload_directory = os.path.join(settings.MEDIA_ROOT, 'music_uploads')
+    os.makedirs(upload_directory, exist_ok=True)
+    return os.path.join(upload_directory, f'{user_id}-{upload_id}.part')
+
+
+@login_required
+@require_POST
+def media_manager_upload_music_chunk(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    uploaded_chunk = request.FILES.get('chunk')
+    if uploaded_chunk is None or uploaded_chunk.size > MAX_MUSIC_UPLOAD_CHUNK_BYTES:
+        return JsonResponse({'error': '音乐分片缺失或过大，请重试。'}, status=400)
+
+    raw_file_name = os.path.basename(request.POST.get('file_name', '').strip())
+    audio_extension = os.path.splitext(raw_file_name)[1].lower()
+    if audio_extension not in MUSIC_AUDIO_EXTENSIONS:
+        return JsonResponse({'error': INVALID_AUDIO_FILE_MESSAGE}, status=400)
+
+    try:
+        expected_file_size = parse_music_chunk_integer(request.POST.get('file_size'), '文件大小')
+        chunk_start = parse_music_chunk_integer(request.POST.get('chunk_start'), '分片位置')
+        upload_path = build_music_chunk_upload_path(
+            request.user.id,
+            request.POST.get('upload_id', '').strip().lower(),
+        )
+    except ValueError as error:
+        return JsonResponse({'error': str(error)}, status=400)
+
+    if expected_file_size <= 0 or expected_file_size > MAX_MUSIC_UPLOAD_BYTES:
+        return JsonResponse({'error': OVERSIZED_AUDIO_MESSAGE}, status=400)
+    if chunk_start + uploaded_chunk.size > expected_file_size:
+        return JsonResponse({'error': '音乐分片超过文件声明大小，请重新上传。'}, status=400)
+
+    uploaded_cover = request.FILES.get('cover')
+    validated_cover = None
+    cover_extension = ''
+    if uploaded_cover is not None:
+        try:
+            validated_cover = validate_uploaded_image_file(uploaded_cover)
+            cover_extension = normalize_image_extension(
+                get_upload_file_extension(uploaded_cover).lstrip('.') or 'jpg',
+            )
+        except ValueError as error:
+            return JsonResponse({'error': str(error)}, status=400)
+
+    uploaded_lyrics = request.FILES.get('lyrics')
+    lyrics_extension = ''
+    if uploaded_lyrics is not None:
+        try:
+            lyrics_extension = validate_uploaded_lyrics_file(uploaded_lyrics)
+        except ValueError as error:
+            return JsonResponse({'error': str(error)}, status=400)
+
+    current_upload_size = os.path.getsize(upload_path) if os.path.isfile(upload_path) else 0
+    if chunk_start == 0:
+        upload_mode = 'wb'
+    elif current_upload_size == chunk_start:
+        upload_mode = 'ab'
+    else:
+        return JsonResponse({
+            'error': '上传进度不一致，请重新选择文件后重试。',
+            'received_bytes': current_upload_size,
+        }, status=409)
+
+    with open(upload_path, upload_mode) as upload_file:
+        for chunk_bytes in uploaded_chunk.chunks():
+            upload_file.write(chunk_bytes)
+
+    received_file_size = os.path.getsize(upload_path)
+    is_final_chunk = request.POST.get('is_final') == 'true'
+    if not is_final_chunk:
+        return JsonResponse({
+            'complete': False,
+            'received_bytes': received_file_size,
+        })
+
+    if received_file_size != expected_file_size:
+        return JsonResponse({
+            'error': '音乐文件大小校验失败，请重新上传。',
+            'received_bytes': received_file_size,
+        }, status=400)
+
+    audio_file_stem = build_safe_media_file_stem(raw_file_name, 'music-track')
+    audio_file_name = f'{audio_file_stem}{audio_extension}'
+    available_relative_path = default_storage.get_available_name(
+        f'{MUSIC_DIR_NAME}/{audio_file_name}',
+    )
+    available_audio_file_name = os.path.basename(available_relative_path)
+    available_audio_file_stem = os.path.splitext(available_audio_file_name)[0]
+    audio_file_path = os.path.join(settings.MEDIA_ROOT, available_relative_path)
+    os.makedirs(os.path.dirname(audio_file_path), exist_ok=True)
+    os.replace(upload_path, audio_file_path)
+
+    if validated_cover is not None:
+        save_media_upload(
+            MUSIC_DIR_NAME,
+            f'{available_audio_file_stem}.{cover_extension}',
+            validated_cover,
+        )
+    if uploaded_lyrics is not None:
+        save_media_upload(
+            MUSIC_DIR_NAME,
+            f'{available_audio_file_stem}{lyrics_extension}',
+            uploaded_lyrics,
+        )
+
+    return JsonResponse({
+        'complete': True,
+        'file_name': available_audio_file_name,
+        'message': f'已上传音乐：{available_audio_file_name}',
+        'redirect_url': f'{reverse("media_manager")}?tab=music',
+    })
+
+
+@login_required
+@require_POST
+def media_manager_update_music(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    original_file_name = request.POST.get('original_file_name', '').strip()
+    music_item = get_music_media_item_by_file_name(original_file_name)
+    if music_item is None:
+        messages.error(request, '音乐文件不存在。')
+        return redirect_to_music_manager()
+
+    target_file_stem = build_safe_media_file_stem(
+        request.POST.get('track_name', ''),
+        os.path.splitext(original_file_name)[0],
+    )
+    music_directory = os.path.join(settings.MEDIA_ROOT, MUSIC_DIR_NAME)
+    rename_plan = build_music_asset_rename_plan(music_item, target_file_stem)
+    if music_rename_plan_has_collision(music_directory, rename_plan):
+        messages.error(request, '同名音乐资源已经存在，请换一个名称。')
+        return redirect_to_music_manager()
+
+    uploaded_cover = request.FILES.get('cover')
+    validated_cover = None
+    cover_extension = ''
+    if uploaded_cover is not None:
+        try:
+            validated_cover = validate_uploaded_image_file(uploaded_cover)
+            cover_extension = normalize_image_extension(
+                get_upload_file_extension(uploaded_cover).lstrip('.') or 'jpg',
+            )
+        except ValueError as error:
+            messages.error(request, str(error))
+            return redirect_to_music_manager()
+
+    uploaded_lyrics = request.FILES.get('lyrics')
+    lyrics_extension = ''
+    if uploaded_lyrics is not None:
+        try:
+            lyrics_extension = validate_uploaded_lyrics_file(uploaded_lyrics)
+        except ValueError as error:
+            messages.error(request, str(error))
+            return redirect_to_music_manager()
+
+    lyrics_text = request.POST.get('lyrics_text', '')
+    if len(lyrics_text.encode('utf-8')) > MAX_LYRICS_UPLOAD_BYTES:
+        messages.error(request, OVERSIZED_LYRICS_MESSAGE)
+        return redirect_to_music_manager()
+
+    move_music_assets(music_directory, rename_plan)
+
+    current_cover_file_name = find_music_asset_file_name(
+        music_directory,
+        target_file_stem,
+        MUSIC_COVER_EXTENSIONS,
+    )
+    remove_cover_requested = request.POST.get('remove_cover') == 'on'
+    if remove_cover_requested or validated_cover is not None:
+        remove_music_asset_file(music_directory, current_cover_file_name)
+    if validated_cover is not None and not remove_cover_requested:
+        save_media_upload(
+            MUSIC_DIR_NAME,
+            f'{target_file_stem}.{cover_extension}',
+            validated_cover,
+        )
+
+    current_lyrics_file_name = find_music_asset_file_name(
+        music_directory,
+        target_file_stem,
+        MUSIC_LYRICS_EXTENSIONS,
+    )
+    remove_lyrics_requested = request.POST.get('remove_lyrics') == 'on'
+    should_replace_lyrics = (
+        not remove_lyrics_requested
+        and (uploaded_lyrics is not None or bool(lyrics_text.strip()))
+    )
+    if remove_lyrics_requested or should_replace_lyrics:
+        remove_music_asset_file(music_directory, current_lyrics_file_name)
+    if uploaded_lyrics is not None and not remove_lyrics_requested:
+        save_media_upload(
+            MUSIC_DIR_NAME,
+            f'{target_file_stem}{lyrics_extension}',
+            uploaded_lyrics,
+        )
+    elif lyrics_text.strip() and not remove_lyrics_requested:
+        save_media_upload(
+            MUSIC_DIR_NAME,
+            f'{target_file_stem}.lrc',
+            ContentFile(lyrics_text.encode('utf-8')),
+        )
+
+    messages.success(request, f'已更新音乐：{target_file_stem}')
+    return redirect_to_music_manager()
 
 
 @login_required
@@ -1944,7 +2279,7 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     messages.success(request, '已退出登录。')
-    return redirect('index')
+    return redirect('home')
 
 @login_required
 def user_center(request):
@@ -2284,10 +2619,24 @@ def toggle_favorite(request, post_id):
 
     if favorite:
         favorite.delete()
-        messages.info(request, '已取消收藏。')
+        is_favorited = False
+        response_message = '已取消收藏。'
     else:
         PostFavorite.objects.create(user=request.user, post=post)
-        messages.success(request, '文章已加入收藏。')
+        is_favorited = True
+        response_message = '文章已加入收藏。'
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'active': is_favorited,
+            'label': '已收藏' if is_favorited else '收藏',
+            'message': response_message,
+        })
+
+    if is_favorited:
+        messages.success(request, response_message)
+    else:
+        messages.info(request, response_message)
 
     fallback_url = reverse('post_detail', args=[post.id])
     return redirect(get_safe_post_next_url(request, fallback_url))
@@ -2304,10 +2653,25 @@ def toggle_post_like(request, post_id):
 
     if post_like:
         post_like.delete()
-        messages.info(request, '已取消点赞。')
+        is_liked = False
+        response_message = '已取消点赞。'
     else:
         PostLike.objects.create(user=request.user, post=post)
-        messages.success(request, '已点赞。')
+        is_liked = True
+        response_message = '已点赞。'
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'active': is_liked,
+            'count': PostLike.objects.filter(post=post).count(),
+            'label': '已赞' if is_liked else '点赞',
+            'message': response_message,
+        })
+
+    if is_liked:
+        messages.success(request, response_message)
+    else:
+        messages.info(request, response_message)
 
     fallback_url = reverse('post_detail', args=[post.id])
     return redirect(get_safe_post_next_url(request, fallback_url))

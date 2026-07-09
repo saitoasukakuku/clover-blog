@@ -302,6 +302,38 @@
         font-weight: 600;
     }
 
+    .post-toggle-button {
+        position: relative;
+        transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
+    }
+
+    .post-toggle-button.is-burst {
+        animation: postToggleBurst .42s cubic-bezier(.2, .9, .3, 1.35);
+    }
+
+    .post-toggle-button.is-busy {
+        cursor: wait;
+        opacity: .78;
+    }
+
+    @keyframes postToggleBurst {
+        0% {
+            transform: scale(1);
+        }
+
+        45% {
+            transform: scale(.9);
+        }
+
+        75% {
+            transform: scale(1.12);
+        }
+
+        100% {
+            transform: scale(1);
+        }
+    }
+
     .post-interaction-panel {
         background: rgba(247, 252, 247, 0.9);
         border: 1px solid rgba(var(--theme-primary), 0.14);
@@ -944,22 +976,25 @@
 
                         <div class="d-flex gap-2 flex-wrap justify-content-end">
                             {% if user.is_authenticated %}
-                            <form method="post" action="{% url 'toggle_favorite' post.id %}">
+                            <form method="post" action="{% url 'toggle_favorite' post.id %}" data-post-toggle-form data-toggle-kind="favorite" data-no-site-navigation>
                                 {% csrf_token %}
                                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                 <button type="submit"
-                                        class="btn {% if is_favorited %}btn-success{% else %}btn-outline-success{% endif %} btn-sm rounded-pill">
-                                    <i class="{% if is_favorited %}fas{% else %}far{% endif %} fa-bookmark me-1"></i>
-                                    {% if is_favorited %}已收藏{% else %}收藏{% endif %}
+                                        class="btn {% if is_favorited %}btn-success{% else %}btn-outline-success{% endif %} btn-sm rounded-pill post-toggle-button"
+                                        aria-pressed="{% if is_favorited %}true{% else %}false{% endif %}">
+                                    <i class="{% if is_favorited %}fas{% else %}far{% endif %} fa-bookmark me-1" data-toggle-icon></i>
+                                    <span data-toggle-label>{% if is_favorited %}已收藏{% else %}收藏{% endif %}</span>
                                 </button>
                             </form>
-                            <form method="post" action="{% url 'toggle_post_like' post.id %}">
+                            <form method="post" action="{% url 'toggle_post_like' post.id %}" data-post-toggle-form data-toggle-kind="like" data-no-site-navigation>
                                 {% csrf_token %}
                                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                 <button type="submit"
-                                        class="btn {% if is_liked %}btn-success{% else %}btn-outline-success{% endif %} btn-sm rounded-pill">
-                                    <i class="{% if is_liked %}fas{% else %}far{% endif %} fa-thumbs-up me-1"></i>
-                                    {% if is_liked %}已赞{% else %}点赞{% endif %} {{ like_count }}
+                                        class="btn {% if is_liked %}btn-success{% else %}btn-outline-success{% endif %} btn-sm rounded-pill post-toggle-button"
+                                        aria-pressed="{% if is_liked %}true{% else %}false{% endif %}">
+                                    <i class="{% if is_liked %}fas{% else %}far{% endif %} fa-thumbs-up me-1" data-toggle-icon></i>
+                                    <span data-toggle-label>{% if is_liked %}已赞{% else %}点赞{% endif %}</span>
+                                    <span data-toggle-count>{{ like_count }}</span>
                                 </button>
                             </form>
                             {% else %}
@@ -1515,6 +1550,73 @@
 
 {% block extra_js %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+    (() => {
+        function animatePostToggleButton(buttonElement) {
+            buttonElement.classList.remove('is-burst');
+            void buttonElement.offsetWidth;
+            buttonElement.classList.add('is-burst');
+            window.setTimeout(() => buttonElement.classList.remove('is-burst'), 460);
+        }
+
+        function updatePostToggleButton(formElement, responseData) {
+            const buttonElement = formElement.querySelector('.post-toggle-button');
+            const iconElement = formElement.querySelector('[data-toggle-icon]');
+            const labelElement = formElement.querySelector('[data-toggle-label]');
+            const countElement = formElement.querySelector('[data-toggle-count]');
+            const isActive = Boolean(responseData.active);
+
+            buttonElement.classList.toggle('btn-success', isActive);
+            buttonElement.classList.toggle('btn-outline-success', !isActive);
+            buttonElement.setAttribute('aria-pressed', String(isActive));
+            iconElement.classList.toggle('fas', isActive);
+            iconElement.classList.toggle('far', !isActive);
+            labelElement.textContent = responseData.label;
+            if (countElement && Number.isInteger(responseData.count)) {
+                countElement.textContent = String(responseData.count);
+            }
+            animatePostToggleButton(buttonElement);
+        }
+
+        document.querySelectorAll('[data-post-toggle-form]').forEach((formElement) => {
+            formElement.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const buttonElement = formElement.querySelector('.post-toggle-button');
+                if (buttonElement.classList.contains('is-busy')) return;
+
+                animatePostToggleButton(buttonElement);
+                buttonElement.classList.add('is-busy');
+                buttonElement.disabled = true;
+                try {
+                    const response = await fetch(formElement.action, {
+                        method: 'POST',
+                        body: new FormData(formElement),
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+                    const responseData = await response.json();
+                    if (!response.ok) {
+                        throw new Error(responseData.error || '操作失败，请稍后重试。');
+                    }
+                    updatePostToggleButton(formElement, responseData);
+                    if (window.cloverShowToast) {
+                        window.cloverShowToast(responseData.message, responseData.active ? 'success' : 'info');
+                    }
+                } catch (requestError) {
+                    if (window.cloverShowToast) {
+                        window.cloverShowToast(requestError.message, 'danger', 6000);
+                    }
+                } finally {
+                    buttonElement.classList.remove('is-busy');
+                    buttonElement.disabled = false;
+                }
+            });
+        });
+    })();
+</script>
 <script>
     (() => {
         const readingProgressBar = document.getElementById('readingProgressBar');

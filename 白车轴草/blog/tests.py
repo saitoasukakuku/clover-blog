@@ -2249,13 +2249,13 @@ class AuthViewsTests(TestCase):
         self.assertEqual(third_post.tags, 'Django')
         self.assertEqual(system_tag_post.tags, 'daily:2026-07-06')
 
-    def test_base_navigation_links_to_archive_and_tags_pages(self):
+    def test_base_navigation_prioritizes_account_actions_over_archive_and_tags(self):
         response = self.client.get(reverse('index'))
 
-        self.assertContains(response, f'href="{reverse("archive")}"')
-        self.assertContains(response, f'href="{reverse("tags")}"')
-        self.assertContains(response, '归档')
-        self.assertContains(response, '标签')
+        self.assertContains(response, f'href="{reverse("login")}"')
+        self.assertContains(response, f'href="{reverse("register")}"')
+        self.assertNotContains(response, f'href="{reverse("archive")}"')
+        self.assertNotContains(response, f'href="{reverse("tags")}"')
 
     def test_index_about_card_uses_current_user_profile_and_post_stats(self):
         owner = User.objects.create_superuser(username='root', password='StrongPass12345')
@@ -3259,7 +3259,7 @@ class AuthViewsTests(TestCase):
 
         response = self.client.get(reverse('logout'))
 
-        self.assertRedirects(response, reverse('index'))
+        self.assertRedirects(response, reverse('home'))
         self.assertNotIn('_auth_user_id', self.client.session)
 
     def test_user_center_requires_login(self):
@@ -3765,6 +3765,33 @@ class FavoritePostTests(TestCase):
         PostFavorite = self.get_favorite_model()
         self.assertTrue(PostFavorite.objects.filter(user=reader, post=post).exists())
 
+    def test_ajax_favorite_returns_state_without_queuing_page_message(self):
+        author = User.objects.create_user(username='ajax-favorite-author', password='StrongPass12345')
+        reader = User.objects.create_user(username='ajax-favorite-reader', password='StrongPass12345')
+        post = Post.objects.create(
+            author=author,
+            title='AJAX favorite post',
+            category='reading',
+            content='Readable content',
+            status='published',
+            visibility='public',
+        )
+        self.client.login(username='ajax-favorite-reader', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('toggle_favorite', args=[post.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        followup_response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            'active': True,
+            'label': '已收藏',
+            'message': '文章已加入收藏。',
+        })
+        self.assertNotContains(followup_response, '文章已加入收藏。')
+
     def test_repeating_favorite_post_removes_favorite(self):
         author = User.objects.create_user(username='toggle-author', password='StrongPass12345')
         reader = User.objects.create_user(username='toggle-reader', password='StrongPass12345')
@@ -3890,6 +3917,26 @@ class PostInteractionTests(TestCase):
         self.assertRedirects(like_response, reverse('post_detail', args=[post.id]))
         self.assertRedirects(unlike_response, reverse('post_detail', args=[post.id]))
         self.assertFalse(PostLike.objects.filter(user=reader, post=post).exists())
+
+    def test_ajax_like_returns_updated_count_without_queuing_page_message(self):
+        _, post = self.create_public_post()
+        reader = User.objects.create_user(username='ajax-like-reader', password='StrongPass12345')
+        self.client.login(username='ajax-like-reader', password='StrongPass12345')
+
+        response = self.client.post(
+            reverse('toggle_post_like', args=[post.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        followup_response = self.client.get(reverse('post_detail', args=[post.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            'active': True,
+            'count': 1,
+            'label': '已赞',
+            'message': '已点赞。',
+        })
+        self.assertNotContains(followup_response, '已点赞。')
 
     def test_user_cannot_like_unreadable_private_post(self):
         author = User.objects.create_user(username='private-like-author', password='StrongPass12345')
@@ -4392,6 +4439,27 @@ class SiteMusicPlayerTests(TestCase):
         self.assertNotContains(response, 'homepageCopyKicker1')
         self.assertContains(response, 'song.mp3')
 
+    def test_media_manager_music_inventory_opens_edit_modal_and_tracks_upload_progress(self):
+        User.objects.create_superuser(username='mobile-media-admin', password='StrongPass12345')
+        self.client.login(username='mobile-media-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'mobile-song.mp3'), 'wb') as music_file:
+                music_file.write(b'fake mp3')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.get(reverse('media_manager'), {'tab': 'music'})
+
+        self.assertContains(response, 'id="musicAssetEditModal"')
+        self.assertContains(response, 'data-music-edit-trigger')
+        self.assertContains(response, 'data-media-music-upload-form')
+        self.assertContains(response, 'data-media-upload-progress')
+        self.assertContains(response, 'XMLHttpRequest')
+        self.assertContains(response, 'musicAssetsTab')
+        self.assertContains(response, 'class="tab-pane fade show active media-manager-panel mb-4" id="musicAssetsPanel"')
+
     def test_superuser_can_upload_homepage_image_from_media_manager(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
         self.client.login(username='media-admin', password='StrongPass12345')
@@ -4470,8 +4538,165 @@ class SiteMusicPlayerTests(TestCase):
                 saved_music_directory = os.path.join(temporary_media_root, 'music')
                 saved_music_file_names = sorted(os.listdir(saved_music_directory))
 
-        self.assertRedirects(response, reverse('media_manager'))
+        self.assertRedirects(response, f'{reverse("media_manager")}?tab=music')
         self.assertEqual(saved_music_file_names, ['new-song.jpg', 'new-song.lrc', 'new-song.mp3'])
+
+    def test_superuser_can_upload_large_music_in_sequential_chunks(self):
+        User.objects.create_superuser(username='chunk-media-admin', password='StrongPass12345')
+        self.client.login(username='chunk-media-admin', password='StrongPass12345')
+        upload_id = 'a' * 32
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                first_response = self.client.post('/media-manager/music/upload/chunk/', {
+                    'upload_id': upload_id,
+                    'file_name': 'large-song.flac',
+                    'file_size': '16',
+                    'chunk_start': '0',
+                    'is_final': 'false',
+                    'chunk': SimpleUploadedFile('chunk.bin', b'fLaC1234'),
+                })
+                final_response = self.client.post('/media-manager/music/upload/chunk/', {
+                    'upload_id': upload_id,
+                    'file_name': 'large-song.flac',
+                    'file_size': '16',
+                    'chunk_start': '8',
+                    'is_final': 'true',
+                    'chunk': SimpleUploadedFile('chunk.bin', b'56789012'),
+                    'cover': build_uploaded_test_image('large-cover.jpg'),
+                    'lyrics': SimpleUploadedFile(
+                        'large-song.lrc',
+                        '[00:01.00]large'.encode('utf-8'),
+                        content_type='text/plain',
+                    ),
+                })
+                saved_music_directory = os.path.join(temporary_media_root, 'music')
+                saved_music_file_names = (
+                    sorted(os.listdir(saved_music_directory))
+                    if os.path.isdir(saved_music_directory)
+                    else []
+                )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(first_response.json()['complete'], False)
+        self.assertEqual(final_response.status_code, 200)
+        self.assertEqual(final_response.json()['complete'], True)
+        self.assertEqual(
+            saved_music_file_names,
+            ['large-song.flac', 'large-song.jpg', 'large-song.lrc'],
+        )
+
+    def test_music_chunk_upload_rejects_data_beyond_declared_file_size(self):
+        User.objects.create_superuser(username='chunk-boundary-admin', password='StrongPass12345')
+        self.client.login(username='chunk-boundary-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post('/media-manager/music/upload/chunk/', {
+                    'upload_id': 'b' * 32,
+                    'file_name': 'oversized.mp3',
+                    'file_size': '4',
+                    'chunk_start': '0',
+                    'is_final': 'true',
+                    'chunk': SimpleUploadedFile('chunk.bin', b'12345'),
+                })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], '音乐分片超过文件声明大小，请重新上传。')
+
+    def test_superuser_can_rename_music_and_replace_cover_and_lyrics(self):
+        User.objects.create_superuser(username='edit-media-admin', password='StrongPass12345')
+        self.client.login(username='edit-media-admin', password='StrongPass12345')
+
+        replacement_lyrics = '[00:02.00]新的歌词'
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'old-song.flac'), 'wb') as music_file:
+                music_file.write(b'fLaC fake audio')
+            with open(os.path.join(music_directory, 'old-song.web.m4a'), 'wb') as playback_file:
+                playback_file.write(b'web playback')
+            with open(os.path.join(music_directory, 'old-song.jpg'), 'wb') as cover_file:
+                cover_file.write(b'old cover')
+            with open(os.path.join(music_directory, 'old-song.lrc'), 'w', encoding='utf-8') as lyrics_file:
+                lyrics_file.write('[00:01.00]旧歌词')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post('/media-manager/music/update/', {
+                    'original_file_name': 'old-song.flac',
+                    'track_name': 'new song',
+                    'cover': build_uploaded_test_image('replacement.png'),
+                    'lyrics_text': replacement_lyrics,
+                })
+                saved_music_file_names = sorted(os.listdir(music_directory))
+                saved_lyrics_path = os.path.join(music_directory, 'new-song.lrc')
+                saved_lyrics = None
+                if os.path.exists(saved_lyrics_path):
+                    with open(saved_lyrics_path, 'r', encoding='utf-8') as lyrics_file:
+                        saved_lyrics = lyrics_file.read()
+
+        self.assertRedirects(response, f'{reverse("media_manager")}?tab=music')
+        self.assertEqual(
+            saved_music_file_names,
+            ['new-song.flac', 'new-song.lrc', 'new-song.png', 'new-song.web.m4a'],
+        )
+        self.assertEqual(saved_lyrics, replacement_lyrics)
+
+    def test_music_resource_update_rejects_name_collision_without_moving_files(self):
+        User.objects.create_superuser(username='collision-media-admin', password='StrongPass12345')
+        self.client.login(username='collision-media-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            for music_file_name in ['first.mp3', 'second.mp3']:
+                with open(os.path.join(music_directory, music_file_name), 'wb') as music_file:
+                    music_file.write(b'fake mp3')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post('/media-manager/music/update/', {
+                    'original_file_name': 'first.mp3',
+                    'track_name': 'second',
+                })
+                saved_music_file_names = sorted(os.listdir(music_directory))
+
+        self.assertRedirects(response, f'{reverse("media_manager")}?tab=music')
+        self.assertEqual(saved_music_file_names, ['first.mp3', 'second.mp3'])
+
+    def test_music_resource_update_can_remove_existing_lyrics(self):
+        User.objects.create_superuser(username='remove-lyrics-admin', password='StrongPass12345')
+        self.client.login(username='remove-lyrics-admin', password='StrongPass12345')
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            music_directory = os.path.join(temporary_media_root, 'music')
+            os.makedirs(music_directory)
+            with open(os.path.join(music_directory, 'song.mp3'), 'wb') as music_file:
+                music_file.write(b'fake mp3')
+            with open(os.path.join(music_directory, 'song.lrc'), 'w', encoding='utf-8') as lyrics_file:
+                lyrics_file.write('[00:01.00]旧歌词')
+
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post('/media-manager/music/update/', {
+                    'original_file_name': 'song.mp3',
+                    'track_name': 'song',
+                    'lyrics_text': '[00:01.00]旧歌词',
+                    'remove_lyrics': 'on',
+                })
+                saved_music_file_names = sorted(os.listdir(music_directory))
+
+        self.assertRedirects(response, f'{reverse("media_manager")}?tab=music')
+        self.assertEqual(saved_music_file_names, ['song.mp3'])
+
+    def test_music_resource_update_requires_superuser_and_post(self):
+        User.objects.create_user(username='media-editor-reader', password='StrongPass12345')
+        self.client.login(username='media-editor-reader', password='StrongPass12345')
+
+        forbidden_response = self.client.post('/media-manager/music/update/', {
+            'original_file_name': 'song.mp3',
+            'track_name': 'renamed',
+        })
+
+        self.assertEqual(forbidden_response.status_code, 403)
 
     def test_media_manager_music_upload_does_not_save_partial_files_when_cover_is_invalid(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
@@ -4501,7 +4726,7 @@ class SiteMusicPlayerTests(TestCase):
                     else []
                 )
 
-        self.assertRedirects(response, reverse('media_manager'))
+        self.assertRedirects(response, f'{reverse("media_manager")}?tab=music')
         self.assertEqual(saved_music_file_names, [])
 
     def test_media_manager_can_trigger_media_commands(self):
@@ -4533,7 +4758,7 @@ class SiteMusicPlayerTests(TestCase):
         response = self.client.get(reverse('media_manager'))
 
         self.assertContains(response, 'action="/media-manager/actions/run/"')
-        self.assertContains(response, 'data-no-site-navigation', count=5)
+        self.assertContains(response, 'data-no-site-navigation', count=6)
 
     def test_media_manager_compresses_homepage_image_before_upload(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
@@ -5019,8 +5244,10 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertContains(response, 'aria-label="手机底部导航"')
         self.assertContains(response, f'href="{reverse("home")}"')
         self.assertContains(response, f'href="{reverse("index")}"')
-        self.assertContains(response, f'href="{reverse("archive")}"')
-        self.assertContains(response, f'href="{reverse("tags")}"')
+        self.assertContains(response, f'href="{reverse("login")}"')
+        self.assertContains(response, f'href="{reverse("register")}"')
+        self.assertNotContains(response, f'class="mobile-bottom-link" href="{reverse("archive")}"')
+        self.assertNotContains(response, f'class="mobile-bottom-link" href="{reverse("tags")}"')
         self.assertContains(response, f'class="nav-link quick-nav-link is-active" href="{reverse("index")}" aria-current="page"')
         self.assertContains(response, f'class="mobile-bottom-link is-active" href="{reverse("index")}" aria-current="page"')
         self.assertContains(response, 'body.has-mobile-bottom-nav')
@@ -5029,6 +5256,43 @@ class HomepageTemplateIntegrationTests(TestCase):
         music_style_content = music_style_path.read_text(encoding='utf-8')
         self.assertIn('.site-music-player', music_style_content)
         self.assertIn('bottom: calc(86px + env(safe-area-inset-bottom))', music_style_content)
+
+    def test_partial_navigation_refreshes_mobile_navigation_state(self):
+        music_script_path = settings.BASE_DIR / 'blog' / 'static' / 'js' / 'site-music-player.js'
+        music_script_content = music_script_path.read_text(encoding='utf-8')
+
+        self.assertIn('replaceSiteMobileNavigation', music_script_content)
+        self.assertIn("querySelector('.mobile-bottom-nav')", music_script_content)
+
+    def test_authenticated_navigation_prioritizes_writing_favorites_and_notifications(self):
+        user = User.objects.create_user(username='navigation-writer', password='StrongPass12345')
+        Notification.objects.create(
+            recipient=user,
+            notification_type='private_message',
+            message='未读提醒',
+        )
+        self.client.login(username='navigation-writer', password='StrongPass12345')
+
+        response = self.client.get(reverse('home'))
+
+        self.assertContains(response, '写文章')
+        self.assertContains(response, '我的收藏')
+        self.assertContains(response, '通知')
+        self.assertContains(response, 'mobile-bottom-badge')
+        self.assertContains(response, '>1</span>')
+        self.assertNotContains(response, f'class="mobile-bottom-link" href="{reverse("archive")}"')
+        self.assertNotContains(response, f'class="mobile-bottom-link" href="{reverse("tags")}"')
+
+    def test_base_renders_timed_toast_region_instead_of_visible_message_alerts(self):
+        user = User.objects.create_user(username='toast-user', password='StrongPass12345')
+        self.client.login(username='toast-user', password='StrongPass12345')
+        response = self.client.get(reverse('logout'), follow=True)
+
+        self.assertContains(response, 'id="siteToastRegion"')
+        self.assertContains(response, 'site-flash-queue')
+        self.assertContains(response, 'site-toast-progress')
+        self.assertContains(response, 'window.cloverShowToast')
+        self.assertNotContains(response, 'alert alert-success')
 
     def test_base_does_not_render_bootstrap_placeholder_navigation(self):
         response = self.client.get(reverse('index'))
@@ -5091,8 +5355,8 @@ class HomepageTemplateIntegrationTests(TestCase):
 
         self.assertTemplateUsed(response, 'index.html')
         self.assertTemplateUsed(response, 'base.html')
-        self.assertContains(response, '归档')
-        self.assertContains(response, '标签')
+        self.assertContains(response, '登录')
+        self.assertContains(response, '注册')
         self.assertContains(response, '搜索文章')
         self.assertContains(response, 'Homepage inherited post')
         self.assertContains(response, 'window.cloverSiteNavigate')
@@ -5104,7 +5368,8 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertTemplateUsed(response, 'home.html')
         self.assertTemplateUsed(response, 'base.html')
         self.assertContains(response, 'site:before-navigate')
-        self.assertContains(response, '看最近更新')
+        self.assertContains(response, '登录')
+        self.assertContains(response, '浏览文章')
         self.assertContains(response, reverse('index'))
 
         index_response = self.client.get(reverse('index'))
@@ -5113,13 +5378,16 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertTemplateUsed(index_response, 'index.html')
         self.assertContains(index_response, '搜索文章')
 
-    def test_home_recent_updates_button_uses_scripted_scroll_without_hash_anchor(self):
+    def test_authenticated_home_actions_link_to_writing_and_favorites(self):
+        User.objects.create_user(username='home-action-writer', password='StrongPass12345')
+        self.client.login(username='home-action-writer', password='StrongPass12345')
+
         response = self.client.get(reverse('home'))
 
-        self.assertContains(response, 'data-home-scroll-target="home-latest"')
-        self.assertContains(response, 'scrollToHomeSection')
-        self.assertContains(response, 'history.replaceState')
-        self.assertNotContains(response, 'href="#home-latest"')
+        self.assertContains(response, '写文章')
+        self.assertContains(response, '我的收藏')
+        self.assertContains(response, f'href="{reverse("create_post")}"')
+        self.assertContains(response, f'href="{reverse("favorite_posts")}"')
 
     def test_home_feature_card_does_not_show_current_image_eyebrow(self):
         response = self.client.get(reverse('home'))

@@ -435,6 +435,17 @@
         await executeSitePageScripts(currentScripts);
     }
 
+    function replaceSiteMobileNavigation(incomingDocument) {
+        const currentMobileNavigation = document.querySelector('.mobile-bottom-nav');
+        const incomingMobileNavigation = incomingDocument.querySelector('.mobile-bottom-nav');
+        if (!currentMobileNavigation || !incomingMobileNavigation) {
+            return;
+        }
+        currentMobileNavigation.replaceWith(
+            document.importNode(incomingMobileNavigation, true),
+        );
+    }
+
     function shouldSkipSiteUrl(url) {
         return (
             url.origin !== window.location.origin
@@ -510,6 +521,7 @@
         window.dispatchEvent(new CustomEvent('site:before-navigate'));
         replaceSiteExtraCss(incomingDocument);
         currentShell.innerHTML = incomingShell.innerHTML;
+        replaceSiteMobileNavigation(incomingDocument);
         await replaceSiteExtraScripts(incomingDocument);
 
         const finalUrl = response.url || options.url;

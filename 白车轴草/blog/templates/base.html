@@ -31,6 +31,90 @@
             display: none;
         }
 
+        .site-toast-region {
+            bottom: 22px;
+            display: grid;
+            gap: 10px;
+            max-width: min(380px, calc(100vw - 28px));
+            position: fixed;
+            right: 18px;
+            width: 100%;
+            z-index: 1090;
+        }
+
+        .site-toast {
+            background: #fff;
+            border: 1px solid #dfe9e1;
+            border-left: 4px solid #2e7d32;
+            border-radius: 8px;
+            box-shadow: 0 16px 38px rgba(19, 50, 27, .2);
+            color: #26352b;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .site-toast.is-info {
+            border-left-color: #3978a8;
+        }
+
+        .site-toast.is-warning {
+            border-left-color: #d69222;
+        }
+
+        .site-toast.is-error,
+        .site-toast.is-danger {
+            border-left-color: #c83d3d;
+        }
+
+        .site-toast-content {
+            align-items: flex-start;
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+            padding: 13px 14px 12px;
+        }
+
+        .site-toast-message {
+            font-size: .92rem;
+            line-height: 1.55;
+        }
+
+        .site-toast-close {
+            background: transparent;
+            border: 0;
+            color: #6c786f;
+            flex: 0 0 auto;
+            line-height: 1;
+            padding: 3px;
+        }
+
+        .site-toast-progress {
+            animation: siteToastCountdown linear forwards;
+            background: #2e7d32;
+            height: 3px;
+            transform-origin: left;
+            width: 100%;
+        }
+
+        .site-toast.is-info .site-toast-progress {
+            background: #3978a8;
+        }
+
+        .site-toast.is-warning .site-toast-progress {
+            background: #d69222;
+        }
+
+        .site-toast.is-error .site-toast-progress,
+        .site-toast.is-danger .site-toast-progress {
+            background: #c83d3d;
+        }
+
+        @keyframes siteToastCountdown {
+            to {
+                transform: scaleX(0);
+            }
+        }
+
         .pwa-install-button {
             align-items: center;
             background: #1b5e20;
@@ -421,12 +505,19 @@
                 box-shadow: 0 16px 38px rgba(22, 66, 28, .18);
                 display: grid;
                 gap: 4px;
-                grid-template-columns: repeat(5, minmax(0, 1fr));
                 left: 12px;
                 padding: 7px 8px;
                 position: fixed;
                 right: 12px;
                 z-index: 1040;
+            }
+
+            .mobile-bottom-nav.is-authenticated {
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+            }
+
+            .mobile-bottom-nav.is-guest {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
             }
 
             .mobile-bottom-link {
@@ -497,6 +588,14 @@
             .pwa-install-button {
                 bottom: calc(86px + env(safe-area-inset-bottom));
                 right: 12px;
+            }
+
+            .site-toast-region {
+                bottom: calc(90px + env(safe-area-inset-bottom));
+                left: 12px;
+                max-width: none;
+                right: 12px;
+                width: auto;
             }
         }
 
@@ -663,16 +762,37 @@
                             <i class="fas fa-book-open me-1"></i>阅读
                         </a>
                     </li>
+                    {% if user.is_authenticated %}
                     <li class="nav-item">
-                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'archive' %} is-active{% endif %}" href="{% url 'archive' %}"{% if request.resolver_match.url_name == 'archive' %} aria-current="page"{% endif %}>
-                            <i class="far fa-calendar-alt me-1"></i>归档
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' %} is-active{% endif %}" href="{% url 'create_post' %}"{% if request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' %} aria-current="page"{% endif %}>
+                            <i class="fas fa-pen me-1"></i>写文章
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'tags' %} is-active{% endif %}" href="{% url 'tags' %}"{% if request.resolver_match.url_name == 'tags' %} aria-current="page"{% endif %}>
-                            <i class="fas fa-tags me-1"></i>标签
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'favorite_posts' %} is-active{% endif %}" href="{% url 'favorite_posts' %}"{% if request.resolver_match.url_name == 'favorite_posts' %} aria-current="page"{% endif %}>
+                            <i class="fas fa-bookmark me-1"></i>我的收藏
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'notifications' %} is-active{% endif %}" href="{% url 'notifications' %}"{% if request.resolver_match.url_name == 'notifications' %} aria-current="page"{% endif %}>
+                            <i class="fas fa-bell me-1"></i>通知
+                            {% if unread_notification_count %}
+                            <span class="badge text-bg-danger ms-1">{% if unread_notification_count > 99 %}99+{% else %}{{ unread_notification_count }}{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'login' %} is-active{% endif %}" href="{% url 'login' %}"{% if request.resolver_match.url_name == 'login' %} aria-current="page"{% endif %}>
+                            <i class="fas fa-sign-in-alt me-1"></i>登录
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link quick-nav-link{% if request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} is-active{% endif %}" href="{% url 'register' %}"{% if request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} aria-current="page"{% endif %}>
+                            <i class="fas fa-user-plus me-1"></i>注册
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
 
                 <ul class="navbar-nav mb-2 mb-lg-0 d-flex">
@@ -739,16 +859,11 @@
         </div>
     </nav>
 
-    {% if messages %}
-    <div class="container mt-3">
+    <div class="site-flash-queue" hidden>
         {% for message in messages %}
-        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
-        </div>
+        <span data-site-flash-message data-level="{{ message.tags|default:'info' }}">{{ message }}</span>
         {% endfor %}
     </div>
-    {% endif %}
 
     {% block content %}{% endblock %}
 
@@ -772,7 +887,9 @@
     </footer>
     </div>
 
-    <nav class="mobile-bottom-nav" aria-label="手机底部导航">
+    <div class="site-toast-region" id="siteToastRegion" aria-live="polite" aria-atomic="false"></div>
+
+    <nav class="mobile-bottom-nav {% if user.is_authenticated %}is-authenticated{% else %}is-guest{% endif %}" aria-label="手机底部导航">
         <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'home' %} is-active{% endif %}" href="{% url 'home' %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap"><i class="fas fa-home"></i></span>
             <span>首页</span>
@@ -781,20 +898,20 @@
             <span class="mobile-bottom-icon-wrap"><i class="fas fa-book-open"></i></span>
             <span>阅读</span>
         </a>
-        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'archive' %} is-active{% endif %}" href="{% url 'archive' %}"{% if request.resolver_match.url_name == 'archive' %} aria-current="page"{% endif %}>
-            <span class="mobile-bottom-icon-wrap"><i class="far fa-calendar-alt"></i></span>
-            <span>归档</span>
-        </a>
-        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'tags' %} is-active{% endif %}" href="{% url 'tags' %}"{% if request.resolver_match.url_name == 'tags' %} aria-current="page"{% endif %}>
-            <span class="mobile-bottom-icon-wrap"><i class="fas fa-tags"></i></span>
-            <span>标签</span>
-        </a>
         {% if user.is_authenticated %}
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' %} is-active{% endif %}" href="{% url 'create_post' %}"{% if request.resolver_match.url_name == 'create_post' or request.resolver_match.url_name == 'drafts' %} aria-current="page"{% endif %}>
+            <span class="mobile-bottom-icon-wrap"><i class="fas fa-pen"></i></span>
+            <span>写作</span>
+        </a>
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'favorite_posts' %} is-active{% endif %}" href="{% url 'favorite_posts' %}"{% if request.resolver_match.url_name == 'favorite_posts' %} aria-current="page"{% endif %}>
+            <span class="mobile-bottom-icon-wrap"><i class="fas fa-bookmark"></i></span>
+            <span>收藏</span>
+        </a>
         <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'notifications' %} is-active{% endif %}" href="{% url 'notifications' %}"{% if request.resolver_match.url_name == 'notifications' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap">
                 <i class="fas fa-bell"></i>
                 {% if unread_notification_count %}
-                <span class="mobile-bottom-badge">{{ unread_notification_count }}</span>
+                <span class="mobile-bottom-badge" aria-label="{{ unread_notification_count }} 条未读通知">{% if unread_notification_count > 99 %}99+{% else %}{{ unread_notification_count }}{% endif %}</span>
                 {% endif %}
             </span>
             <span>通知</span>
@@ -803,6 +920,10 @@
         <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'login' or request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} is-active{% endif %}" href="{% url 'login' %}"{% if request.resolver_match.url_name == 'login' or request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} aria-current="page"{% endif %}>
             <span class="mobile-bottom-icon-wrap"><i class="fas fa-user"></i></span>
             <span>登录</span>
+        </a>
+        <a class="mobile-bottom-link{% if request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} is-active{% endif %}" href="{% url 'register' %}"{% if request.resolver_match.url_name == 'register' or request.resolver_match.url_name == 'complete_registration' %} aria-current="page"{% endif %}>
+            <span class="mobile-bottom-icon-wrap"><i class="fas fa-user-plus"></i></span>
+            <span>注册</span>
         </a>
         {% endif %}
     </nav>
@@ -905,8 +1026,68 @@
             });
         })();
     </script>
+    <script>
+        (() => {
+            const toastRegion = document.getElementById('siteToastRegion');
+            const DEFAULT_TOAST_DURATION = 4200;
+
+            function removeSiteToast(toastElement) {
+                if (!toastElement || !toastElement.isConnected) return;
+                toastElement.remove();
+            }
+
+            window.cloverShowToast = (message, level = 'info', duration = DEFAULT_TOAST_DURATION) => {
+                if (!toastRegion || !message) return null;
+                const normalizedLevel = level === 'error' ? 'danger' : level;
+                const toastElement = document.createElement('article');
+                toastElement.className = `site-toast is-${normalizedLevel}`;
+                toastElement.setAttribute('role', normalizedLevel === 'danger' ? 'alert' : 'status');
+
+                const contentElement = document.createElement('div');
+                contentElement.className = 'site-toast-content';
+
+                const messageElement = document.createElement('div');
+                messageElement.className = 'site-toast-message';
+                messageElement.textContent = message;
+
+                const closeButton = document.createElement('button');
+                closeButton.className = 'site-toast-close';
+                closeButton.type = 'button';
+                closeButton.setAttribute('aria-label', '关闭提示');
+                closeButton.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
+
+                const progressElement = document.createElement('div');
+                progressElement.className = 'site-toast-progress';
+                progressElement.style.animationDuration = `${duration}ms`;
+
+                contentElement.append(messageElement, closeButton);
+                toastElement.append(contentElement, progressElement);
+                toastRegion.appendChild(toastElement);
+
+                const dismissTimer = window.setTimeout(() => removeSiteToast(toastElement), duration);
+                closeButton.addEventListener('click', () => {
+                    window.clearTimeout(dismissTimer);
+                    removeSiteToast(toastElement);
+                });
+                return toastElement;
+            };
+
+            function displayQueuedSiteMessages() {
+                document.querySelectorAll('[data-site-flash-message]').forEach((messageElement) => {
+                    window.cloverShowToast(
+                        messageElement.textContent.trim(),
+                        messageElement.dataset.level || 'info',
+                    );
+                    messageElement.remove();
+                });
+            }
+
+            displayQueuedSiteMessages();
+            window.addEventListener('site:after-navigate', displayQueuedSiteMessages);
+        })();
+    </script>
     {% if site_music_tracks %}
-    <script src="{% static 'js/site-music-player.js' %}"></script>
+    <script src="{% static 'js/site-music-player.js' %}?v=20260709-2"></script>
     {% endif %}
     <div id="site-page-extra-js">
         {% block extra_js %}{% endblock %}
