@@ -5296,6 +5296,9 @@ class MusicPlaybackCommandTests(TestCase):
         self.assertIn('enqueue_site_task prepare_music_playback', deploy_script_content)
         self.assertIn('systemctl enable clover-blog-worker.service', deploy_script_content)
         self.assertIn('systemctl restart clover-blog-worker', deploy_script_content)
+        self.assertIn('nginx -T', deploy_script_content)
+        self.assertIn('location ^~ /media/covers/', deploy_script_content)
+        self.assertIn('location ^~ /media/post_images/', deploy_script_content)
         self.assertLess(check_index, prepare_index)
 
 

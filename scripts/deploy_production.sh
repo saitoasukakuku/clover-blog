@@ -127,6 +127,12 @@ sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
 
 echo "正在检查 Nginx 配置..."
 nginx -t
+nginx_configuration="$(nginx -T 2>&1)"
+if [[ "${nginx_configuration}" != *"location ^~ /media/covers/"* ]] ||
+   [[ "${nginx_configuration}" != *"location ^~ /media/post_images/"* ]]; then
+    echo "Nginx 尚未加载受保护媒体规则；请在站点 server 块中 include scripts/nginx_protected_media.conf。" >&2
+    exit 1
+fi
 
 echo "正在重启应用服务..."
 systemctl restart clover-blog

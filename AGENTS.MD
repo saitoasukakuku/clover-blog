@@ -898,12 +898,19 @@ sudo clover-blog-deploy
 - 同步 Python 依赖。
 - 创建受保护媒体目录，执行数据库迁移、私有媒体迁移、运行状态清理和 `collectstatic`。
 - 执行 Django 部署检查和 Nginx 配置检查。
+- 确认 Nginx 已实际加载两条受保护媒体规则；规则缺失时停止部署，不会重启应用。
 - 安装并重启 Gunicorn 与后台任务 worker，重新加载 Nginx。
 - 检查 Gunicorn、worker、Nginx、MySQL、本机首页，以及存在时的 Cloudflare Tunnel。
 - 成功拉取新版脚本后，自动更新 `/usr/local/sbin/clover-blog-deploy`。
 
 脚本执行失败时会返回非零状态并指出失败阶段。GitHub 连续连接失败时不会改变当前
 线上提交。
+
+首次从 `ab4d8db` 部署本轮安全审计版本前，应先从 `origin/main` 安装新版
+`scripts/deploy_production.sh` 到 `/usr/local/sbin/clover-blog-deploy`，再运行部署。原因是
+旧版正在执行的脚本即使拉取了新文件，也不会在同一进程中执行新增的私有媒体迁移和 worker
+安装阶段。部署前还要在当前 Nginx 站点的 `server` 块加载
+`scripts/nginx_protected_media.conf`；新版脚本会强制检查该规则。
 
 服务器 GitHub 拉取配置：
 
