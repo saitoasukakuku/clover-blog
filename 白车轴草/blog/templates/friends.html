@@ -261,7 +261,7 @@
                     <i class="fas fa-envelope me-1"></i>私信
                 </a>
                 <form method="post" action="{% url 'remove_friend' friend.id %}"
-                    onsubmit="return confirm('确定要删除这位好友吗？');">
+                    data-confirm-message="确定要删除这位好友吗？">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-danger">删除好友</button>
                 </form>

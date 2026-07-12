@@ -98,11 +98,11 @@ def approve_registration_request(registration_request, reviewer, completion_url)
             ]
         )
 
-        send_registration_code_email(
-            locked_request,
-            raw_invite_code,
-            completion_url,
-        )
+    send_registration_code_email(
+        locked_request,
+        raw_invite_code,
+        completion_url,
+    )
 
     return raw_invite_code
 
@@ -135,11 +135,11 @@ def resend_registration_code(registration_request, reviewer, completion_url):
             ]
         )
 
-        send_registration_code_email(
-            locked_request,
-            raw_invite_code,
-            completion_url,
-        )
+    send_registration_code_email(
+        locked_request,
+        raw_invite_code,
+        completion_url,
+    )
 
     return raw_invite_code
 

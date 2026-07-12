@@ -2,12 +2,16 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from urllib.parse import quote
 
 from django.conf import settings
 from django.http import Http404
 from django.urls import reverse
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from blog.atomic_files import atomic_write_json
+from blog.media_security import inspect_image
 
 
 HOMEPAGE_IMAGE_DIR_NAME = 'index_img'
@@ -18,6 +22,13 @@ HOMEPAGE_ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 HOMEPAGE_IMAGE_CACHE_MAX_SIZE = (1920, 1280)
 HOMEPAGE_IMAGE_CACHE_QUALITY = 82
 HOMEPAGE_COPY_FIELDS = ('kicker', 'headline', 'lead', 'card_title', 'card_text')
+HOMEPAGE_COPY_MAX_LENGTHS = {
+    'kicker': 20,
+    'headline': 60,
+    'lead': 120,
+    'card_title': 40,
+    'card_text': 120,
+}
 HOMEPAGE_THEME_PRESETS = [
     {
         'accent': '#5f8fc8',
@@ -132,9 +143,11 @@ def save_homepage_image_settings_by_file_name(settings_by_file_name):
             continue
         saved_images[image_file_name] = image_settings
 
-    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-    with open(get_homepage_image_settings_file_path(), 'w', encoding='utf-8') as settings_file:
-        json.dump({'images': saved_images}, settings_file, ensure_ascii=False, indent=2, sort_keys=True)
+    atomic_write_json(
+        get_homepage_image_settings_file_path(),
+        {'images': saved_images},
+        sort_keys=True,
+    )
 
 
 def get_homepage_image_file_names(include_hidden=False):
@@ -202,6 +215,7 @@ def build_homepage_cache_file_name(image_file_name, image_file_path):
 
 
 def optimize_homepage_image(source_image_path, cached_image_path):
+    inspect_image(source_image_path)
     image_resampling = getattr(Image, 'Resampling', Image)
     resampling_filter = getattr(image_resampling, 'LANCZOS', None)
     if resampling_filter is None:
@@ -227,10 +241,22 @@ def get_or_create_homepage_cached_image_url(image_file_name):
     cache_file_name = build_homepage_cache_file_name(image_file_name, image_file_path)
     cached_image_path = os.path.join(cache_directory, cache_file_name)
     if not os.path.exists(cached_image_path):
+        temporary_cache_path = ''
         try:
-            optimize_homepage_image(image_file_path, cached_image_path)
-        except (OSError, UnidentifiedImageError) as error:
+            with tempfile.NamedTemporaryFile(
+                dir=cache_directory,
+                prefix='.homepage-',
+                suffix='.webp',
+                delete=False,
+            ) as temporary_cache_file:
+                temporary_cache_path = temporary_cache_file.name
+            optimize_homepage_image(image_file_path, temporary_cache_path)
+            os.replace(temporary_cache_path, cached_image_path)
+        except (OSError, UnidentifiedImageError, ValueError) as error:
             raise Http404('Homepage image could not be opened.') from error
+        finally:
+            if temporary_cache_path and os.path.isfile(temporary_cache_path):
+                os.remove(temporary_cache_path)
 
     return f"{settings.MEDIA_URL.rstrip('/')}/{HOMEPAGE_IMAGE_CACHE_DIR_NAME}/{quote(cache_file_name)}"
 
@@ -244,7 +270,7 @@ def normalize_homepage_slide_copy(raw_slide_copy):
         field_value = raw_slide_copy.get(field_name)
         if not isinstance(field_value, str) or not field_value.strip():
             return None
-        normalized_copy[field_name] = field_value.strip()
+        normalized_copy[field_name] = field_value.strip()[:HOMEPAGE_COPY_MAX_LENGTHS[field_name]]
 
     raw_moods = raw_slide_copy.get('moods')
     if not isinstance(raw_moods, list):
@@ -300,9 +326,11 @@ def save_homepage_ai_copy_by_file_name(copy_by_file_name):
         if normalized_copy:
             normalized_copy_by_file_name[image_file_name] = normalized_copy
 
-    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-    with open(get_homepage_image_copy_file_path(), 'w', encoding='utf-8') as copy_file:
-        json.dump(normalized_copy_by_file_name, copy_file, ensure_ascii=False, indent=2, sort_keys=True)
+    atomic_write_json(
+        get_homepage_image_copy_file_path(),
+        normalized_copy_by_file_name,
+        sort_keys=True,
+    )
 
 
 def build_homepage_slide_copy(image_index, image_file_name, ai_copy_by_file_name):

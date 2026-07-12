@@ -2,9 +2,9 @@
 
 ## 项目概览
 
-- 状态更新时间：2026-07-09
+- 状态更新时间：2026-07-12
 - 项目名：白车轴草
-- 项目类型：Django 4.2 多用户博客
+- 项目类型：Django 5.2 LTS 多用户博客
 - 本地工作区：`E:\projects\django-projects\白车轴草`
 - Django 工程根目录：`E:\projects\django-projects\白车轴草\白车轴草`
 - GitHub 仓库：`https://github.com/saitoasukakuku/clover-blog`
@@ -25,8 +25,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 
 ## 当前交接摘要
 
-截至 2026-07-09，本轮已在本地完成导航、媒体管理、文章互动和全局提示体验改造；
-助手没有连接生产服务器，也没有执行线上部署。仍有两个无关未跟踪目录
+截至 2026-07-12，本轮已在本地完成全项目安全审计、生产配置加固、私有媒体隔离、
+限流、后台任务、标签规范化和媒体管理性能优化；助手没有连接生产服务器，也没有执行
+线上部署。仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
@@ -60,7 +61,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `264c53d fix: avoid date prefix in startup post titles`
 
 本地已完成 Django 检查、迁移一致性检查和 `blog` 应用测试，当前测试基线为
-`251` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
+`298` 个测试通过。已验证 `/` 可访问沉浸式图片轮播欢迎页，`/index/` 保留文章列表；
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
@@ -68,6 +69,26 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
 检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
 `200 OK`。
+
+2026-07-12 安全审计修复要点：
+
+- 依赖升级到 Django 5.2 LTS，并固定当前安全修复版本；新增迁移 `0020` 至 `0023`。
+- 生产配置改为失败即停止：要求强随机 `DJANGO_SECRET_KEY`、明确主机和 CSRF 来源、
+  MySQL、SMTP、HTTPS Cookie、HSTS 和可信代理地址，不再接受危险默认值。
+- 新增 CSP nonce、安全响应头和可信代理中间件；管理后台登录、登录、注册、评论、私信、
+  好友申请及高成本接口都增加服务端限流。
+- 文章封面和正文图片迁移到受保护存储，由权限视图返回；旧公开媒体路径固定返回 404，
+  Nginx 必须加载 `scripts/nginx_protected_media.conf` 阻止绕过 Django 直接读取。
+- 上传内容会校验真实文件签名、大小、图片像素和路径边界；外部下载限制 HTTPS、可信域名、
+  重定向目标及响应体大小，降低 SSRF、压缩炸弹和资源耗尽风险。
+- Markdown、首页文案、SEO 和 PWA 输出已收紧，禁止危险协议和原始 HTML 注入；外链增加
+  `nofollow ugc`，Service Worker 不再缓存登录态 HTML。
+- 新增规范化标签、查询索引、数据库后台任务和独立 worker；耗时的音乐转码及 AI 任务可
+  脱离 Web 请求执行，部署脚本会启动 worker 并清理过期运行状态。
+- 媒体管理页改为按需读取单曲歌词，不再把全部歌词嵌入页面；MP3/FLAC 元数据和内嵌封面
+  设置读取上限并进行真实图片验证。
+- 文章上传文件在替换或删除后通过事务提交回调清理，避免数据库回滚时误删和长期残留。
+- 本地 SQLite 已应用到 `0023`，并已执行一次私有媒体迁移验证；生产尚未执行这些迁移。
 
 近期已完成的关键事项：
 
@@ -164,9 +185,9 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 
 ## 当前技术栈
 
-- 本地 Python 3.9
+- 本地验证环境：Python 3.12
 - 线上 Python 3.12.3
-- Django 4.2
+- Django 5.2 LTS
 - 本地数据库：SQLite
 - 线上数据库：MySQL 8，通过 `.env` 配置
 - Gunicorn 26
@@ -185,8 +206,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 
 依赖清单位于仓库根目录的 `requirements.txt`。
 
-当前依赖仍固定为 `Django==4.2`，尚未完成 Django 5.2 LTS 升级。不要在未运行
-完整测试和线上部署验证前直接升级框架。
+依赖已固定为 `Django==5.2.16`。升级 Django 或其他生产依赖时，必须继续运行完整测试、
+迁移一致性检查和 `check --deploy`；本轮尚未在线上部署验证。
 
 ## 目录结构
 
@@ -212,14 +233,15 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `白车轴草/blog/management/commands/generate_homepage_copy.py`：按首页轮播图片描述批量调用
   DeepSeek，生成首页轮播文案缓存；配置 `HOMEPAGE_VISION_API_KEY` 后会先调用视觉模型识别
   图片内容。
-- `白车轴草/blog/migrations/`：数据库迁移，当前 GitHub `main` 最新为
-  `0011_registrationrequest.py`。
+- `白车轴草/blog/migrations/`：数据库迁移，本轮最新为
+  `0023_alter_post_series_title_and_more.py`。
+- `白车轴草/protected_media/`：受权限保护的文章封面和正文图片；不得由 Nginx 直接公开。
 - `白车轴草/media/`：本地上传文件，已被 Git 忽略。
 - `白车轴草/media/index_img/`：沉浸式首页背景轮播图片目录，已被 Git 忽略。
 - `白车轴草/media/index_img_cache/`：首页轮播优化图缓存目录，运行时生成，已被 Git 忽略。
 - `白车轴草/media/index_img_copy.json`：首页轮播 DeepSeek 文案缓存文件，运行命令生成，已被
   Git 忽略。
-- `白车轴草/media/post_images/`：文章正文 Markdown 图片上传目录，已被 Git 忽略。
+- `白车轴草/media/post_images/`：旧版正文图片目录，只作为私有媒体迁移来源，已被 Git 忽略。
 - `白车轴草/media/music/`：全站音乐播放器音乐目录，已被 Git 忽略。
 - `白车轴草/media/music_cache/`：MP3 和 FLAC 内嵌封面导出的缓存目录，运行时生成，已被 Git 忽略。
 - `白车轴草/db.sqlite3`：本地开发数据库，已被 Git 忽略。
@@ -234,7 +256,7 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - `title`：标题，最长 200 个字符。
 - `category`：分类，支持预设分类和自定义分类。
 - `tags`：标签字符串，最长 200 个字符。
-- `cover`：文章封面，保存到 `media/covers/`。
+- `cover`：文章封面，保存到 `PROTECTED_MEDIA_ROOT/covers/`，通过权限视图读取。
 - `content`：文章正文。
 - `status`：`draft` 或 `published`。
 - `visibility`：`private` 或 `public`，默认 `private`。
@@ -474,7 +496,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 封面上传、裁剪、移除和替换。
 - 正文 Markdown 写入模式，点击后打开大弹窗，支持标题、加粗、链接、图片 URL、正文图片
   上传和本地预览。
-- 正文图片上传保存到 `media/post_images/`，后端复用图片大小和格式校验。
+- 正文图片上传为 `PostImage`，保存到 `PROTECTED_MEDIA_ROOT/post_images/<用户 ID>/`，
+  后端校验图片签名、大小和像素，并通过权限视图读取。
 - `/index/` 文章列表关键词搜索。
 - 分类、作者和标签筛选。
 - `/index/` 搜索结果显示命中文章数量。
@@ -694,7 +717,8 @@ sudo systemctl enable --now clover-blog-startup-post.timer
 `settings.py` 根据环境变量选择数据库：
 
 - `DB_ENGINE=mysql`：使用 MySQL。
-- 未设置时：使用本地 SQLite。
+- 本地开发未设置时：使用 SQLite。
+- 生产环境只允许 MySQL；配置缺失或引擎不受支持时 Django 会拒绝启动。
 
 生产环境数据库信息通过 `/opt/clover-blog/.env` 提供。不要把 `.env`、
 API Key、数据库密码、Django Secret Key 或其他凭据提交到 Git。
@@ -706,6 +730,16 @@ API Key、数据库密码、Django Secret Key 或其他凭据提交到 Git。
 项目会使用以下环境变量：
 
 - `DJANGO_SECRET_KEY`
+- `DJANGO_ALLOWED_HOSTS`
+- `DJANGO_CSRF_TRUSTED_ORIGINS`
+- `DJANGO_SECURE_SSL_REDIRECT`
+- `DJANGO_SESSION_COOKIE_SECURE`
+- `DJANGO_CSRF_COOKIE_SECURE`
+- `DJANGO_SECURE_HSTS_SECONDS`
+- `DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS`
+- `DJANGO_SECURE_HSTS_PRELOAD`
+- `DJANGO_USE_X_FORWARDED_HOST`
+- `DJANGO_TRUSTED_PROXY_IPS`
 - `DJANGO_DEBUG`
 - `DB_ENGINE`
 - `DB_NAME`
@@ -727,7 +761,11 @@ API Key、数据库密码、Django Secret Key 或其他凭据提交到 Git。
 - `EMAIL_HOST_PASSWORD`
 - `EMAIL_USE_TLS`
 - `EMAIL_USE_SSL`
+- `EMAIL_TIMEOUT`
 - `DEFAULT_FROM_EMAIL`
+- `PROTECTED_MEDIA_ROOT`
+- `DJANGO_LOG_LEVEL`
+- `BLOG_LOG_LEVEL`
 
 文档只能记录变量名，不得记录真实密钥或密码。
 
@@ -735,7 +773,7 @@ API Key、数据库密码、Django Secret Key 或其他凭据提交到 Git。
 `django.core.mail.backends.console.EmailBackend`，注册码邮件会打印到控制台。生产
 `DEBUG=False` 时，如果未显式设置 `EMAIL_BACKEND`，默认使用
 `django.core.mail.backends.smtp.EmailBackend`，必须在 `/opt/clover-blog/.env` 中配置
-SMTP 相关变量。
+SMTP 相关变量。生产配置模板见仓库根目录 `.env.example`；不要把真实值提交到 Git。
 
 ## 本地开发
 
@@ -757,15 +795,15 @@ python .\白车轴草\manage.py makemigrations --check --dry-run
 
 当前测试基线：
 
-- `Found 251 test(s)`
-- `Ran 251 tests`
+- `Found 298 test(s)`
+- `Ran 298 tests`
 - `OK`
 
-2026-07-09 已重新运行：
+2026-07-12 已重新运行：
 
 ```text
 System check identified no issues (0 silenced).
-Ran 251 tests
+Ran 298 tests
 OK
 ```
 
@@ -858,10 +896,10 @@ sudo clover-blog-deploy
 - 单次 Git 获取最多等待 30 秒，网络失败时最多尝试 3 次。
 - 只允许从当前提交快进到 `origin/main`，不会执行强制重置。
 - 同步 Python 依赖。
-- 执行数据库迁移和 `collectstatic`。
+- 创建受保护媒体目录，执行数据库迁移、私有媒体迁移、运行状态清理和 `collectstatic`。
 - 执行 Django 部署检查和 Nginx 配置检查。
-- 重启 Gunicorn，重新加载 Nginx。
-- 检查 Gunicorn、Nginx、MySQL、Cloudflare Tunnel 和本机首页。
+- 安装并重启 Gunicorn 与后台任务 worker，重新加载 Nginx。
+- 检查 Gunicorn、worker、Nginx、MySQL、本机首页，以及存在时的 Cloudflare Tunnel。
 - 成功拉取新版脚本后，自动更新 `/usr/local/sbin/clover-blog-deploy`。
 
 脚本执行失败时会返回非零状态并指出失败阶段。GitHub 连续连接失败时不会改变当前
@@ -934,8 +972,9 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 
 截至 2026-07-05 已确认：
 
-以下内容是上一次生产验收记录；2026-07-09 的导航、媒体管理和互动改造尚未由助手部署或
-在线验证，需由用户执行 `sudo clover-blog-deploy` 后重新确认。
+以下内容是上一次生产验收记录；2026-07-09 的界面改造和 2026-07-12 的安全审计修复均
+尚未由助手部署或在线验证，需由用户先补齐生产环境变量和 Nginx 私有媒体规则，再执行
+`sudo clover-blog-deploy` 后重新确认。
 
 - Nginx、Gunicorn、MySQL 和 Cloudflare Tunnel 能正常提供网站。
 - 生产已部署到 `ab4d8db fix: render markdown headings within text`。
@@ -981,21 +1020,24 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
 - DeepSeek 和 Pexels 环境变量能被 Django 读取。
 - AI 写作入口和 Pexels 封面功能已实际生成过文章和封面。
 - 每日 AI 自动发文定时器已启用，下一次自动运行由 systemd timer 管理。
-- 数据库迁移在线上检查显示无待执行迁移；当前仓库最新迁移仍为
-  `0011_registrationrequest.py`。
+- 上一次数据库迁移在线上检查显示无待执行迁移；当时线上最新为 `0011`，本轮仓库已新增
+  `0020` 至 `0023`，生产部署后必须确认全部应用成功。
 - 管理员账号已创建。
 
 ## 尚未完成的生产事项
 
-- 在生产 `/opt/clover-blog/.env` 配置 SMTP 邮件变量，并确认注册审核通过后能发送
-  注册码邮件。
+- 按 `.env.example` 补齐生产安全变量、MySQL 和 SMTP 配置，并确认注册审核通过后能发送
+  注册码邮件；新配置缺失时部署检查会主动失败。
+- 在 Nginx `server` 块加载 `scripts/nginx_protected_media.conf`，确保旧的
+  `/media/covers/` 和 `/media/post_images/` 不能绕过 Django 权限访问。
 - 给生产 `media/music/` 中的音乐补齐同名歌词文件，或确认 MP3 内嵌歌词可被正确读取。
 - Quick Tunnel 地址不稳定；长期使用应配置自有域名和 Cloudflare Named Tunnel。
 - 腾讯云公网 `80` 端口仍可直接访问，后续使用稳定 Tunnel 后可评估关闭。
 - Ubuntu `ufw` 当前未启用，腾讯云防火墙规则仍需在控制台单独管理。
 - SSH 当前仍允许密码登录；完成密钥登录方案后可评估关闭密码登录和 root 登录。
-- Django 仍为 4.2，已经超出官方支持周期；升级 Django 5.2 LTS 前必须完整测试。
-- HTTPS 安全设置没有按稳定自有域名完成 HSTS 配置。
+- Django 已升级到 5.2 LTS，但尚未在生产部署；上线后需复查依赖安装、迁移和主要页面。
+- HTTPS 安全设置已提供严格配置，但启用长期 HSTS 前仍应使用稳定自有域名，避免把临时
+  Quick Tunnel 地址作为长期安全边界。
 
 ## 前端约定
 
@@ -1031,11 +1073,13 @@ SMTP 邮件变量是否已配置，需要用户在生产服务器确认。只记
   GET 请求返回 `405 Method Not Allowed`，不会删除文章或草稿。
 - AI 写作和 AI 封面会消耗第三方 API 额度，需要保留登录限制和调用冷却。
 - Pexels 图片下载必须继续限制可信域名，避免服务端请求伪造风险。
-- 模板仍依赖部分 CDN；离线或网络受限时 Cropper.js 或部分图标可能不可用。
+- Font Awesome 已使用本地静态资源；Cropper.js 等仍需按模板实际引用情况继续评估离线可用性。
 - 本地和线上数据库不同，新增迁移必须同时验证 SQLite 和线上 MySQL。
 - 迁移 `0010_postfavorite_notification_and_more` 新增文章收藏和通知相关表；生产部署时必须
   确认该迁移已执行。
 - 迁移 `0011_registrationrequest` 新增注册申请表；生产部署时必须确认该迁移已执行。
+- 迁移 `0020` 至 `0023` 新增受保护正文图片、限流状态、规范化标签、后台任务和查询索引；
+  生产部署时必须按顺序执行，并在切断旧公开媒体路径前确认私有媒体迁移完成。
 - 注册审核通过会发送邮件；生产环境必须配置 SMTP，不要把授权码或邮箱密码提交到 Git。
 - 注册码明文只出现在发送给用户的邮件中，数据库只保存哈希；后续改动不得记录或展示
   明文注册码。

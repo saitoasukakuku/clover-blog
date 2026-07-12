@@ -3,13 +3,21 @@ from django.urls import path
 from blog import views
 from django.conf import settings
 from django.conf.urls.static import static
+from blog.admin_views import rate_limited_admin_login
 
 urlpatterns = [
+    path('health/', views.health_check, name='health_check'),
     path('', views.home, name='home'),
     path('manifest.webmanifest', views.pwa_manifest, name='pwa_manifest'),
     path('service-worker.js', views.service_worker, name='service_worker'),
     path('sitemap.xml', views.sitemap_xml, name='sitemap_xml'),
     path('homepage-image/<path:image_file_name>/', views.homepage_carousel_image, name='homepage_carousel_image'),
+    path('post-images/<uuid:public_id>/', views.post_image_file, name='post_image_file'),
+    path('post/<int:post_id>/cover/', views.post_cover, name='post_cover'),
+    path('media/covers/<path:file_name>', views.legacy_private_media_not_found, name='legacy_post_cover'),
+    path('media/post_images/<path:file_name>', views.legacy_private_media_not_found, name='legacy_post_image'),
+    path('music/lyrics/<path:audio_file_name>/', views.music_track_lyrics, name='music_track_lyrics'),
+    path('admin/login/', rate_limited_admin_login, name='rate_limited_admin_login'),
     path('admin/', admin.site.urls),
     path('index/', views.index, name='index'),
     path('archive/', views.archive_view, name='archive'),
@@ -28,6 +36,7 @@ urlpatterns = [
     path('media-manager/homepage-images/update/', views.media_manager_update_homepage_image, name='media_manager_update_homepage_image'),
     path('media-manager/music/upload/', views.media_manager_upload_music, name='media_manager_upload_music'),
     path('media-manager/music/upload/chunk/', views.media_manager_upload_music_chunk, name='media_manager_upload_music_chunk'),
+    path('media-manager/music/details/', views.media_manager_music_details, name='media_manager_music_details'),
     path('media-manager/music/update/', views.media_manager_update_music, name='media_manager_update_music'),
     path('media-manager/actions/run/', views.media_manager_run_action, name='media_manager_run_action'),
     path('login/', views.login_view, name='login'),
@@ -43,6 +52,7 @@ urlpatterns = [
     path('users/<int:user_id>/unblock/', views.unblock_user, name='unblock_user'),
     path('messages/', views.conversations_view, name='conversations'),
     path('messages/<int:user_id>/', views.conversation_view, name='conversation'),
+    path('messages/<int:user_id>/read/', views.mark_conversation_read, name='mark_conversation_read'),
     path('favorites/', views.favorite_posts, name='favorite_posts'),
     path('notifications/', views.notifications_view, name='notifications'),
     path('notifications/<int:notification_id>/read/', views.read_notification, name='read_notification'),

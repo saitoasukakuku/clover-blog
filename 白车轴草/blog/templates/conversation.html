@@ -133,7 +133,15 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
+    fetch('{{ mark_read_url }}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    }).catch(() => {});
     var messageStream = document.getElementById('messageStream');
     messageStream.scrollTop = messageStream.scrollHeight;
 </script>

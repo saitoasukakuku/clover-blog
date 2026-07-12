@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static blog_extras %}
 
 {% block title %}白车轴草{% endblock %}
 
@@ -506,7 +506,7 @@
 {% endblock %}
 
 {% block content %}
-{{ carousel_slides|json_script:"homepage-carousel-slides" }}
+{% secure_json_script carousel_slides "homepage-carousel-slides" %}
 <div class="immersive-homepage {% if not carousel_slides %}no-carousel-images{% endif %}">
     <section class="home-hero" aria-label="白车轴草首页">
         <div class="home-hero-bg" id="homeHeroBackground"></div>
@@ -571,7 +571,7 @@
                     {% for recent_post in recent_posts %}
                     <a class="home-post-card" href="{% url 'post_detail' recent_post.id %}">
                         {% if recent_post.cover %}
-                        <div class="home-post-thumb" style="background-image: url('{{ recent_post.cover.url }}');"></div>
+                        <div class="home-post-thumb" style="background-image: url('{{ recent_post.cover_access_url }}');"></div>
                         {% else %}
                         <div class="home-post-thumb"><i class="fas fa-leaf"></i></div>
                         {% endif %}
@@ -624,7 +624,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
     const slidesElement = document.getElementById('homepage-carousel-slides');
     const carouselSlides = slidesElement ? JSON.parse(slidesElement.textContent) : [];
     const heroBackground = document.getElementById('homeHeroBackground');
@@ -688,7 +688,13 @@
         document.documentElement.style.setProperty('--home-accent-soft', slide.accent_soft);
         heroBackground.style.backgroundImage = `url('${slide.image_url}')`;
         featurePreview.style.backgroundImage = `url('${slide.image_url}')`;
-        kicker.innerHTML = `<i class="fas fa-compass"></i><span>${slide.kicker}</span>`;
+        kicker.replaceChildren();
+        const kickerIcon = document.createElement('i');
+        kickerIcon.className = 'fas fa-compass';
+        kickerIcon.setAttribute('aria-hidden', 'true');
+        const kickerText = document.createElement('span');
+        kickerText.textContent = slide.kicker;
+        kicker.append(kickerIcon, kickerText);
         headline.textContent = slide.headline;
         lead.textContent = slide.lead;
         cardTitle.textContent = slide.card_title;

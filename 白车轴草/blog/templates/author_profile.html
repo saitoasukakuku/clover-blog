@@ -214,7 +214,7 @@
                 {% endif %}
                 {% if user.is_authenticated and relationship_status != 'blocked' and relationship_status != 'blocked_by' and relationship_status != 'guest' %}
                 <form method="post" action="{% url 'block_user' author_profile_user.id %}"
-                    onsubmit="return confirm('确定要屏蔽这个用户吗？屏蔽后会停止你们之间的好友、私信和评论互动。');">
+                    data-confirm-message="确定要屏蔽这个用户吗？屏蔽后会停止你们之间的好友、私信和评论互动。">
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
                     <button type="submit" class="btn btn-sm btn-outline-danger">
@@ -246,7 +246,7 @@
     <article class="author-post">
         <a href="{% url 'post_detail' post.id %}" class="author-post-cover">
             {% if post.cover %}
-            <img src="{{ post.cover.url }}" alt="{{ post.title }}封面">
+            <img src="{{ post.cover_access_url }}" alt="{{ post.title }}封面">
             {% else %}
             <i class="far fa-image fa-2x"></i>
             {% endif %}

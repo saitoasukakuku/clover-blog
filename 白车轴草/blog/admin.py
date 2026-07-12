@@ -2,19 +2,89 @@ from django.contrib import admin
 
 from blog.models import (
     Comment,
+    BackgroundTask,
     FriendRequest,
     Friendship,
     Notification,
     Post,
     PostFavorite,
     PostLike,
+    PostImage,
     PostReaction,
     PostRevision,
     PrivateMessage,
     RegistrationRequest,
+    RateLimitState,
     UserBlock,
     UserProfile,
+    Tag,
 )
+
+
+@admin.register(BackgroundTask)
+class BackgroundTaskAdmin(admin.ModelAdmin):
+    list_display = ('task_type', 'status', 'requested_by', 'created_at', 'started_at', 'finished_at')
+    list_filter = ('task_type', 'status', 'created_at')
+    search_fields = ('requested_by__username', 'output', 'error_message')
+    readonly_fields = (
+        'public_id',
+        'task_type',
+        'status',
+        'requested_by',
+        'output',
+        'error_message',
+        'created_at',
+        'started_at',
+        'finished_at',
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ('name', 'normalized_name', 'created_at')
+    search_fields = ('name', 'normalized_name')
+    readonly_fields = ('name', 'normalized_name', 'created_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PostImage)
+class PostImageAdmin(admin.ModelAdmin):
+    list_display = ('original_name', 'owner', 'public_id', 'created_at')
+    search_fields = ('original_name', 'owner__username', 'public_id')
+    readonly_fields = ('public_id', 'created_at')
+    ordering = ('-created_at',)
+
+
+@admin.register(RateLimitState)
+class RateLimitStateAdmin(admin.ModelAdmin):
+    list_display = ('action', 'key_hash_preview', 'request_count', 'blocked_until', 'updated_at')
+    list_filter = ('action', 'blocked_until')
+    readonly_fields = ('action', 'key_hash', 'window_started_at', 'request_count', 'blocked_until', 'updated_at')
+    ordering = ('-updated_at',)
+
+    @admin.display(description='匿名键')
+    def key_hash_preview(self, rate_state):
+        return rate_state.key_hash[:12]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Post)

@@ -388,7 +388,7 @@
                     <article class="post-card">
                         <a href="{% url 'post_detail' post.id %}">
                             {% if post.cover %}
-                            <img src="{{ post.cover.url }}" class="card-img-top" alt="{{ post.title }}封面">
+                            <img src="{{ post.cover_access_url }}" class="card-img-top" alt="{{ post.title }}封面">
                             {% else %}
                             <img src="https://picsum.photos/seed/blog{{ post.id }}/600/360" class="card-img-top" alt="文章封面">
                             {% endif %}
@@ -568,7 +568,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
     const heroSearchForm = document.querySelector('.hero-search');
 
     function submitHeroSearch(form) {

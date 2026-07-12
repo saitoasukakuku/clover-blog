@@ -4,6 +4,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from blog.media_security import read_limited_response, validate_image_bytes
+from blog.external_io import (
+    open_restricted_https_url,
+    read_limited_error_response,
+    read_limited_text_response,
+)
+
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
@@ -237,12 +244,14 @@ class Command(BaseCommand):
 
         try:
             with urlopen(request, timeout=90) as response:
-                response_text = response.read().decode('utf-8')
+                response_text = read_limited_text_response(response)
         except HTTPError as error:
-            error_text = error.read().decode('utf-8', errors='replace')
+            error_text = read_limited_error_response(error)
             raise CommandError(f'DeepSeek API HTTP error {error.code}: {error_text}') from error
         except URLError as error:
             raise CommandError(f'DeepSeek API network error: {error.reason}') from error
+        except ValueError as error:
+            raise CommandError(f'DeepSeek API response was rejected: {error}') from error
 
         try:
             return json.loads(response_text)
@@ -301,8 +310,11 @@ class Command(BaseCommand):
             return
 
         image_bytes = self.download_pexels_image(image_url)
+        image_extension = validate_image_bytes(image_bytes)
         photo_id = pexels_photo.get('id', 'unknown')
-        cover_filename = f'auto_covers/{current_date.isoformat()}-{photo_id}.jpg'
+        cover_filename = (
+            f'auto_covers/{current_date.isoformat()}-{photo_id}.{image_extension}'
+        )
         post.cover.save(cover_filename, ContentFile(image_bytes), save=True)
         self.append_pexels_attribution(post, pexels_photo)
         self.stdout.write(self.style.SUCCESS(f'Attached Pexels cover: {cover_filename}'))
@@ -326,12 +338,14 @@ class Command(BaseCommand):
 
         try:
             with urlopen(request, timeout=30) as response:
-                response_text = response.read().decode('utf-8')
+                response_text = read_limited_text_response(response)
         except HTTPError as error:
-            error_text = error.read().decode('utf-8', errors='replace')
+            error_text = read_limited_error_response(error)
             raise CommandError(f'Pexels API HTTP error {error.code}: {error_text}') from error
         except URLError as error:
             raise CommandError(f'Pexels API network error: {error.reason}') from error
+        except ValueError as error:
+            raise CommandError(f'Pexels API response was rejected: {error}') from error
 
         try:
             response_body = json.loads(response_text)
@@ -356,13 +370,19 @@ class Command(BaseCommand):
     def download_pexels_image(self, image_url):
         request = Request(image_url, headers={'User-Agent': 'clover-blog/1.0'}, method='GET')
         try:
-            with urlopen(request, timeout=60) as response:
-                return response.read()
+            with open_restricted_https_url(
+                request,
+                {'images.pexels.com'},
+                timeout=60,
+            ) as response:
+                return read_limited_response(response)
         except HTTPError as error:
-            error_text = error.read().decode('utf-8', errors='replace')
+            error_text = read_limited_error_response(error)
             raise CommandError(f'Pexels image HTTP error {error.code}: {error_text}') from error
         except URLError as error:
             raise CommandError(f'Pexels image network error: {error.reason}') from error
+        except ValueError as error:
+            raise CommandError(f'Pexels image was rejected: {error}') from error
 
     def append_pexels_attribution(self, post, pexels_photo):
         photographer = pexels_photo.get('photographer')

@@ -22,11 +22,14 @@ from PIL import Image
 from blog.management.commands.create_startup_post import Command
 from blog.forms import CompleteRegistrationForm
 from blog.models import (
+    BackgroundTask,
     Comment,
     FriendRequest,
     Friendship,
     Notification,
     Post,
+    PostFavorite,
+    PostImage,
     PostRevision,
     PrivateMessage,
     RegistrationRequest,
@@ -46,6 +49,13 @@ class ModelIndexTests(TestCase):
             'post_status_vis_created_idx',
             'post_author_status_created_idx',
             'post_category_created_idx',
+        ])
+        self.assertTrue(Post._meta.get_field('series_title').db_index)
+        self.assertModelHasIndexes(PostFavorite, [
+            'postfav_user_created_idx',
+        ])
+        self.assertModelHasIndexes(PostRevision, [
+            'postrev_post_created_idx',
         ])
         self.assertModelHasIndexes(Comment, [
             'comment_post_hidden_idx',
@@ -67,12 +77,28 @@ class ModelIndexTests(TestCase):
 
 
 class StaticFilesConfigTests(TestCase):
-    def test_collectstatic_ignores_unused_local_fontawesome_package(self):
+    def test_collectstatic_keeps_fontawesome_runtime_and_ignores_source_assets(self):
         from blog.staticfiles import CloverStaticFilesConfig
 
         self.assertIn('blog.staticfiles.CloverStaticFilesConfig', settings.INSTALLED_APPS)
-        self.assertIn(
+        self.assertNotIn(
             'plugins/fontawesome-free-7.1.0-web/*',
+            CloverStaticFilesConfig.ignore_patterns,
+        )
+        self.assertIn(
+            'plugins/fontawesome-free-7.1.0-web/svgs-full/*',
+            CloverStaticFilesConfig.ignore_patterns,
+        )
+        self.assertNotIn(
+            'plugins/fontawesome-free-7.1.0-web/css/all.min.css',
+            CloverStaticFilesConfig.ignore_patterns,
+        )
+        self.assertNotIn(
+            'plugins/bootstrap-5.3.8-dist/css/bootstrap.min.css',
+            CloverStaticFilesConfig.ignore_patterns,
+        )
+        self.assertNotIn(
+            'plugins/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js',
             CloverStaticFilesConfig.ignore_patterns,
         )
 
@@ -211,7 +237,7 @@ class PostContentFilterTests(TestCase):
             '# 一级标题\n\n'
             '这是一段 **加粗文字** 和 [站内链接](/index/)。\n'
             '下一行继续。\n\n'
-            '![封面说明](/media/post_images/example.jpg)'
+            '![封面说明](/media/index_img/example.jpg)'
         ))
 
         self.assertIn('<h2>一级标题</h2>', rendered_content)
@@ -220,7 +246,7 @@ class PostContentFilterTests(TestCase):
         self.assertIn('下一行继续。', rendered_content)
         self.assertIn('<br>', rendered_content)
         self.assertIn(
-            '<img src="/media/post_images/example.jpg" alt="封面说明" loading="lazy">',
+            '<img src="/media/index_img/example.jpg" alt="封面说明" loading="lazy">',
             rendered_content,
         )
 
@@ -422,7 +448,7 @@ class RegistrationApprovalEmailTests(TestCase):
         self.assertTrue(raw_invite_code.isalnum())
         self.assertEqual(raw_invite_code, raw_invite_code.upper())
 
-    def test_approval_email_failure_rolls_back_registration_request(self):
+    def test_approval_email_failure_keeps_request_ready_for_resend(self):
         reviewer = User.objects.create_superuser(
             username='reviewer',
             email='reviewer@example.com',
@@ -446,9 +472,11 @@ class RegistrationApprovalEmailTests(TestCase):
                 )
 
         registration_request.refresh_from_db()
-        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
-        self.assertEqual(registration_request.invite_code_hash, '')
-        self.assertIsNone(registration_request.code_expires_at)
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
+        self.assertNotEqual(registration_request.invite_code_hash, '')
+        self.assertIsNotNone(registration_request.code_expires_at)
+        self.assertEqual(registration_request.approved_by, reviewer)
+        self.assertIsNotNone(registration_request.reviewed_at)
 
 
 class AuthViewsTests(TestCase):
@@ -492,7 +520,7 @@ class AuthViewsTests(TestCase):
         self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
         self.assertFalse(User.objects.filter(email__iexact='newreader@example.com').exists())
         self.assertNotIn('_auth_user_id', self.client.session)
-        self.assertContains(response, '注册申请已提交，请等待审核。')
+        self.assertContains(response, '申请已收到；符合条件时会发送后续邮件。')
 
     def test_register_rejects_duplicate_registered_email(self):
         User.objects.create_user(
@@ -503,11 +531,11 @@ class AuthViewsTests(TestCase):
 
         response = self.client.post(reverse('register'), {
             'email': 'used@example.com',
-        })
+        }, follow=True)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertRedirects(response, reverse('register'))
         self.assertFalse(RegistrationRequest.objects.exists())
-        self.assertContains(response, '这个邮箱已经被注册。')
+        self.assertContains(response, '申请已收到；符合条件时会发送后续邮件。')
 
     def test_register_does_not_duplicate_pending_request(self):
         RegistrationRequest.objects.create(email='reader@example.com')
@@ -518,7 +546,7 @@ class AuthViewsTests(TestCase):
 
         self.assertRedirects(response, reverse('register'))
         self.assertEqual(RegistrationRequest.objects.count(), 1)
-        self.assertContains(response, '这个邮箱的注册申请正在等待审核。')
+        self.assertContains(response, '申请已收到；符合条件时会发送后续邮件。')
 
     def test_register_reopens_expired_approved_request(self):
         registration_request = RegistrationRequest.objects.create(
@@ -538,7 +566,7 @@ class AuthViewsTests(TestCase):
         self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
         self.assertEqual(registration_request.invite_code_hash, '')
         self.assertIsNone(registration_request.code_expires_at)
-        self.assertContains(response, '注册申请已重新提交，请等待审核。')
+        self.assertContains(response, '申请已收到；符合条件时会发送后续邮件。')
 
     def test_register_redirects_unexpired_approved_request_to_complete_registration(self):
         registration_request = RegistrationRequest.objects.create(
@@ -553,12 +581,12 @@ class AuthViewsTests(TestCase):
             'email': 'reader@example.com',
         }, follow=True)
 
-        self.assertRedirects(response, reverse('complete_registration'))
+        self.assertRedirects(response, reverse('register'))
         self.assertEqual(RegistrationRequest.objects.count(), 1)
         registration_request.refresh_from_db()
         self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
         self.assertNotEqual(registration_request.invite_code_hash, '')
-        self.assertContains(response, '这个邮箱已经通过审核，请查看邮件里的注册码。')
+        self.assertContains(response, '申请已收到；符合条件时会发送后续邮件。')
 
     def test_register_renders_complete_registration_link(self):
         response = self.client.get(reverse('register'))
@@ -776,7 +804,7 @@ class AuthViewsTests(TestCase):
         self.assertNotIn(registration_request.invite_code_hash, approval_email.body)
         self.assertContains(response, '已通过并发送注册码。')
 
-    def test_email_failure_keeps_registration_request_pending(self):
+    def test_email_failure_keeps_approved_code_available_for_resend(self):
         User.objects.create_superuser(
             username='reviewer',
             email='reviewer@example.com',
@@ -788,7 +816,7 @@ class AuthViewsTests(TestCase):
         self.client.login(username='reviewer', password='StrongPass12345')
 
         with patch(
-            'blog.views.approve_registration_request_service',
+            'blog.registration_approval.send_mail',
             side_effect=RuntimeError('smtp failed'),
         ):
             response = self.client.post(reverse(
@@ -797,9 +825,9 @@ class AuthViewsTests(TestCase):
             ), follow=True)
 
         registration_request.refresh_from_db()
-        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_PENDING)
-        self.assertEqual(registration_request.invite_code_hash, '')
-        self.assertContains(response, '邮件发送失败，申请仍保持待审核。')
+        self.assertEqual(registration_request.status, RegistrationRequest.STATUS_APPROVED)
+        self.assertTrue(registration_request.invite_code_hash)
+        self.assertContains(response, '审批已保存，但邮件发送失败；请使用重发注册码。')
 
     def test_already_reviewed_approval_shows_pending_only_message(self):
         User.objects.create_superuser(
@@ -1493,22 +1521,27 @@ class AuthViewsTests(TestCase):
         )
 
     def test_upload_post_image_returns_media_url_for_logged_in_user(self):
-        User.objects.create_user(username='image-writer', password='StrongPass12345')
+        image_writer = User.objects.create_user(
+            username='image-writer',
+            password='StrongPass12345',
+        )
         self.client.login(username='image-writer', password='StrongPass12345')
 
-        with tempfile.TemporaryDirectory() as temporary_media_root:
-            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+        with tempfile.TemporaryDirectory() as protected_media_root:
+            with self.settings(PROTECTED_MEDIA_ROOT=protected_media_root):
                 response = self.client.post(reverse('upload_post_image'), {
                     'image': build_uploaded_test_image('body-photo.jpg'),
                 })
 
                 response_data = response.json()
-                saved_relative_path = response_data['url'].removeprefix('/media/')
-                saved_file_path = os.path.join(temporary_media_root, saved_relative_path)
-                saved_file_exists = os.path.exists(saved_file_path)
+                post_image = PostImage.objects.get(owner=image_writer)
+                saved_file_exists = os.path.exists(post_image.image.path)
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response_data['url'].startswith('/media/post_images/'))
+        self.assertEqual(
+            response_data['url'],
+            reverse('post_image_file', args=[post_image.public_id]),
+        )
         self.assertEqual(response_data['markdown'], f"![body-photo]({response_data['url']})")
         self.assertTrue(saved_file_exists)
 
@@ -1521,27 +1554,36 @@ class AuthViewsTests(TestCase):
         )
 
     def test_post_image_library_returns_uploaded_post_images(self):
-        User.objects.create_user(username='image-library-user', password='StrongPass12345')
+        library_user = User.objects.create_user(
+            username='image-library-user',
+            password='StrongPass12345',
+        )
+        other_user = User.objects.create_user(
+            username='other-image-user',
+            password='StrongPass12345',
+        )
         self.client.login(username='image-library-user', password='StrongPass12345')
+        owned_image = PostImage.objects.create(
+            owner=library_user,
+            image='post_images/owned/first-photo.jpg',
+            original_name='first-photo.jpg',
+        )
+        PostImage.objects.create(
+            owner=other_user,
+            image='post_images/other/private-photo.jpg',
+            original_name='private-photo.jpg',
+        )
 
-        with tempfile.TemporaryDirectory() as temporary_media_root:
-            post_image_directory = os.path.join(temporary_media_root, 'post_images')
-            os.makedirs(post_image_directory)
-            Image.new('RGB', (24, 24), color=(80, 120, 160)).save(
-                os.path.join(post_image_directory, 'first-photo.jpg'),
-                format='JPEG',
-            )
-            with open(os.path.join(post_image_directory, 'notes.txt'), 'w', encoding='utf-8') as text_file:
-                text_file.write('not image')
-
-            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
-                response = self.client.get(reverse('post_image_library'))
+        response = self.client.get(reverse('post_image_library'))
 
         response_data = response.json()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response_data['images']), 1)
         self.assertEqual(response_data['images'][0]['alt'], 'first-photo')
-        self.assertEqual(response_data['images'][0]['url'], '/media/post_images/first-photo.jpg')
+        self.assertEqual(
+            response_data['images'][0]['url'],
+            reverse('post_image_file', args=[owned_image.public_id]),
+        )
 
     def test_upload_post_image_rejects_invalid_file(self):
         User.objects.create_user(username='bad-image-writer', password='StrongPass12345')
@@ -1703,10 +1745,13 @@ class AuthViewsTests(TestCase):
         ai_cover_token = signing.dumps(cover_data, salt=AI_COVER_TOKEN_SALT)
 
         with tempfile.TemporaryDirectory() as temporary_media_root:
-            with self.settings(MEDIA_ROOT=temporary_media_root):
+            with self.settings(
+                MEDIA_ROOT=temporary_media_root,
+                PROTECTED_MEDIA_ROOT=temporary_media_root,
+            ):
                 with patch(
                     'blog.views.StartupPostCommand.download_pexels_image',
-                    return_value=b'test-image-bytes',
+                    return_value=build_uploaded_test_image().read(),
                 ) as download_pexels_image:
                     response = self.client.post(reverse('create_post'), {
                         'title': '带 AI 封面的文章',
@@ -3205,7 +3250,7 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'second')
         self.assertContains(response, '还没有消息')
 
-    def test_opening_conversation_marks_received_messages_read(self):
+    def test_conversation_read_endpoint_marks_received_messages_read(self):
         sender = User.objects.create_user(
             username='sender',
             password='StrongPass12345',
@@ -3227,6 +3272,14 @@ class AuthViewsTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        private_message.refresh_from_db()
+        self.assertFalse(private_message.is_read)
+
+        read_response = self.client.post(
+            reverse('mark_conversation_read', args=[sender.id]),
+        )
+
+        self.assertEqual(read_response.status_code, 200)
         private_message.refresh_from_db()
         self.assertTrue(private_message.is_read)
 
@@ -3257,10 +3310,19 @@ class AuthViewsTests(TestCase):
         User.objects.create_user(username='writer', password='StrongPass12345')
         self.client.login(username='writer', password='StrongPass12345')
 
-        response = self.client.get(reverse('logout'))
+        response = self.client.post(reverse('logout'))
 
         self.assertRedirects(response, reverse('home'))
         self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_logout_rejects_get(self):
+        User.objects.create_user(username='writer', password='StrongPass12345')
+        self.client.login(username='writer', password='StrongPass12345')
+
+        response = self.client.get(reverse('logout'))
+
+        self.assertEqual(response.status_code, 405)
+        self.assertIn('_auth_user_id', self.client.session)
 
     def test_user_center_requires_login(self):
         response = self.client.get(reverse('user_center'))
@@ -4519,7 +4581,7 @@ class SiteMusicPlayerTests(TestCase):
 
         uploaded_audio = SimpleUploadedFile(
             'new-song.mp3',
-            b'fake mp3 audio',
+            b'ID3\x04\x00\x00\x00\x00\x00\x00fake mp3 audio',
             content_type='audio/mpeg',
         )
         uploaded_lyrics = SimpleUploadedFile(
@@ -4638,7 +4700,7 @@ class SiteMusicPlayerTests(TestCase):
         self.assertRedirects(response, f'{reverse("media_manager")}?tab=music')
         self.assertEqual(
             saved_music_file_names,
-            ['new-song.flac', 'new-song.lrc', 'new-song.png', 'new-song.web.m4a'],
+            ['new-song.flac', 'new-song.jpg', 'new-song.lrc', 'new-song.web.m4a'],
         )
         self.assertEqual(saved_lyrics, replacement_lyrics)
 
@@ -4704,7 +4766,7 @@ class SiteMusicPlayerTests(TestCase):
 
         uploaded_audio = SimpleUploadedFile(
             'partial-song.mp3',
-            b'fake mp3 audio',
+            b'ID3\x04\x00\x00\x00\x00\x00\x00fake mp3 audio',
             content_type='audio/mpeg',
         )
         invalid_cover = SimpleUploadedFile(
@@ -4729,27 +4791,59 @@ class SiteMusicPlayerTests(TestCase):
         self.assertRedirects(response, f'{reverse("media_manager")}?tab=music')
         self.assertEqual(saved_music_file_names, [])
 
+    def test_media_manager_music_upload_rejects_spoofed_audio_extension(self):
+        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+        self.client.login(username='media-admin', password='StrongPass12345')
+        spoofed_audio = SimpleUploadedFile(
+            'spoofed.mp3',
+            b'this is plain text, not mp3 audio',
+            content_type='audio/mpeg',
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_media_root:
+            with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
+                response = self.client.post(reverse('media_manager_upload_music'), {
+                    'audio': spoofed_audio,
+                }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '音频内容与文件扩展名不匹配')
+
     def test_media_manager_can_trigger_media_commands(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
         self.client.login(username='media-admin', password='StrongPass12345')
 
-        with patch('blog.views.call_command') as call_command_mock:
-            response = self.client.post(reverse('media_manager_run_action'), {
-                'action': 'prepare_music_playback',
-            })
+        response = self.client.post(reverse('media_manager_run_action'), {
+            'action': 'prepare_music_playback',
+        })
 
         self.assertRedirects(response, reverse('media_manager'))
-        call_command_mock.assert_called_once()
-        self.assertEqual(call_command_mock.call_args.args[:2], ('prepare_music_playback', '--continue-on-error'))
+        music_task = BackgroundTask.objects.get(
+            task_type=BackgroundTask.TYPE_PREPARE_MUSIC,
+        )
+        self.assertEqual(music_task.status, BackgroundTask.STATUS_PENDING)
+        self.assertEqual(music_task.requested_by.username, 'media-admin')
 
-        with patch('blog.views.call_command') as call_command_mock:
-            response = self.client.post(reverse('media_manager_run_action'), {
-                'action': 'generate_homepage_copy',
-            })
+        response = self.client.post(reverse('media_manager_run_action'), {
+            'action': 'generate_homepage_copy',
+        })
 
         self.assertRedirects(response, reverse('media_manager'))
-        call_command_mock.assert_called_once()
-        self.assertEqual(call_command_mock.call_args.args[:3], ('generate_homepage_copy', '--batch-size', '8'))
+        homepage_task = BackgroundTask.objects.get(
+            task_type=BackgroundTask.TYPE_GENERATE_HOMEPAGE_COPY,
+        )
+        self.assertEqual(homepage_task.status, BackgroundTask.STATUS_PENDING)
+
+        duplicate_response = self.client.post(reverse('media_manager_run_action'), {
+            'action': 'generate_homepage_copy',
+        }, follow=True)
+        self.assertEqual(
+            BackgroundTask.objects.filter(
+                task_type=BackgroundTask.TYPE_GENERATE_HOMEPAGE_COPY,
+            ).count(),
+            1,
+        )
+        self.assertContains(duplicate_response, '同类任务已经在等待或执行中。')
 
     def test_media_manager_action_forms_do_not_use_partial_navigation(self):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
@@ -4771,16 +4865,20 @@ class SiteMusicPlayerTests(TestCase):
         self.assertContains(response, 'compressMediaManagerImage')
         self.assertContains(response, 'MAX_HOMEPAGE_UPLOAD_EDGE')
 
-    def test_media_manager_shows_command_errors_on_same_page(self):
-        User.objects.create_superuser(username='media-admin', password='StrongPass12345')
+    def test_media_manager_shows_background_task_errors(self):
+        media_admin = User.objects.create_superuser(
+            username='media-admin',
+            password='StrongPass12345',
+        )
         self.client.login(username='media-admin', password='StrongPass12345')
+        BackgroundTask.objects.create(
+            task_type=BackgroundTask.TYPE_GENERATE_HOMEPAGE_COPY,
+            status=BackgroundTask.STATUS_FAILED,
+            requested_by=media_admin,
+            error_message='OpenAI vision API HTTP error 404: not found',
+        )
 
-        with patch('blog.views.call_command', side_effect=CommandError('OpenAI vision API HTTP error 404: not found')):
-            response = self.client.post(
-                reverse('media_manager_run_action'),
-                {'action': 'generate_homepage_copy'},
-                follow=True,
-            )
+        response = self.client.get(reverse('media_manager'))
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'media_manager.html')
@@ -4790,13 +4888,12 @@ class SiteMusicPlayerTests(TestCase):
         User.objects.create_user(username='reader', password='StrongPass12345')
         self.client.login(username='reader', password='StrongPass12345')
 
-        with patch('blog.views.call_command') as call_command_mock:
-            response = self.client.post(reverse('media_manager_run_action'), {
-                'action': 'prepare_music_playback',
-            })
+        response = self.client.post(reverse('media_manager_run_action'), {
+            'action': 'prepare_music_playback',
+        })
 
         self.assertEqual(response.status_code, 403)
-        call_command_mock.assert_not_called()
+        self.assertFalse(BackgroundTask.objects.exists())
 
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
         self.client.login(username='media-admin', password='StrongPass12345')
@@ -4809,13 +4906,12 @@ class SiteMusicPlayerTests(TestCase):
         User.objects.create_superuser(username='media-admin', password='StrongPass12345')
         self.client.login(username='media-admin', password='StrongPass12345')
 
-        with patch('blog.views.call_command') as call_command_mock:
-            response = self.client.post(reverse('media_manager_run_action'), {
-                'action': 'delete_everything',
-            })
+        response = self.client.post(reverse('media_manager_run_action'), {
+            'action': 'delete_everything',
+        })
 
         self.assertRedirects(response, reverse('media_manager'))
-        call_command_mock.assert_not_called()
+        self.assertFalse(BackgroundTask.objects.exists())
 
     def test_music_tracks_use_same_name_cover_and_lyrics_files(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
@@ -4838,8 +4934,11 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(tracks[0]['title'], '晚风')
         self.assertEqual(tracks[0]['audio_url'], '/media/music/%E6%99%9A%E9%A3%8E.mp3')
         self.assertEqual(tracks[0]['cover_url'], '/media/music/%E6%99%9A%E9%A3%8E.jpg')
-        self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': 1.2, 'text': '第一句歌词'})
-        self.assertEqual(tracks[0]['lyrics_lines'][1], {'time': 3.4, 'text': '第二句歌词'})
+        self.assertEqual(tracks[0]['lyrics_lines'], [])
+        self.assertEqual(
+            tracks[0]['lyrics_url'],
+            reverse('music_track_lyrics', args=['晚风.mp3']),
+        )
 
     def test_music_tracks_include_flac_files(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
@@ -4862,7 +4961,11 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(tracks[0]['title'], '无损歌曲')
         self.assertEqual(tracks[0]['audio_url'], '/media/music/%E6%97%A0%E6%8D%9F%E6%AD%8C%E6%9B%B2.flac')
         self.assertEqual(tracks[0]['cover_url'], '/media/music/%E6%97%A0%E6%8D%9F%E6%AD%8C%E6%9B%B2.webp')
-        self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': None, 'text': '无损歌词'})
+        self.assertEqual(tracks[0]['lyrics_lines'], [])
+        self.assertEqual(
+            tracks[0]['lyrics_url'],
+            reverse('music_track_lyrics', args=['无损歌曲.flac']),
+        )
 
     def test_music_tracks_prefer_same_name_web_playback_file(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
@@ -4888,10 +4991,14 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(tracks[0]['audio_url'], '/media/music/master.web.m4a')
         self.assertTrue(tracks[0]['is_web_playback'])
         self.assertEqual(tracks[0]['cover_url'], '/media/music/master.jpg')
-        self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': 2.0, 'text': 'playback lyric'})
+        self.assertEqual(tracks[0]['lyrics_lines'], [])
+        self.assertEqual(
+            tracks[0]['lyrics_url'],
+            reverse('music_track_lyrics', args=['master.flac']),
+        )
 
     def test_music_tracks_fall_back_to_embedded_flac_cover(self):
-        embedded_cover_bytes = b'\xff\xd8fake-flac-cover\xff\xd9'
+        embedded_cover_bytes = build_uploaded_test_image('embedded.jpg').read()
         with tempfile.TemporaryDirectory() as temporary_media_root:
             music_directory = os.path.join(temporary_media_root, 'music')
             os.makedirs(music_directory)
@@ -4916,8 +5023,8 @@ class SiteMusicPlayerTests(TestCase):
         self.assertTrue(tracks[0]['cover_url'].startswith('/media/music_cache/'))
         self.assertEqual(cached_cover_bytes, embedded_cover_bytes)
 
-    def test_music_tracks_fall_back_to_embedded_mp3_cover_and_lyrics(self):
-        embedded_cover_bytes = b'\xff\xd8fake-cover\xff\xd9'
+    def test_music_tracks_load_embedded_mp3_lyrics_lazily(self):
+        embedded_cover_bytes = build_uploaded_test_image('embedded.jpg').read()
         with tempfile.TemporaryDirectory() as temporary_media_root:
             music_directory = os.path.join(temporary_media_root, 'music')
             os.makedirs(music_directory)
@@ -4932,6 +5039,9 @@ class SiteMusicPlayerTests(TestCase):
                 from blog.context_processors import site_music_tracks
 
                 context = site_music_tracks(None)
+                lyrics_response = self.client.get(
+                    reverse('music_track_lyrics', args=['embedded.mp3'])
+                )
                 cache_directory = os.path.join(temporary_media_root, 'music_cache')
                 cached_cover_names = os.listdir(cache_directory)
                 cached_cover_path = os.path.join(cache_directory, cached_cover_names[0])
@@ -4943,7 +5053,17 @@ class SiteMusicPlayerTests(TestCase):
         self.assertEqual(len(tracks), 1)
         self.assertEqual(tracks[0]['title'], '内嵌标题')
         self.assertTrue(tracks[0]['cover_url'].startswith('/media/music_cache/'))
-        self.assertEqual(tracks[0]['lyrics_lines'][0], {'time': None, 'text': '内嵌第一句'})
+        self.assertEqual(tracks[0]['lyrics_lines'], [])
+        self.assertEqual(
+            tracks[0]['lyrics_url'],
+            reverse('music_track_lyrics', args=['embedded.mp3']),
+        )
+        self.assertEqual(lyrics_response.status_code, 200)
+        self.assertEqual(
+            lyrics_response.json()['lyrics_lines'][0],
+            {'time': None, 'text': '内嵌第一句'},
+        )
+        self.assertEqual(lyrics_response['Cache-Control'], 'public, max-age=300')
         self.assertEqual(cached_cover_bytes, embedded_cover_bytes)
 
     def test_base_template_renders_music_player_when_tracks_exist(self):
@@ -4957,14 +5077,21 @@ class SiteMusicPlayerTests(TestCase):
 
             with self.settings(MEDIA_ROOT=temporary_media_root, MEDIA_URL='/media/'):
                 response = self.client.get(reverse('home'))
+                lyrics_response = self.client.get(
+                    reverse('music_track_lyrics', args=['site song.mp3'])
+                )
 
         self.assertContains(response, 'site-music-player')
         self.assertContains(response, 'site-music-tracks')
         self.assertContains(response, 'site song')
+        track = response.context['site_music_tracks'][0]
+        self.assertEqual(track['lyrics_lines'], [])
         self.assertEqual(
-            response.context['site_music_tracks'][0]['lyrics_lines'][0]['text'],
-            '静态歌词',
+            track['lyrics_url'],
+            reverse('music_track_lyrics', args=['site song.mp3']),
         )
+        self.assertEqual(lyrics_response.json()['lyrics_lines'][0]['text'], '静态歌词')
+        self.assertNotContains(response, '静态歌词')
 
     def test_base_template_renders_persistent_player_shell_and_playlist_controls(self):
         with tempfile.TemporaryDirectory() as temporary_media_root:
@@ -5155,7 +5282,7 @@ class MusicPlaybackCommandTests(TestCase):
 
         self.assertIn('ffmpeg is not installed', command_output.getvalue())
 
-    def test_deploy_script_prepares_music_playback_before_deploy_check(self):
+    def test_deploy_script_enqueues_music_playback_after_deploy_check(self):
         blog_directory = os.path.dirname(os.path.abspath(__file__))
         project_directory = os.path.dirname(blog_directory)
         repository_directory = os.path.dirname(project_directory)
@@ -5166,8 +5293,10 @@ class MusicPlaybackCommandTests(TestCase):
 
         prepare_index = deploy_script_content.index('prepare_music_playback')
         check_index = deploy_script_content.index('check --deploy')
-        self.assertIn('prepare_music_playback --continue-on-error', deploy_script_content)
-        self.assertLess(prepare_index, check_index)
+        self.assertIn('enqueue_site_task prepare_music_playback', deploy_script_content)
+        self.assertIn('systemctl enable clover-blog-worker.service', deploy_script_content)
+        self.assertIn('systemctl restart clover-blog-worker', deploy_script_content)
+        self.assertLess(check_index, prepare_index)
 
 
 class HomepageTemplateIntegrationTests(TestCase):
@@ -5286,7 +5415,7 @@ class HomepageTemplateIntegrationTests(TestCase):
     def test_base_renders_timed_toast_region_instead_of_visible_message_alerts(self):
         user = User.objects.create_user(username='toast-user', password='StrongPass12345')
         self.client.login(username='toast-user', password='StrongPass12345')
-        response = self.client.get(reverse('logout'), follow=True)
+        response = self.client.post(reverse('logout'), follow=True)
 
         self.assertContains(response, 'id="siteToastRegion"')
         self.assertContains(response, 'site-flash-queue')
@@ -5327,18 +5456,19 @@ class HomepageTemplateIntegrationTests(TestCase):
         self.assertEqual(manifest['theme_color'], '#2e7d32')
         self.assertGreaterEqual(len(manifest['icons']), 1)
 
-    def test_service_worker_caches_shell_and_skips_music_media(self):
+    def test_service_worker_only_caches_versioned_static_assets(self):
         response = self.client.get(reverse('service_worker'))
         service_worker_content = response.content.decode('utf-8')
 
         self.assertEqual(response['Content-Type'], 'application/javascript; charset=utf-8')
         self.assertEqual(response['Service-Worker-Allowed'], '/')
+        self.assertEqual(response['Cache-Control'], 'no-cache, no-store, must-revalidate')
         self.assertIn('clover-blog-shell-v', service_worker_content)
-        self.assertIn(reverse('home'), service_worker_content)
-        self.assertIn(reverse('index'), service_worker_content)
-        self.assertIn("event.request.mode === 'navigate'", service_worker_content)
-        self.assertIn('/media/music/', service_worker_content)
-        self.assertIn('cache.put(event.request, networkResponse.clone())', service_worker_content)
+        self.assertIn("requestUrl.pathname.startsWith('/static/')", service_worker_content)
+        self.assertNotIn(reverse('index'), service_worker_content)
+        self.assertNotIn("event.request.mode === 'navigate'", service_worker_content)
+        self.assertNotIn('/media/music/', service_worker_content)
+        self.assertIn('cache.put(event.request, responseToCache)', service_worker_content)
 
     def test_index_uses_shared_navigation_and_still_renders_search_and_posts(self):
         author = User.objects.create_user(username='homepage-author', password='StrongPass12345')
@@ -6074,7 +6204,11 @@ class StartupPostCommandTests(TestCase):
 
         with patch.dict(os.environ, {'PEXELS_API_KEY': 'test-key'}, clear=True):
             with patch.object(command, 'search_pexels_photo', return_value=pexels_photo):
-                with patch.object(command, 'download_pexels_image', return_value=b'image-bytes'):
+                with patch.object(
+                    command,
+                    'download_pexels_image',
+                    return_value=build_uploaded_test_image().read(),
+                ):
                     with patch.object(FieldFile, 'save') as save_cover:
                         command.attach_cover(post, generated_article, timezone.localdate())
 
@@ -6094,5 +6228,6 @@ class FakeDeepSeekResponse:
     def __exit__(self, exc_type, exc_value, traceback):
         return False
 
-    def read(self):
-        return json.dumps(self.response_body).encode('utf-8')
+    def read(self, size=-1):
+        response_bytes = json.dumps(self.response_body).encode('utf-8')
+        return response_bytes if size < 0 else response_bytes[:size]

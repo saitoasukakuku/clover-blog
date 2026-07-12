@@ -1,4 +1,4 @@
-<script>
+<script nonce="{{ request.csp_nonce }}">
     (function () {
         if (window.cloverPostAutosaveController && typeof window.cloverPostAutosaveController.destroy === 'function') {
             window.cloverPostAutosaveController.destroy();

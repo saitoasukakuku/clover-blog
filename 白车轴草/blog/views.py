@@ -3,18 +3,17 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core import signing
-from django.core.management import call_command
 from django.core.paginator import Paginator
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db import transaction
-from django.db.models import Count, F, Prefetch, Q, Sum
-from django.http import HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
+from django.db import connection, transaction
+from django.db.models import Case, Count, F, IntegerField, Max, Prefetch, Q, Sum, When
+from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.core.management.base import CommandError
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -42,6 +41,7 @@ from blog.context_processors import (
     MUSIC_COVER_EXTENSIONS,
     MUSIC_DIR_NAME,
     MUSIC_LYRICS_EXTENSIONS,
+    build_music_track,
     find_same_name_file,
     split_music_file_name,
 )
@@ -58,21 +58,38 @@ from blog.homepage_media import (
     save_homepage_ai_copy_by_file_name,
     save_homepage_image_settings_by_file_name,
 )
+from blog.media_security import (
+    MAX_IMAGE_UPLOAD_BYTES,
+    has_valid_audio_signature,
+    validate_image_bytes as validate_secure_image_bytes,
+    validate_uploaded_image,
+)
 from blog.models import (
+    BackgroundTask,
     Comment,
     FriendRequest,
     Friendship,
     Notification,
     Post,
     PostFavorite,
+    PostImage,
     PostLike,
     PostReaction,
     PostRevision,
     PrivateMessage,
     RegistrationRequest,
+    Tag,
     UserBlock,
     UserProfile,
 )
+from blog.post_media import (
+    build_inline_file_response,
+    can_read_post_image,
+    find_protected_or_legacy_file,
+    sync_post_body_images,
+)
+from blog.post_editor import CUSTOM_CATEGORY_VALUE, parse_post_submission
+from blog.request_throttling import consume_rate_limit
 from blog.registration_approval import (
     RegistrationRequestAlreadyReviewed,
     RegistrationRequestCannotResend,
@@ -82,11 +99,11 @@ from blog.registration_approval import (
 )
 from blog.site_owner import get_site_owner_profile
 from collections import Counter
-from datetime import datetime
 from io import BytesIO, StringIO
 import base64
 import binascii
 import json
+import logging
 import os
 import re
 import time
@@ -94,11 +111,28 @@ import uuid
 from urllib.parse import quote, urlparse
 
 
-CUSTOM_CATEGORY_VALUE = '__custom__'
+logger = logging.getLogger(__name__)
+
+
+@require_GET
+def health_check(request):
+    with connection.cursor() as database_cursor:
+        database_cursor.execute('SELECT 1')
+        database_cursor.fetchone()
+    response = JsonResponse({'status': 'ok'})
+    response['Cache-Control'] = 'no-store'
+    return response
+
+
+@require_GET
+def legacy_private_media_not_found(request, file_name):
+    raise Http404('旧媒体地址已停用。')
+
+
 AI_GENERATION_COOLDOWN_SECONDS = 60
+AI_GENERATION_HOURLY_LIMIT = 10
 AI_COVER_TOKEN_SALT = 'blog.ai-cover'
 AI_COVER_TOKEN_MAX_AGE_SECONDS = 7200
-MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_MUSIC_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_MUSIC_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 MAX_LYRICS_UPLOAD_BYTES = 1024 * 1024
@@ -109,7 +143,7 @@ ALLOWED_IMAGE_EXTENSIONS = {
     'webp': 'webp',
 }
 MENTION_USERNAME_PATTERN = re.compile(r'@([\w.@+-]{1,150})')
-PWA_CACHE_VERSION = '2026-07-06-1'
+PWA_CACHE_VERSION = '2026-07-10-2'
 PWA_THEME_COLOR = '#2e7d32'
 REACTION_ICON_MAP = {
     'useful': 'fas fa-lightbulb',
@@ -118,7 +152,12 @@ REACTION_ICON_MAP = {
     'fun': 'fas fa-star',
 }
 RECENTLY_READ_SESSION_KEY = 'recently_read_post_ids'
-INVALID_AUDIO_FILE_MESSAGE = '请上传 MP3、FLAC、WAV、M4A 或 OGG 音频文件。'
+POST_VIEW_SESSION_KEY = 'counted_post_views'
+POST_VIEW_COOLDOWN_SECONDS = 30 * 60
+INVALID_AUDIO_FILE_MESSAGE = (
+    '音频内容与文件扩展名不匹配，'
+    '请上传有效的 MP3、FLAC、WAV、M4A 或 OGG 文件。'
+)
 OVERSIZED_AUDIO_MESSAGE = '音频文件不能超过 200MB。'
 INVALID_LYRICS_FILE_MESSAGE = '歌词文件只支持 LRC 或 TXT。'
 OVERSIZED_LYRICS_MESSAGE = '歌词文件不能超过 1MB。'
@@ -210,6 +249,7 @@ def get_safe_post_next_url(request, fallback_url):
     if not url_has_allowed_host_and_scheme(
         next_url,
         allowed_hosts={request.get_host()},
+        require_https=not settings.DEBUG,
     ):
         return fallback_url
     return next_url
@@ -226,11 +266,33 @@ def get_category_context(post=None):
     }
 
 
-def get_clear_query(request, parameter_name):
+BOUNDED_QUERY_PARAMETERS = {
+    'author': 150,
+    'category': 50,
+    'q': 100,
+    'tag': 50,
+}
+
+
+def get_normalized_query_params(request):
     query_params = request.GET.copy()
+    for query_name, maximum_length in BOUNDED_QUERY_PARAMETERS.items():
+        if query_name in query_params:
+            query_params[query_name] = query_params.get(query_name, '').strip()[
+                :maximum_length
+            ]
+    return query_params
+
+
+def get_clear_query(request, parameter_name):
+    query_params = get_normalized_query_params(request)
     query_params.pop(parameter_name, None)
     query_params.pop('page', None)
     return query_params.urlencode()
+
+
+def get_bounded_query_value(request, parameter_name, maximum_length):
+    return request.GET.get(parameter_name, '').strip()[:maximum_length]
 
 
 def build_active_filter_chips(
@@ -281,52 +343,6 @@ def build_active_filter_chips(
     return active_filter_chips
 
 
-def resolve_category(request):
-    category = (request.POST.get('category') or '').strip()
-    if category == CUSTOM_CATEGORY_VALUE:
-        return (request.POST.get('custom_category') or '').strip()[:50]
-    return category
-
-
-def parse_series_order(raw_series_order):
-    cleaned_series_order = (raw_series_order or '').strip()
-    if not cleaned_series_order:
-        return None
-    try:
-        series_order = int(cleaned_series_order)
-    except ValueError:
-        return None
-    if series_order < 1:
-        return None
-    return min(series_order, 9999)
-
-
-def parse_scheduled_publish_at(raw_scheduled_publish_at):
-    cleaned_scheduled_publish_at = (raw_scheduled_publish_at or '').strip()
-    if not cleaned_scheduled_publish_at:
-        return None
-    try:
-        naive_scheduled_publish_at = datetime.strptime(
-            cleaned_scheduled_publish_at,
-            '%Y-%m-%dT%H:%M',
-        )
-    except ValueError:
-        return None
-    return timezone.make_aware(
-        naive_scheduled_publish_at,
-        timezone.get_current_timezone(),
-    )
-
-
-def resolve_post_status_and_schedule(action, raw_scheduled_publish_at):
-    scheduled_publish_at = parse_scheduled_publish_at(raw_scheduled_publish_at)
-    if action != 'publish':
-        return 'draft', None
-    if scheduled_publish_at and scheduled_publish_at > timezone.now():
-        return 'draft', scheduled_publish_at
-    return 'published', None
-
-
 def get_currently_published_query():
     return Q(status='published') & (
         Q(scheduled_publish_at__isnull=True)
@@ -343,12 +359,9 @@ def normalize_image_extension(raw_extension):
 
 
 def validate_image_bytes(image_bytes):
-    if len(image_bytes) > MAX_IMAGE_UPLOAD_BYTES:
-        raise ValueError(OVERSIZED_IMAGE_MESSAGE)
     try:
-        image = Image.open(BytesIO(image_bytes))
-        image.verify()
-    except (UnidentifiedImageError, OSError, ValueError) as error:
+        return validate_secure_image_bytes(image_bytes)
+    except ValueError as error:
         raise ValueError(INVALID_IMAGE_FILE_MESSAGE) from error
 
 
@@ -362,37 +375,39 @@ def build_image_file_from_data_url(data_url, file_prefix):
         raise ValueError(INVALID_IMAGE_DATA_MESSAGE)
 
     raw_extension = image_format.rsplit('/', 1)[-1]
-    extension = normalize_image_extension(raw_extension)
+    normalize_image_extension(raw_extension)
     try:
         image_bytes = base64.b64decode(image_data, validate=True)
     except (binascii.Error, ValueError) as error:
         raise ValueError(INVALID_IMAGE_DATA_MESSAGE) from error
 
-    validate_image_bytes(image_bytes)
+    extension = validate_image_bytes(image_bytes)
     file_name = f'{file_prefix}_{uuid.uuid4().hex[:8]}.{extension}'
     return ContentFile(image_bytes, name=file_name)
 
 
 def validate_uploaded_image_file(uploaded_file):
-    if uploaded_file.size > MAX_IMAGE_UPLOAD_BYTES:
-        raise ValueError(OVERSIZED_IMAGE_MESSAGE)
     try:
-        uploaded_file.seek(0)
-        image = Image.open(uploaded_file)
-        image.verify()
-        uploaded_file.seek(0)
-    except (UnidentifiedImageError, OSError, ValueError) as error:
-        try:
-            uploaded_file.seek(0)
-        except OSError:
-            pass
+        return validate_uploaded_image(uploaded_file)
+    except ValueError as error:
         raise ValueError(INVALID_IMAGE_FILE_MESSAGE) from error
-    return uploaded_file
 
 
 @login_required
 @require_POST
 def upload_post_image(request):
+    retry_after = consume_rate_limit(
+        request,
+        'post-image-upload',
+        limit=30,
+        window_seconds=3600,
+        block_seconds=900,
+    )
+    if retry_after:
+        response = JsonResponse({'error': '图片上传过于频繁，请稍后重试。'}, status=429)
+        response['Retry-After'] = str(retry_after)
+        return response
+
     uploaded_image = request.FILES.get('image')
     if uploaded_image is None:
         return JsonResponse({'error': INVALID_IMAGE_FILE_MESSAGE}, status=400)
@@ -404,50 +419,81 @@ def upload_post_image(request):
     except ValueError as error:
         return JsonResponse({'error': str(error)}, status=400)
 
-    image_file_name = f'post_images/{uuid.uuid4().hex[:16]}.{image_extension}'
-    saved_image_path = default_storage.save(image_file_name, validated_image)
-    image_url = f"{settings.MEDIA_URL.rstrip('/')}/{quote(saved_image_path)}"
     raw_alt_text = os.path.splitext(os.path.basename(uploaded_image.name))[0].strip()
     image_alt_text = re.sub(r'[\[\]\r\n]+', ' ', raw_alt_text).strip() or '图片'
+    post_image = PostImage(
+        owner=request.user,
+        original_name=os.path.basename(uploaded_image.name)[:255],
+    )
+    post_image.image.save(
+        f'{uuid.uuid4().hex[:16]}.{image_extension}',
+        validated_image,
+        save=True,
+    )
+    image_url = reverse('post_image_file', args=[post_image.public_id])
     return JsonResponse({
         'url': image_url,
         'markdown': f'![{image_alt_text}]({image_url})',
     })
 
 
-def build_post_image_library_items():
-    post_image_directory = os.path.join(settings.MEDIA_ROOT, 'post_images')
-    try:
-        image_file_names = sorted(
-            os.listdir(post_image_directory),
-            key=lambda file_name: os.path.getmtime(os.path.join(post_image_directory, file_name)),
-            reverse=True,
-        )
-    except OSError:
-        return []
-
-    image_items = []
-    for image_file_name in image_file_names:
-        image_file_path = os.path.join(post_image_directory, image_file_name)
-        if not os.path.isfile(image_file_path):
-            continue
-        image_extension = os.path.splitext(image_file_name)[1].lstrip('.').lower()
-        if image_extension not in ALLOWED_IMAGE_EXTENSIONS:
-            continue
-        image_alt_text = os.path.splitext(image_file_name)[0]
-        image_items.append({
-            'file_name': image_file_name,
-            'alt': image_alt_text,
-            'url': f"{settings.MEDIA_URL.rstrip('/')}/post_images/{quote(image_file_name)}",
-        })
-    return image_items
+def build_post_image_library_items(user):
+    return [
+        {
+            'file_name': post_image.original_name or post_image.image.name,
+            'alt': (
+                os.path.splitext(post_image.original_name)[0]
+                if post_image.original_name
+                else '图片'
+            ),
+            'url': reverse('post_image_file', args=[post_image.public_id]),
+        }
+        for post_image in PostImage.objects.filter(owner=user).only(
+            'public_id',
+            'original_name',
+            'image',
+        )[:100]
+    ]
 
 
 @login_required
+@require_GET
 def post_image_library(request):
-    return JsonResponse({'images': build_post_image_library_items()})
+    return JsonResponse({'images': build_post_image_library_items(request.user)})
 
 
+@require_GET
+def post_image_file(request, public_id):
+    post_image = get_object_or_404(PostImage, public_id=public_id)
+    if not can_read_post_image(post_image, request.user):
+        raise Http404('图片不存在。')
+    file_path = find_protected_or_legacy_file(post_image.image)
+    is_public = post_image.owner_id != getattr(request.user, 'id', None)
+    return build_inline_file_response(file_path, public=is_public)
+
+
+@require_GET
+def post_cover(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+    is_owner = (
+        request.user.is_authenticated
+        and (request.user.is_superuser or post.author_id == request.user.id)
+    )
+    is_public = (
+        post.status == 'published'
+        and post.visibility == 'public'
+        and (
+            post.scheduled_publish_at is None
+            or post.scheduled_publish_at <= timezone.now()
+        )
+    )
+    if not is_owner and not is_public:
+        raise Http404('封面不存在。')
+    file_path = find_protected_or_legacy_file(post.cover)
+    return build_inline_file_response(file_path, public=is_public)
+
+
+@require_GET
 def pwa_manifest(request):
     manifest = {
         'name': '白车轴草',
@@ -462,13 +508,7 @@ def pwa_manifest(request):
         'icons': [
             {
                 'src': static_asset('img/favicon_v4.png'),
-                'sizes': '192x192',
-                'type': 'image/png',
-                'purpose': 'any maskable',
-            },
-            {
-                'src': static_asset('img/favicon_v4.png'),
-                'sizes': '512x512',
+                'sizes': '640x640',
                 'type': 'image/png',
                 'purpose': 'any maskable',
             },
@@ -481,16 +521,39 @@ def pwa_manifest(request):
     )
 
 
+@require_GET
+def music_track_lyrics(request, audio_file_name):
+    safe_audio_file_name = os.path.basename(audio_file_name)
+    if safe_audio_file_name != audio_file_name:
+        raise Http404('歌曲不存在。')
+    music_directory = os.path.join(settings.MEDIA_ROOT, MUSIC_DIR_NAME)
+    audio_file_path = os.path.join(music_directory, safe_audio_file_name)
+    audio_extension = os.path.splitext(safe_audio_file_name)[1].lower()
+    if (
+        audio_extension not in MUSIC_AUDIO_EXTENSIONS
+        or not os.path.isfile(audio_file_path)
+    ):
+        raise Http404('歌曲不存在。')
+    track = build_music_track(
+        music_directory,
+        safe_audio_file_name,
+        include_lyrics=True,
+    )
+    response = JsonResponse({'lyrics_lines': track['lyrics_lines']})
+    response['Cache-Control'] = 'public, max-age=300'
+    return response
+
+
+@require_GET
 def service_worker(request):
     shell_urls = [
-        reverse('home'),
-        reverse('index'),
-        reverse('archive'),
-        reverse('tags'),
         static_asset('img/favicon_v4.png'),
         static_asset('js/jquery-3.7.1.js'),
+        static_asset('js/site-music-player.js'),
+        static_asset('css/site-music-player.css'),
         static_asset('plugins/bootstrap-5.3.8-dist/css/bootstrap.min.css'),
         static_asset('plugins/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js'),
+        static_asset('plugins/fontawesome-free-7.1.0-web/css/all.min.css'),
     ]
     shell_urls_json = json.dumps(shell_urls, ensure_ascii=False)
     cache_name = f'clover-blog-shell-v{PWA_CACHE_VERSION}'
@@ -518,41 +581,34 @@ self.addEventListener('activate', (event) => {{
     );
 }});
 
-function shouldSkipRuntimeCache(requestUrl) {{
-    const requestPath = new URL(requestUrl).pathname;
-    return requestPath.startsWith('/media/music/');
-}}
-
 self.addEventListener('fetch', (event) => {{
     if (event.request.method !== 'GET') return;
     if (!event.request.url.startsWith(self.location.origin)) return;
-    if (shouldSkipRuntimeCache(event.request.url)) return;
+    const requestUrl = new URL(event.request.url);
+    if (!requestUrl.pathname.startsWith('/static/')) return;
 
     event.respondWith(
-        fetch(event.request)
-            .then((networkResponse) => {{
-                if (networkResponse && networkResponse.ok) {{
-                    caches.open(CACHE_NAME).then((cache) => {{
-                        cache.put(event.request, networkResponse.clone());
-                    }});
-                }}
+        caches.match(event.request).then((cachedResponse) => {{
+            if (cachedResponse) return cachedResponse;
+            return fetch(event.request).then((networkResponse) => {{
+                if (!networkResponse || !networkResponse.ok) return networkResponse;
+                const responseToCache = networkResponse.clone();
+                event.waitUntil(
+                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache))
+                );
                 return networkResponse;
-            }})
-            .catch(() => caches.match(event.request).then((cachedResponse) => {{
-                if (cachedResponse) return cachedResponse;
-                if (event.request.mode === 'navigate') {{
-                    return caches.match('/');
-                }}
-                return Response.error();
-            }}))
+            }});
+        }})
     );
 }});
 """
     response = HttpResponse(service_worker_source.strip(), content_type='application/javascript; charset=utf-8')
     response['Service-Worker-Allowed'] = '/'
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return response
 
 
+@require_GET
 def sitemap_xml(request):
     sitemap_entries = [
         {
@@ -632,6 +688,8 @@ def validate_uploaded_music_file(uploaded_file):
         raise ValueError(OVERSIZED_AUDIO_MESSAGE)
     audio_extension = get_upload_file_extension(uploaded_file)
     if audio_extension not in MUSIC_AUDIO_EXTENSIONS:
+        raise ValueError(INVALID_AUDIO_FILE_MESSAGE)
+    if not has_valid_audio_signature(uploaded_file, audio_extension):
         raise ValueError(INVALID_AUDIO_FILE_MESSAGE)
     return audio_extension
 
@@ -716,18 +774,6 @@ def build_music_media_items():
             file_stem,
             MUSIC_LYRICS_EXTENSIONS,
         )
-        lyrics_text = ''
-        if lyrics_file_name:
-            try:
-                with open(
-                    os.path.join(music_directory, lyrics_file_name),
-                    'r',
-                    encoding='utf-8',
-                    errors='replace',
-                ) as lyrics_file:
-                    lyrics_text = lyrics_file.read(MAX_LYRICS_UPLOAD_BYTES + 1)
-            except OSError:
-                lyrics_text = ''
         music_file_stat = os.stat(music_file_path)
         media_items.append({
             'file_name': music_file_name,
@@ -741,9 +787,31 @@ def build_music_media_items():
             'has_web_playback': os.path.exists(web_playback_path),
             'cover_file_name': cover_file_name,
             'lyrics_file_name': lyrics_file_name,
-            'lyrics_text': lyrics_text[:MAX_LYRICS_UPLOAD_BYTES],
         })
     return media_items
+
+
+def read_music_media_item_lyrics(music_item):
+    lyrics_file_name = music_item.get('lyrics_file_name')
+    if not lyrics_file_name:
+        return ''
+    lyrics_file_path = os.path.join(
+        settings.MEDIA_ROOT,
+        MUSIC_DIR_NAME,
+        lyrics_file_name,
+    )
+    try:
+        with open(lyrics_file_path, 'rb') as lyrics_file:
+            lyrics_bytes = lyrics_file.read(MAX_LYRICS_UPLOAD_BYTES + 1)
+    except OSError:
+        return ''
+    bounded_lyrics_bytes = lyrics_bytes[:MAX_LYRICS_UPLOAD_BYTES]
+    for encoding_name in ('utf-8-sig', 'utf-8', 'gb18030'):
+        try:
+            return bounded_lyrics_bytes.decode(encoding_name)
+        except UnicodeDecodeError:
+            continue
+    return bounded_lyrics_bytes.decode('utf-8', errors='replace')
 
 
 def redirect_to_music_manager():
@@ -808,13 +876,27 @@ def music_rename_plan_has_collision(music_directory, rename_plan):
 
 
 def move_music_assets(music_directory, rename_plan):
-    for source_file_name, target_file_name in rename_plan:
-        if source_file_name == target_file_name:
-            continue
-        os.replace(
-            os.path.join(music_directory, source_file_name),
-            os.path.join(music_directory, target_file_name),
-        )
+    completed_moves = []
+    try:
+        for source_file_name, target_file_name in rename_plan:
+            if source_file_name == target_file_name:
+                continue
+            source_file_path = os.path.join(music_directory, source_file_name)
+            target_file_path = os.path.join(music_directory, target_file_name)
+            os.replace(source_file_path, target_file_path)
+            completed_moves.append((source_file_path, target_file_path))
+    except OSError:
+        for source_file_path, target_file_path in reversed(completed_moves):
+            if os.path.isfile(target_file_path) and not os.path.exists(source_file_path):
+                try:
+                    os.replace(target_file_path, source_file_path)
+                except OSError:
+                    logger.exception(
+                        'Music asset rollback failed: %s -> %s',
+                        target_file_path,
+                        source_file_path,
+                    )
+        raise
 
 
 def remove_music_asset_file(music_directory, file_name):
@@ -862,6 +944,7 @@ def build_music_playback_summary():
 
 
 @login_required
+@require_GET
 def admin_dashboard(request):
     forbidden_response = require_superuser(request)
     if forbidden_response is not None:
@@ -874,6 +957,7 @@ def admin_dashboard(request):
 
 
 @login_required
+@require_GET
 def media_manager(request):
     forbidden_response = require_superuser(request)
     if forbidden_response is not None:
@@ -883,15 +967,32 @@ def media_manager(request):
     return render(request, 'media_manager.html', {
         'homepage_media_items': build_homepage_media_items(),
         'music_media_items': music_media_items,
-        'music_lyrics_by_file_name': {
-            music_item['file_name']: music_item['lyrics_text']
-            for music_item in music_media_items
-        },
         'active_media_tab': (
             'music'
             if request.GET.get('tab') == 'music'
             else 'homepage'
         ),
+        'recent_background_tasks': BackgroundTask.objects.select_related(
+            'requested_by',
+        )[:10],
+    })
+
+
+@login_required
+@require_GET
+def media_manager_music_details(request):
+    forbidden_response = require_superuser(request)
+    if forbidden_response is not None:
+        return forbidden_response
+
+    music_item = get_music_media_item_by_file_name(
+        request.GET.get('file_name', '').strip()
+    )
+    if music_item is None:
+        return JsonResponse({'error': '音乐文件不存在。'}, status=404)
+    return JsonResponse({
+        'file_name': music_item['file_name'],
+        'lyrics_text': read_music_media_item_lyrics(music_item),
     })
 
 
@@ -922,6 +1023,10 @@ def media_manager_upload_homepage_image(request):
         image_file_name,
         validated_image,
     )
+    try:
+        get_or_create_homepage_cached_image_url(saved_image_file_name)
+    except Http404:
+        logger.warning('Homepage image cache could not be prepared for %s.', saved_image_file_name)
     messages.success(request, f'已上传首页图片：{saved_image_file_name}')
     return redirect('media_manager')
 
@@ -1065,7 +1170,7 @@ def build_music_chunk_upload_path(user_id, upload_id):
         raise ValueError('上传标识无效，请重新选择文件。')
     upload_directory = os.path.join(settings.MEDIA_ROOT, 'music_uploads')
     os.makedirs(upload_directory, exist_ok=True)
-    return os.path.join(upload_directory, f'{user_id}-{upload_id}.part')
+    return os.path.join(upload_directory, f'{user_id}.part')
 
 
 @login_required
@@ -1147,6 +1252,9 @@ def media_manager_upload_music_chunk(request):
             'error': '音乐文件大小校验失败，请重新上传。',
             'received_bytes': received_file_size,
         }, status=400)
+
+    if not has_valid_audio_signature(upload_path, audio_extension):
+        return JsonResponse({'error': INVALID_AUDIO_FILE_MESSAGE}, status=400)
 
     audio_file_stem = build_safe_media_file_stem(raw_file_name, 'music-track')
     audio_file_name = f'{audio_file_stem}{audio_extension}'
@@ -1230,7 +1338,12 @@ def media_manager_update_music(request):
         messages.error(request, OVERSIZED_LYRICS_MESSAGE)
         return redirect_to_music_manager()
 
-    move_music_assets(music_directory, rename_plan)
+    try:
+        move_music_assets(music_directory, rename_plan)
+    except OSError:
+        logger.exception('Music asset rename failed for %s.', original_file_name)
+        messages.error(request, '音乐资源重命名失败，原文件已尽量恢复，请稍后重试。')
+        return redirect_to_music_manager()
 
     current_cover_file_name = find_music_asset_file_name(
         music_directory,
@@ -1284,29 +1397,30 @@ def media_manager_run_action(request):
         return forbidden_response
 
     action = request.POST.get('action')
-    command_output = StringIO()
-    try:
-        if action == 'prepare_music_playback':
-            call_command(
-                'prepare_music_playback',
-                '--continue-on-error',
-                stdout=command_output,
-                stderr=command_output,
-            )
-            messages.success(request, '已触发音乐播放版生成。')
-        elif action == 'generate_homepage_copy':
-            call_command(
-                'generate_homepage_copy',
-                '--batch-size',
-                '8',
-                stdout=command_output,
-                stderr=command_output,
-            )
-            messages.success(request, '已触发首页文案生成。')
-        else:
-            messages.error(request, '未知的媒体管理操作。')
-    except CommandError as error:
-        messages.error(request, str(error))
+    allowed_actions = {
+        BackgroundTask.TYPE_PREPARE_MUSIC,
+        BackgroundTask.TYPE_GENERATE_HOMEPAGE_COPY,
+    }
+    if action not in allowed_actions:
+        messages.error(request, '未知的媒体管理操作。')
+        return redirect('media_manager')
+
+    has_active_task = BackgroundTask.objects.filter(
+        task_type=action,
+        status__in={
+            BackgroundTask.STATUS_PENDING,
+            BackgroundTask.STATUS_RUNNING,
+        },
+    ).exists()
+    if has_active_task:
+        messages.info(request, '同类任务已经在等待或执行中。')
+        return redirect('media_manager')
+
+    BackgroundTask.objects.create(
+        task_type=action,
+        requested_by=request.user,
+    )
+    messages.success(request, '任务已加入后台队列。')
     return redirect('media_manager')
 
 
@@ -1330,6 +1444,15 @@ def build_post_form_context(
         content=content or '',
         visibility=visibility or 'private',
     )
+    context = {'post': post}
+    context.update(get_category_context(post))
+    return context
+
+
+def build_edit_post_form_context(post, updated_post_values=None):
+    if updated_post_values:
+        for field_name, field_value in updated_post_values.items():
+            setattr(post, field_name, field_value)
     context = {'post': post}
     context.update(get_category_context(post))
     return context
@@ -1452,6 +1575,33 @@ def record_recently_read_post(request, post):
     request.session.modified = True
 
 
+def record_post_view(request, post):
+    if post.status != 'published':
+        return False
+
+    current_timestamp = int(time.time())
+    counted_post_views = request.session.get(POST_VIEW_SESSION_KEY, {})
+    post_key = str(post.id)
+    last_counted_timestamp = int(counted_post_views.get(post_key, 0) or 0)
+    if current_timestamp - last_counted_timestamp < POST_VIEW_COOLDOWN_SECONDS:
+        return False
+
+    Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)
+    post.views_count += 1
+    counted_post_views[post_key] = current_timestamp
+    if len(counted_post_views) > 100:
+        counted_post_views = dict(
+            sorted(
+                counted_post_views.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )[:100]
+        )
+    request.session[POST_VIEW_SESSION_KEY] = counted_post_views
+    request.session.modified = True
+    return True
+
+
 def get_recently_read_posts(request):
     recent_post_ids = request.session.get(RECENTLY_READ_SESSION_KEY, [])
     normalized_post_ids = []
@@ -1511,6 +1661,8 @@ def create_notification(
     private_message=None,
     friend_request=None,
 ):
+    if recipient is None:
+        return None
     if actor and recipient.id == actor.id:
         return None
 
@@ -1546,6 +1698,8 @@ def notify_mentioned_users(comment, post, actor, excluded_user_ids=None):
     notification_target_url = reverse('post_detail', args=[post.id])
     for mentioned_user in mentioned_users:
         if mentioned_user.id in excluded_user_ids:
+            continue
+        if users_are_blocked_between(actor, mentioned_user):
             continue
         can_read_post = filter_readable_posts(
             Post.objects.filter(id=post.id),
@@ -1627,7 +1781,10 @@ def can_moderate_comment(user, comment):
 
 
 def get_category_counts(posts):
-    counter = Counter(post.category for post in posts if post.category)
+    counter = Counter({
+        row['category']: row['count']
+        for row in posts.exclude(category='').values('category').annotate(count=Count('id'))
+    })
     categories = [
         {'value': value, 'name': label, 'count': counter[value]}
         for value, label in Post.CATEGORY_CHOICES
@@ -1666,21 +1823,13 @@ def build_archive_groups(posts):
 
 
 def build_tag_counts(posts):
-    tag_counter = Counter()
-
-    for post in posts:
-        unique_tags = set(post.tag_list)
-        for tag in unique_tags:
-            if tag.startswith('daily:'):
-                continue
-            tag_counter[tag] += 1
-
     return [
-        {'name': tag_name, 'count': tag_count}
-        for tag_name, tag_count in sorted(
-            tag_counter.items(),
-            key=lambda tag_item: (-tag_item[1], tag_item[0].lower()),
-        )
+        {'name': row['name'], 'count': row['count']}
+        for row in Tag.objects.filter(posts__in=posts)
+        .exclude(normalized_name__startswith='daily:')
+        .values('name')
+        .annotate(count=Count('posts', distinct=True))
+        .order_by('-count', 'normalized_name')
     ]
 
 
@@ -1689,7 +1838,7 @@ def normalize_managed_tag(raw_tag):
 
 
 def is_invalid_managed_tag(tag):
-    return bool(re.search(r'[,，;；\s]', tag))
+    return len(tag) > 50 or bool(re.search(r'[,，;；\s]', tag))
 
 
 def is_reserved_system_tag(tag):
@@ -1698,22 +1847,29 @@ def is_reserved_system_tag(tag):
 
 def replace_post_tag(post, source_tag, target_tag):
     new_tags = []
+    normalized_new_tags = set()
     changed = False
+    normalized_source_tag = Tag.normalize_name(source_tag)
 
     for current_tag in post.tag_list:
-        if current_tag == source_tag:
+        if Tag.normalize_name(current_tag) == normalized_source_tag:
             next_tag = target_tag
             changed = True
         else:
             next_tag = current_tag
 
-        if next_tag and next_tag not in new_tags:
+        normalized_next_tag = Tag.normalize_name(next_tag)
+        if next_tag and normalized_next_tag not in normalized_new_tags:
             new_tags.append(next_tag)
+            normalized_new_tags.add(normalized_next_tag)
 
     if not changed:
         return False
 
-    post.tags = ','.join(new_tags)
+    updated_tags = ','.join(new_tags)
+    if len(updated_tags) > Post._meta.get_field('tags').max_length:
+        raise ValueError('合并后的文章标签总长度超过 200 个字符。')
+    post.tags = updated_tags
     post.save(update_fields=['tags'])
     return True
 
@@ -1721,7 +1877,9 @@ def replace_post_tag(post, source_tag, target_tag):
 def merge_post_tag(source_tag, target_tag):
     updated_post_count = 0
     with transaction.atomic():
-        candidate_posts = Post.objects.select_for_update().filter(tags__icontains=source_tag)
+        candidate_posts = Post.objects.select_for_update().filter(
+            tag_links__tag__normalized_name=Tag.normalize_name(source_tag),
+        ).distinct()
         for post in candidate_posts:
             if replace_post_tag(post, source_tag, target_tag):
                 updated_post_count += 1
@@ -1731,7 +1889,7 @@ def merge_post_tag(source_tag, target_tag):
 def get_display_tags(post):
     display_tags = []
     for tag in post.tag_list:
-        if tag.startswith('daily:'):
+        if tag.casefold().startswith('daily:'):
             continue
         if tag not in display_tags:
             display_tags.append(tag)
@@ -1741,45 +1899,34 @@ def get_display_tags(post):
 def filter_posts_by_tag(posts, selected_tag):
     if not selected_tag:
         return posts
-    return [
-        post
-        for post in posts
-        if selected_tag in get_display_tags(post)
-    ]
+    return posts.filter(
+        tag_links__tag__normalized_name=Tag.normalize_name(selected_tag),
+    ).distinct()
 
 
 def get_related_posts(post, request_user, limit=3):
-    source_tags = set(get_display_tags(post))
-    if not source_tags:
+    source_tag_ids = list(
+        post.tag_objects.exclude(normalized_name__startswith='daily:')
+        .values_list('id', flat=True)
+    )
+    if not source_tag_ids:
         return []
 
-    tag_filter = Q()
-    for source_tag in source_tags:
-        tag_filter |= Q(tags__icontains=source_tag)
-
-    candidate_posts = get_readable_published_posts(request_user).exclude(
-        id=post.id,
-    ).filter(
-        tag_filter,
-    ).select_related(
+    return list(
+        get_readable_published_posts(request_user).exclude(
+            id=post.id,
+        ).filter(
+            tag_links__tag_id__in=source_tag_ids,
+        ).annotate(
+            shared_tag_count=Count('tag_links__tag', distinct=True),
+        ).select_related(
         'author',
         'author__profile',
+        ).order_by(
+            '-shared_tag_count',
+            '-created_at',
+        )[:limit]
     )
-    scored_posts = []
-    for candidate_post in candidate_posts:
-        candidate_tags = set(get_display_tags(candidate_post))
-        shared_tag_count = len(source_tags & candidate_tags)
-        if shared_tag_count:
-            scored_posts.append((shared_tag_count, candidate_post.created_at, candidate_post))
-
-    scored_posts.sort(
-        key=lambda scored_post: (scored_post[0], scored_post[1]),
-        reverse=True,
-    )
-    return [
-        candidate_post
-        for _, __, candidate_post in scored_posts[:limit]
-    ]
 
 
 def get_series_posts(post, request_user):
@@ -1800,11 +1947,13 @@ def get_series_posts(post, request_user):
     )
 
 
+@require_GET
 def homepage_carousel_image(request, image_file_name):
     cached_image_url = get_or_create_homepage_cached_image_url(image_file_name)
     return HttpResponseRedirect(cached_image_url)
 
 
+@require_GET
 def home(request):
     owner, owner_profile = get_site_owner_profile()
     readable_posts = get_readable_published_posts(request.user).select_related(
@@ -1831,6 +1980,7 @@ def home(request):
     })
 
 
+@require_GET
 def index(request):
     owner, owner_profile = get_site_owner_profile()
     all_posts = get_readable_published_posts(request.user)
@@ -1848,10 +1998,10 @@ def index(request):
             visibility='public',
         ) if owner else Post.objects.none()
 
-    selected_category = request.GET.get('category', '').strip()
-    selected_author = request.GET.get('author', '').strip()
-    selected_tag = request.GET.get('tag', '').strip()
-    search_query = request.GET.get('q', '').strip()
+    selected_category = get_bounded_query_value(request, 'category', 50)
+    selected_author = get_bounded_query_value(request, 'author', 150)
+    selected_tag = get_bounded_query_value(request, 'tag', 50)
+    search_query = get_bounded_query_value(request, 'q', 100)
     selected_category_label = Post.CATEGORY_LABELS.get(selected_category, selected_category)
     selected_author_post = all_posts.filter(
         author__username=selected_author
@@ -1955,6 +2105,7 @@ def index(request):
     })
 
 
+@require_GET
 def author_profile(request, username):
     author = get_object_or_404(
         User.objects.select_related('profile'),
@@ -1988,6 +2139,7 @@ def author_profile(request, username):
     })
 
 
+@require_GET
 def archive_view(request):
     posts = get_readable_published_posts(request.user).select_related(
         'author',
@@ -1999,11 +2151,12 @@ def archive_view(request):
     })
 
 
+@require_GET
 def tags_view(request):
     posts = get_readable_published_posts(request.user)
-    tag_search_query = request.GET.get('q', '').strip()
+    tag_search_query = get_bounded_query_value(request, 'q', 100)
     tag_sort = request.GET.get('sort', 'count').strip()
-    selected_tag = request.GET.get('selected', '').strip()
+    selected_tag = get_bounded_query_value(request, 'selected', 50)
     if tag_sort not in {'count', 'name'}:
         tag_sort = 'count'
 
@@ -2041,21 +2194,25 @@ def tag_manager(request):
 
         if not source_tag or not target_tag:
             messages.error(request, '请选择旧标签，并填写要合并成的新标签。')
-        elif source_tag == target_tag:
+        elif Tag.normalize_name(source_tag) == Tag.normalize_name(target_tag):
             messages.info(request, '旧标签和新标签相同，不需要合并。')
         elif is_reserved_system_tag(source_tag) or is_reserved_system_tag(target_tag):
             messages.error(request, '系统标签不能在这里合并。')
         elif is_invalid_managed_tag(source_tag) or is_invalid_managed_tag(target_tag):
-            messages.error(request, '标签名不能包含空格、逗号或分号。')
+            messages.error(request, '标签名不能超过 50 个字符，也不能包含空格、逗号或分号。')
         else:
-            updated_post_count = merge_post_tag(source_tag, target_tag)
-            if updated_post_count:
-                messages.success(
-                    request,
-                    f'已把 {updated_post_count} 篇文章里的“{source_tag}”合并为“{target_tag}”。',
-                )
+            try:
+                updated_post_count = merge_post_tag(source_tag, target_tag)
+            except ValueError as error:
+                messages.error(request, str(error))
             else:
-                messages.info(request, '没有文章包含这个旧标签。')
+                if updated_post_count:
+                    messages.success(
+                        request,
+                        f'已把 {updated_post_count} 篇文章里的“{source_tag}”合并为“{target_tag}”。',
+                    )
+                else:
+                    messages.info(request, '没有文章包含这个旧标签。')
 
         return redirect('tag_manager')
 
@@ -2073,27 +2230,36 @@ def register(request):
 
     if request.method == 'POST':
         form = RegistrationRequestForm(request.POST)
-        if form.is_valid():
+        retry_after = consume_rate_limit(
+            request,
+            'register-request',
+            limit=5,
+            window_seconds=900,
+            block_seconds=1800,
+        )
+        if retry_after:
+            form.add_error(None, f'提交过于频繁，请在 {retry_after} 秒后重试。')
+        elif form.is_valid():
             email = form.cleaned_data['email']
-            registration_request = RegistrationRequest.objects.filter(email=email).first()
-            if registration_request:
-                if registration_request.status == RegistrationRequest.STATUS_PENDING:
-                    messages.info(request, '这个邮箱的注册申请正在等待审核。')
-                    return redirect('register')
-                if (
-                    registration_request.status == RegistrationRequest.STATUS_APPROVED
-                    and not registration_request.is_code_expired
-                ):
-                    messages.info(request, '这个邮箱已经通过审核，请查看邮件里的注册码。')
-                    return redirect('complete_registration')
-
-                registration_request.reopen()
-                registration_request.save()
-                messages.success(request, '注册申请已重新提交，请等待审核。')
+            if User.objects.filter(email__iexact=email).exists():
+                messages.success(request, '申请已收到；符合条件时会发送后续邮件。')
                 return redirect('register')
-
-            RegistrationRequest.objects.create(email=email)
-            messages.success(request, '注册申请已提交，请等待审核。')
+            registration_request, created = RegistrationRequest.objects.get_or_create(
+                email=email,
+            )
+            if not created:
+                if (
+                    registration_request.status in {
+                        RegistrationRequest.STATUS_REJECTED,
+                        RegistrationRequest.STATUS_USED,
+                    }
+                    or registration_request.is_code_expired
+                ):
+                    registration_request.reopen()
+                    registration_request.save()
+                messages.success(request, '申请已收到；符合条件时会发送后续邮件。')
+                return redirect('register')
+            messages.success(request, '申请已收到；符合条件时会发送后续邮件。')
             return redirect('register')
     else:
         form = RegistrationRequestForm()
@@ -2116,7 +2282,16 @@ def complete_registration(request):
 
     if request.method == 'POST':
         form = CompleteRegistrationForm(request.POST)
-        if form.is_valid():
+        retry_after = consume_rate_limit(
+            request,
+            'complete-registration',
+            limit=10,
+            window_seconds=900,
+            block_seconds=1800,
+        )
+        if retry_after:
+            form.add_error(None, f'验证过于频繁，请在 {retry_after} 秒后重试。')
+        elif form.is_valid():
             try:
                 user = form.save()
             except forms.ValidationError as validation_error:
@@ -2147,6 +2322,7 @@ def require_superuser(request):
 
 
 @login_required
+@require_GET
 def registration_requests(request):
     forbidden_response = require_superuser(request)
     if forbidden_response is not None:
@@ -2191,7 +2367,8 @@ def approve_registration_request(request, request_id):
         messages.info(request, '只有待审核申请可以通过。')
         return redirect('registration_requests')
     except Exception:
-        messages.error(request, '邮件发送失败，申请仍保持待审核。')
+        logger.exception('Registration approval email failed for request %s.', request_id)
+        messages.error(request, '审批已保存，但邮件发送失败；请使用重发注册码。')
         return redirect('registration_requests')
 
     messages.success(request, '已通过并发送注册码。')
@@ -2221,7 +2398,8 @@ def resend_registration_code(request, request_id):
         messages.info(request, '只有已通过且未使用的申请可以重发注册码。')
         return redirect('registration_requests')
     except Exception:
-        messages.error(request, '邮件发送失败，注册码没有更新。')
+        logger.exception('Registration code resend failed for request %s.', request_id)
+        messages.error(request, '注册码已更新，但邮件发送失败；可以再次重发。')
         return redirect('registration_requests')
 
     messages.success(request, '已重新发送注册码。')
@@ -2256,11 +2434,24 @@ def login_view(request):
 
     if request.method == 'POST':
         form = ChineseAuthenticationForm(request, data=request.POST)
-        if form.is_valid():
+        retry_after = consume_rate_limit(
+            request,
+            'login',
+            limit=20,
+            window_seconds=900,
+            block_seconds=900,
+        )
+        if retry_after:
+            form.add_error(None, f'登录尝试过多，请在 {retry_after} 秒后重试。')
+        elif form.is_valid():
             login(request, form.get_user())
             messages.success(request, '登录成功，欢迎回来。')
             next_url = request.GET.get('next')
-            if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+            if not url_has_allowed_host_and_scheme(
+                next_url,
+                allowed_hosts={request.get_host()},
+                require_https=not settings.DEBUG,
+            ):
                 next_url = 'index'
             return redirect(next_url)
     else:
@@ -2276,6 +2467,7 @@ def login_view(request):
     })
 
 @login_required
+@require_POST
 def logout_view(request):
     logout(request)
     messages.success(request, '已退出登录。')
@@ -2322,8 +2514,9 @@ def user_center(request):
 
 
 @login_required
+@require_GET
 def friends_view(request):
-    search_query = (request.GET.get('q') or '').strip()
+    search_query = get_bounded_query_value(request, 'q', 100)
     friends = get_friends_for_user(request.user)
     incoming_requests = FriendRequest.objects.filter(
         receiver=request.user,
@@ -2357,6 +2550,20 @@ def friends_view(request):
 @require_POST
 def send_friend_request(request, user_id):
     redirect_url = get_safe_post_next_url(request, reverse('friends'))
+    retry_after = consume_rate_limit(
+        request,
+        'friend-request',
+        limit=30,
+        window_seconds=3600,
+        block_seconds=900,
+    )
+    if retry_after:
+        messages.error(
+            request,
+            f'好友申请发送过于频繁，请在 {retry_after} 秒后重试。',
+        )
+        return redirect(redirect_url)
+
     target_user = get_object_or_404(User, id=user_id)
     if target_user == request.user:
         messages.error(request, '不能添加自己为好友。')
@@ -2508,22 +2715,50 @@ def unblock_user(request, user_id):
 
 
 @login_required
+@require_GET
 def conversations_view(request):
-    conversation_items = []
-    for friend in get_friends_for_user(request.user):
-        conversation_messages = PrivateMessage.objects.filter(
-            Q(sender=request.user, recipient=friend)
-            | Q(sender=friend, recipient=request.user)
+    friends = get_friends_for_user(request.user)
+    friend_ids = [friend.id for friend in friends]
+    friend_by_id = {friend.id: friend for friend in friends}
+    conversation_messages = PrivateMessage.objects.filter(
+        Q(sender=request.user, recipient_id__in=friend_ids)
+        | Q(sender_id__in=friend_ids, recipient=request.user)
+    ).annotate(
+        counterpart_id=Case(
+            When(sender=request.user, then=F('recipient_id')),
+            default=F('sender_id'),
+            output_field=IntegerField(),
         )
-        conversation_items.append({
-            'friend': friend,
-            'last_message': conversation_messages.order_by('-created_at').first(),
-            'unread_count': conversation_messages.filter(
-                sender=friend,
-                recipient=request.user,
-                is_read=False,
-            ).count(),
-        })
+    )
+    last_message_ids = list(
+        conversation_messages.values('counterpart_id')
+        .annotate(last_message_id=Max('id'))
+        .values_list('last_message_id', flat=True)
+    )
+    last_messages = {
+        (
+            message.recipient_id
+            if message.sender_id == request.user.id
+            else message.sender_id
+        ): message
+        for message in PrivateMessage.objects.filter(id__in=last_message_ids)
+    }
+    unread_counts = {
+        row['sender_id']: row['count']
+        for row in PrivateMessage.objects.filter(
+            sender_id__in=friend_ids,
+            recipient=request.user,
+            is_read=False,
+        ).values('sender_id').annotate(count=Count('id'))
+    }
+    conversation_items = [
+        {
+            'friend': friend_by_id[friend_id],
+            'last_message': last_messages.get(friend_id),
+            'unread_count': unread_counts.get(friend_id, 0),
+        }
+        for friend_id in friend_ids
+    ]
 
     conversation_items.sort(
         key=lambda item: (
@@ -2550,7 +2785,19 @@ def conversation_view(request, user_id):
 
     if request.method == 'POST':
         message_form = PrivateMessageForm(request.POST)
-        if message_form.is_valid():
+        retry_after = consume_rate_limit(
+            request,
+            'private-message',
+            limit=60,
+            window_seconds=3600,
+            block_seconds=900,
+        )
+        if retry_after:
+            message_form.add_error(
+                None,
+                f'私信发送过于频繁，请在 {retry_after} 秒后重试。',
+            )
+        elif message_form.is_valid():
             private_message = message_form.save(commit=False)
             private_message.sender = request.user
             private_message.recipient = friend
@@ -2567,11 +2814,6 @@ def conversation_view(request, user_id):
     else:
         message_form = PrivateMessageForm()
 
-    PrivateMessage.objects.filter(
-        sender=friend,
-        recipient=request.user,
-        is_read=False,
-    ).update(is_read=True)
     conversation_messages = PrivateMessage.objects.filter(
         Q(sender=request.user, recipient=friend)
         | Q(sender=friend, recipient=request.user)
@@ -2581,10 +2823,26 @@ def conversation_view(request, user_id):
         'friend': friend,
         'conversation_messages': conversation_messages,
         'message_form': message_form,
+        'mark_read_url': reverse('mark_conversation_read', args=[friend.id]),
     })
 
 
 @login_required
+@require_POST
+def mark_conversation_read(request, user_id):
+    friend = get_object_or_404(User, id=user_id)
+    if not are_friends(request.user, friend):
+        return JsonResponse({'error': '只有好友会话可以标记已读。'}, status=403)
+    updated_count = PrivateMessage.objects.filter(
+        sender=friend,
+        recipient=request.user,
+        is_read=False,
+    ).update(is_read=True)
+    return JsonResponse({'updated_count': updated_count})
+
+
+@login_required
+@require_GET
 def favorite_posts(request):
     readable_post_ids = filter_readable_posts(
         Post.objects.all(),
@@ -2715,6 +2973,7 @@ def toggle_post_reaction(request, post_id):
 
 
 @login_required
+@require_GET
 def notifications_view(request):
     selected_notification_status = request.GET.get('status', 'all').strip()
     selected_notification_type = request.GET.get('type', 'all').strip()
@@ -2738,7 +2997,7 @@ def notifications_view(request):
         notifications = notifications.filter(notification_type=selected_notification_type)
     notifications = notifications.order_by('-created_at')
 
-    pagination_params = request.GET.copy()
+    pagination_params = get_normalized_query_params(request)
     pagination_params.pop('page', None)
     pagination_query = pagination_params.urlencode()
     pagination_prefix = f'{pagination_query}&' if pagination_query else ''
@@ -2783,6 +3042,7 @@ def read_notification(request, notification_id):
     if not url_has_allowed_host_and_scheme(
         target_url,
         allowed_hosts={request.get_host()},
+        require_https=not settings.DEBUG,
     ):
         target_url = fallback_url
     return redirect(target_url)
@@ -2802,22 +3062,37 @@ def mark_all_notifications_read(request):
 @login_required
 def create_post(request):
     if request.method == 'POST':
-        title = request.POST.get('title')
-        category = resolve_category(request)
-        tags = (request.POST.get('tags') or '').strip()[:200]
-        series_title = (request.POST.get('series_title') or '').strip()[:100]
-        series_order = parse_series_order(request.POST.get('series_order'))
-        content = request.POST.get('content') or ''
+        submission, submission_errors = parse_post_submission(request.POST)
+        if submission_errors:
+            for submission_error in submission_errors:
+                messages.error(request, submission_error)
+            return render(
+                request,
+                'create_post.html',
+                build_post_form_context(
+                    submission.title,
+                    submission.category,
+                    submission.tags,
+                    submission.content,
+                    submission.visibility,
+                    submission.series_title,
+                    submission.series_order,
+                    submission.scheduled_publish_at,
+                ),
+            )
+
+        title = submission.title
+        category = submission.category
+        tags = submission.tags
+        series_title = submission.series_title
+        series_order = submission.series_order
+        content = submission.content
         cover = request.FILES.get('cover')
         cropped_cover_data = request.POST.get('cropped_cover')
         ai_cover_token = request.POST.get('ai_cover_token', '')
-        action = request.POST.get('action') # 'draft' or 'publish'
-
-        status, scheduled_publish_at = resolve_post_status_and_schedule(
-            action,
-            request.POST.get('scheduled_publish_at'),
-        )
-        visibility = request.POST.get('visibility', 'private')
+        status = submission.status
+        scheduled_publish_at = submission.scheduled_publish_at
+        visibility = submission.visibility
 
         if cropped_cover_data:
             try:
@@ -2866,11 +3141,14 @@ def create_post(request):
                     image_bytes = StartupPostCommand().download_pexels_image(
                         ai_cover_data['image_url']
                     )
+                    image_extension = validate_image_bytes(image_bytes)
                     photo_id = ai_cover_data.get('photo_id', 'ai')
-                    file_name = f"ai_{uuid.uuid4().hex[:8]}-{photo_id}.jpg"
+                    file_name = (
+                        f"ai_{uuid.uuid4().hex[:8]}-{photo_id}.{image_extension}"
+                    )
                     cover = ContentFile(image_bytes, name=file_name)
                     content = append_ai_cover_attribution(content, ai_cover_data)
-                except CommandError:
+                except (CommandError, ValueError):
                     messages.warning(request, '文章已保存，但 AI 封面下载失败。')
 
         post = Post(
@@ -2887,6 +3165,7 @@ def create_post(request):
             visibility=visibility
         )
         post.save()
+        sync_post_body_images(post)
         
         if status == 'draft':
             return redirect('drafts')
@@ -2902,6 +3181,18 @@ def generate_ai_post(request):
     requirements = (request.POST.get('requirements') or '').strip()
     article_length = (request.POST.get('article_length') or 'medium').strip()
     should_generate_cover = request.POST.get('generate_cover') == 'true'
+
+    retry_after = consume_rate_limit(
+        request,
+        f'ai-generate-user-{request.user.id}',
+        limit=AI_GENERATION_HOURLY_LIMIT,
+        window_seconds=3600,
+        block_seconds=3600,
+    )
+    if retry_after:
+        response = JsonResponse({'error': 'AI 生成次数已达上限，请稍后重试。'}, status=429)
+        response['Retry-After'] = str(retry_after)
+        return response
 
     if not topic:
         return JsonResponse({'error': '请先填写文章主题。'}, status=400)
@@ -2997,6 +3288,7 @@ def generate_ai_post(request):
 
 
 @login_required
+@require_GET
 def drafts_list(request):
     posts = Post.objects.filter(author=request.user, status='draft').order_by('-updated_at')
     return render(request, 'drafts.html', {'posts': posts})
@@ -3006,22 +3298,16 @@ def edit_post(request, post_id):
     post = get_object_or_404(Post, id=post_id, author=request.user)
     
     if request.method == 'POST':
-        action = request.POST.get('action')
-        updated_status, updated_scheduled_publish_at = resolve_post_status_and_schedule(
-            action,
-            request.POST.get('scheduled_publish_at'),
-        )
-        updated_post_values = {
-            'title': request.POST.get('title') or '',
-            'category': resolve_category(request),
-            'tags': (request.POST.get('tags') or '').strip()[:200],
-            'series_title': (request.POST.get('series_title') or '').strip()[:100],
-            'series_order': parse_series_order(request.POST.get('series_order')),
-            'content': request.POST.get('content') or '',
-            'status': updated_status,
-            'scheduled_publish_at': updated_scheduled_publish_at,
-            'visibility': request.POST.get('visibility', 'private'),
-        }
+        submission, submission_errors = parse_post_submission(request.POST)
+        updated_post_values = submission.as_model_values()
+        if submission_errors:
+            for submission_error in submission_errors:
+                messages.error(request, submission_error)
+            return render(
+                request,
+                'create_post.html',
+                build_edit_post_form_context(post, updated_post_values),
+            )
         cover = request.FILES.get('cover')
         cropped_cover_data = request.POST.get('cropped_cover')
         should_update_cover = False
@@ -3033,18 +3319,22 @@ def edit_post(request, post_id):
                 should_update_cover = True
             except ValueError as error:
                 messages.error(request, str(error))
-                context = {'post': post}
-                context.update(get_category_context(post))
-                return render(request, 'create_post.html', context)
+                return render(
+                    request,
+                    'create_post.html',
+                    build_edit_post_form_context(post, updated_post_values),
+                )
         elif cover:
             try:
                 updated_cover = validate_uploaded_image_file(cover)
                 should_update_cover = True
             except ValueError as error:
                 messages.error(request, str(error))
-                context = {'post': post}
-                context.update(get_category_context(post))
-                return render(request, 'create_post.html', context)
+                return render(
+                    request,
+                    'create_post.html',
+                    build_edit_post_form_context(post, updated_post_values),
+                )
         elif request.POST.get('clear_cover') == 'true':
             should_update_cover = True
 
@@ -3060,6 +3350,7 @@ def edit_post(request, post_id):
         if should_update_cover:
             post.cover = updated_cover
         post.save()
+        sync_post_body_images(post)
         
         if post.status == 'draft':
             return redirect('drafts')
@@ -3077,6 +3368,7 @@ def delete_draft(request, post_id):
         post.delete()
     return redirect('drafts')
 
+@require_GET
 def post_detail(request, post_id):
     if request.user.is_authenticated:
         post = get_object_or_404(
@@ -3091,13 +3383,16 @@ def post_detail(request, post_id):
             Q(get_currently_published_query(), visibility='public')
         )
 
-    Post.objects.filter(id=post.id).update(views_count=F('views_count') + 1)
-    post.refresh_from_db(fields=['views_count'])
+    record_post_view(request, post)
     record_recently_read_post(request, post)
 
     comments_enabled = (
         post.status == 'published'
         and post.visibility == 'public'
+        and (
+            post.scheduled_publish_at is None
+            or post.scheduled_publish_at <= timezone.now()
+        )
     )
     can_moderate_comments = (
         request.user.is_authenticated
@@ -3143,6 +3438,11 @@ def post_detail(request, post_id):
 
     context = {
         'post': post,
+        'post_cover_absolute_url': (
+            request.build_absolute_uri(post.cover_access_url)
+            if post.cover
+            else ''
+        ),
         'comments_enabled': comments_enabled,
         'comments': comments,
         'comment_count': comment_count,
@@ -3165,13 +3465,30 @@ def post_detail(request, post_id):
 @login_required
 @require_POST
 def add_comment(request, post_id):
+    retry_after = consume_rate_limit(
+        request,
+        'comment',
+        limit=30,
+        window_seconds=3600,
+        block_seconds=900,
+    )
+    if retry_after:
+        messages.error(
+            request,
+            f'评论发表过于频繁，请在 {retry_after} 秒后重试。',
+        )
+        return redirect('post_detail', post_id=post_id)
+
     post = get_object_or_404(
-        Post,
+        Post.objects.filter(get_currently_published_query()),
         id=post_id,
-        status='published',
         visibility='public',
     )
-    if request.user.id != post.author_id and users_are_blocked_between(request.user, post.author):
+    if (
+        post.author_id
+        and request.user.id != post.author_id
+        and users_are_blocked_between(request.user, post.author)
+    ):
         messages.error(request, '你们之间已存在屏蔽关系，不能在这篇文章下评论。')
         return redirect('post_detail', post_id=post.id)
 
@@ -3185,7 +3502,11 @@ def add_comment(request, post_id):
             id=parent_id,
             post=post,
             parent__isnull=True,
+            is_hidden=False,
         )
+        if users_are_blocked_between(request.user, parent_comment.author):
+            messages.error(request, '你们之间已存在屏蔽关系，不能回复这条评论。')
+            return redirect('post_detail', post_id=post.id)
 
     if comment_form.is_valid():
         comment = comment_form.save(commit=False)
@@ -3306,14 +3627,19 @@ def delete_post(request, post_id):
     return redirect('index')
 
 
+@require_GET
 def rss_feed(request):
     owner, profile = get_site_owner_profile()
     if not owner:
         return HttpResponse('RSS 未配置', status=404, content_type='text/plain; charset=utf-8')
 
-    posts = Post.objects.filter(author=owner, status='published', visibility='public').order_by('-created_at')[:20]
+    posts = Post.objects.filter(
+        get_currently_published_query(),
+        author=owner,
+        visibility='public',
+    ).order_by('-created_at')[:20]
     site_url = request.build_absolute_uri('/')
-    feed_url = request.build_absolute_uri()
+    feed_url = request.build_absolute_uri(request.path)
     title = f"{profile.display_name} 的文章订阅"
 
     output = StringIO()

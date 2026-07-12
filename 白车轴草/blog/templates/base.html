@@ -1,6 +1,6 @@
-{% load static %}
+{% load static blog_extras %}
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-csp-nonce="{{ request.csp_nonce }}">
 
 <head>
     <meta charset="UTF-8">
@@ -11,13 +11,14 @@
     <meta property="og:title" content="{% block og_title %}白车轴草{% endblock %}">
     <meta property="og:description" content="{% block og_description %}白车轴草，一个记录文章、图片和音乐的个人博客。{% endblock %}">
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
-    <meta property="og:url" content="{{ request.build_absolute_uri }}">
-    <link rel="canonical" href="{{ request.build_absolute_uri }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    {% block og_image %}{% endblock %}
+    <link rel="canonical" href="{{ canonical_url }}">
     <meta name="theme-color" content="#2e7d32">
     <link rel="manifest" href="{% url 'pwa_manifest' %}">
     <link rel="apple-touch-icon" href="{% static 'img/favicon_v4.png' %}">
     <link rel="stylesheet" href="{% static 'plugins/bootstrap-5.3.8-dist/css/bootstrap.min.css' %}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'plugins/fontawesome-free-7.1.0-web/css/all.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/site-music-player.css' %}">
     <style>
         /* ========== 全局基础 ========== */
@@ -847,7 +848,12 @@
                             <li>
                                 <hr class="dropdown-divider my-2">
                             </li>
-                            <li><a class="dropdown-item py-2 text-danger fw-medium" href="{% url 'logout' %}">退出登录</a></li>
+                            <li>
+                                <form method="post" action="{% url 'logout' %}">
+                                    {% csrf_token %}
+                                    <button class="dropdown-item py-2 text-danger fw-medium" type="submit">退出登录</button>
+                                </form>
+                            </li>
                             {% else %}
                             <li><a class="dropdown-item py-2" href="{% url 'login' %}">登录</a></li>
                             <li><a class="dropdown-item py-2" href="{% url 'register' %}">注册</a></li>
@@ -934,7 +940,7 @@
     </button>
 
     {% if site_music_tracks %}
-    {{ site_music_tracks|json_script:"site-music-tracks" }}
+    {% secure_json_script site_music_tracks "site-music-tracks" %}
     <div class="site-music-player" id="siteMusicPlayer" aria-label="音乐播放器">
         <button class="site-music-toggle" type="button" id="siteMusicToggle" aria-label="展开音乐播放器">
             <span class="site-music-toggle-record" aria-hidden="true">
@@ -986,9 +992,9 @@
     </div>
     {% endif %}
 
-    <script src="{% static 'js/jquery-3.7.1.js' %}"></script>
-    <script src="{% static 'plugins/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js' %}"></script>
-    <script>
+    <script nonce="{{ request.csp_nonce }}" src="{% static 'js/jquery-3.7.1.js' %}"></script>
+    <script nonce="{{ request.csp_nonce }}" src="{% static 'plugins/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js' %}"></script>
+    <script nonce="{{ request.csp_nonce }}">
         (() => {
             const pwaInstallButton = document.getElementById('pwaInstallButton');
             let deferredPwaInstallPrompt = null;
@@ -1026,7 +1032,7 @@
             });
         })();
     </script>
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         (() => {
             const toastRegion = document.getElementById('siteToastRegion');
             const DEFAULT_TOAST_DURATION = 4200;
@@ -1084,10 +1090,28 @@
 
             displayQueuedSiteMessages();
             window.addEventListener('site:after-navigate', displayQueuedSiteMessages);
+
+            document.addEventListener('click', (event) => {
+                const commandElement = event.target.closest('[data-confirm-message]');
+                if (!commandElement || !commandElement.dataset.confirmMessage) return;
+                if (!window.confirm(commandElement.dataset.confirmMessage)) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+            }, true);
+
+            document.addEventListener('submit', (event) => {
+                const formElement = event.target;
+                if (!formElement.dataset.confirmMessage) return;
+                if (!window.confirm(formElement.dataset.confirmMessage)) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+            }, true);
         })();
     </script>
     {% if site_music_tracks %}
-    <script src="{% static 'js/site-music-player.js' %}?v=20260709-2"></script>
+    <script nonce="{{ request.csp_nonce }}" src="{% static 'js/site-music-player.js' %}?v=20260710-1"></script>
     {% endif %}
     <div id="site-page-extra-js">
         {% block extra_js %}{% endblock %}

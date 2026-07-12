@@ -21,6 +21,7 @@
     const siteMusicList = document.getElementById('siteMusicList');
     let siteMusicCurrentIndex = 0;
     let siteMusicCurrentLyrics = [];
+    let siteMusicLyricsRequestToken = 0;
     let siteMusicActiveLyricIndex = -1;
     let siteMusicLastSavedSecond = -1;
     let siteMusicHoverCloseTimer = null;
@@ -94,6 +95,47 @@
             }
         });
         return activeIndex;
+    }
+
+    async function loadSiteMusicLyrics(currentTrack, trackIndex) {
+        const requestToken = ++siteMusicLyricsRequestToken;
+        if (Array.isArray(currentTrack.lyrics_lines) && currentTrack.lyrics_lines.length) {
+            siteMusicCurrentLyrics = currentTrack.lyrics_lines;
+            renderSiteMusicLyrics(0);
+            return;
+        }
+        if (!currentTrack.lyrics_url) {
+            renderSiteMusicLyrics(0);
+            return;
+        }
+
+        siteMusicLyrics.replaceChildren();
+        const loadingLine = document.createElement('div');
+        loadingLine.className = 'site-music-lyric-line active';
+        loadingLine.textContent = '歌词加载中';
+        siteMusicLyrics.appendChild(loadingLine);
+        try {
+            const response = await fetch(currentTrack.lyrics_url, {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            });
+            if (!response.ok) throw new Error('Lyrics request failed');
+            const responseData = await response.json();
+            if (requestToken !== siteMusicLyricsRequestToken || trackIndex !== siteMusicCurrentIndex) {
+                return;
+            }
+            currentTrack.lyrics_lines = Array.isArray(responseData.lyrics_lines)
+                ? responseData.lyrics_lines
+                : [];
+            siteMusicCurrentLyrics = currentTrack.lyrics_lines;
+        } catch (error) {
+            if (requestToken !== siteMusicLyricsRequestToken || trackIndex !== siteMusicCurrentIndex) {
+                return;
+            }
+            siteMusicCurrentLyrics = [];
+        }
+        siteMusicActiveLyricIndex = -1;
+        renderSiteMusicLyrics(0);
     }
 
     function updateSiteMusicPlayIcon() {
@@ -229,10 +271,11 @@
             siteMusicAudio.src = currentTrack.audio_url;
         }
         updateSiteMusicProgress(0);
-        siteMusicCurrentLyrics = currentTrack.lyrics_lines || [];
+        siteMusicCurrentLyrics = [];
         siteMusicActiveLyricIndex = -1;
         siteMusicLastSavedSecond = -1;
         renderSiteMusicLyrics(0);
+        loadSiteMusicLyrics(currentTrack, siteMusicCurrentIndex);
         setSiteMusicCover(currentTrack);
         renderSiteMusicPlaylist();
 
@@ -410,6 +453,10 @@
                 Array.from(oldScript.attributes).forEach((attribute) => {
                     newScript.setAttribute(attribute.name, attribute.value);
                 });
+                const currentNonce = document.documentElement.dataset.cspNonce;
+                if (currentNonce) {
+                    newScript.nonce = currentNonce;
+                }
                 if (oldScript.src) {
                     newScript.async = false;
                     newScript.onload = resolve;

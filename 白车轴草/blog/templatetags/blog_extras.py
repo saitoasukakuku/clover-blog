@@ -3,11 +3,18 @@ from html import unescape
 from urllib.parse import urlparse
 
 from django import template
-from django.utils.html import conditional_escape
+from django.utils.html import conditional_escape, escape, json_script
 from django.utils.safestring import mark_safe
 
 
 register = template.Library()
+
+
+@register.simple_tag(takes_context=True)
+def secure_json_script(context, value, element_id):
+    nonce = escape(getattr(context.get('request'), 'csp_nonce', ''))
+    script_html = str(json_script(value, element_id))
+    return mark_safe(script_html.replace('<script ', f'<script nonce="{nonce}" ', 1))
 
 
 @register.filter
@@ -249,7 +256,16 @@ def render_post_markdown_link(match):
     raw_url = unescape(match.group(2))
     if not is_safe_post_link_url(raw_url):
         return match.group(0)
-    return f'<a href="{conditional_escape(raw_url)}">{link_text}</a>'
+    parsed_url = urlparse(raw_url)
+    relationship_attribute = (
+        ' rel="nofollow ugc"'
+        if parsed_url.scheme in {'http', 'https', 'mailto'}
+        else ''
+    )
+    return (
+        f'<a href="{conditional_escape(raw_url)}"{relationship_attribute}>'
+        f'{link_text}</a>'
+    )
 
 
 def render_post_markdown_image(match):
@@ -269,6 +285,12 @@ def is_safe_post_link_url(raw_url):
 
 def is_safe_post_image_url(raw_url):
     parsed_url = urlparse(raw_url)
-    if parsed_url.scheme in {'http', 'https'}:
+    if parsed_url.scheme == 'https':
         return True
-    return not parsed_url.scheme and raw_url.startswith('/media/') and not raw_url.startswith('//')
+    if parsed_url.scheme or raw_url.startswith('//'):
+        return False
+    if raw_url.startswith(('/media/covers/', '/media/post_images/')):
+        return False
+    if raw_url.startswith('/media/'):
+        return True
+    return bool(re.fullmatch(r'/post-images/[0-9a-fA-F-]{36}/', raw_url))

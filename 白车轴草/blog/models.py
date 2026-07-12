@@ -3,6 +3,33 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from django.utils import timezone
 import re
+import uuid
+
+from blog.protected_storage import protected_media_storage
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, verbose_name='标签名')
+    normalized_name = models.CharField(max_length=150, unique=True, verbose_name='规范名称')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = '标签'
+        verbose_name_plural = '标签'
+
+    @staticmethod
+    def normalize_name(raw_name):
+        return (raw_name or '').strip().casefold()[:150]
+
+    def save(self, *args, **kwargs):
+        self.name = (self.name or '').strip()[:50]
+        self.normalized_name = self.normalize_name(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
 
 class Post(models.Model):
     STATUS_CHOICES = (
@@ -33,9 +60,27 @@ class Post(models.Model):
     title = models.CharField(max_length=200, verbose_name='文章标题')
     category = models.CharField(max_length=50, verbose_name='文章分类')
     tags = models.CharField(max_length=200, blank=True, verbose_name='文章标签')
-    series_title = models.CharField(max_length=100, blank=True, verbose_name='文章系列')
+    tag_objects = models.ManyToManyField(
+        Tag,
+        through='PostTag',
+        related_name='posts',
+        blank=True,
+        verbose_name='规范标签',
+    )
+    series_title = models.CharField(
+        max_length=100,
+        blank=True,
+        db_index=True,
+        verbose_name='文章系列',
+    )
     series_order = models.PositiveIntegerField(null=True, blank=True, verbose_name='系列顺序')
-    cover = models.ImageField(upload_to='covers/', null=True, blank=True, verbose_name='封面图片')
+    cover = models.ImageField(
+        storage=protected_media_storage,
+        upload_to='covers/',
+        null=True,
+        blank=True,
+        verbose_name='封面图片',
+    )
     content = models.TextField(verbose_name='文章内容')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name='状态')
     scheduled_publish_at = models.DateTimeField(
@@ -62,8 +107,25 @@ class Post(models.Model):
     def category_label(self):
         return self.CATEGORY_LABELS.get(self.category, self.category or '未分类')
 
+    @property
+    def cover_access_url(self):
+        if not self.cover or not self.pk:
+            return ''
+        from django.urls import reverse
+        return reverse('post_cover', args=[self.pk])
+
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        should_sync_tags = (
+            self._state.adding
+            or kwargs.get('update_fields') is None
+            or 'tags' in kwargs.get('update_fields', ())
+        )
+        super().save(*args, **kwargs)
+        if should_sync_tags:
+            PostTag.sync_for_post(self)
 
     class Meta:
         indexes = [
@@ -80,6 +142,53 @@ class Post(models.Model):
                 name='post_category_created_idx',
             ),
         ]
+
+
+class PostTag(models.Model):
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='tag_links',
+    )
+    tag = models.ForeignKey(
+        Tag,
+        on_delete=models.CASCADE,
+        related_name='post_links',
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('post', 'tag'),
+                name='unique_post_tag',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=('tag', 'post'), name='posttag_tag_post_idx'),
+        ]
+
+    @classmethod
+    def sync_for_post(cls, post):
+        normalized_tags = {}
+        for raw_tag in post.tag_list:
+            tag_name = raw_tag[:50]
+            normalized_name = Tag.normalize_name(tag_name)
+            if normalized_name and normalized_name not in normalized_tags:
+                normalized_tags[normalized_name] = tag_name
+
+        tags = []
+        for normalized_name, tag_name in normalized_tags.items():
+            tag, _ = Tag.objects.get_or_create(
+                normalized_name=normalized_name,
+                defaults={'name': tag_name},
+            )
+            tags.append(tag)
+
+        cls.objects.filter(post=post).exclude(tag__in=tags).delete()
+        cls.objects.bulk_create(
+            [cls(post=post, tag=tag) for tag in tags],
+            ignore_conflicts=True,
+        )
 
 
 class PostRevision(models.Model):
@@ -117,6 +226,12 @@ class PostRevision(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='保存时间')
 
     class Meta:
+        indexes = [
+            models.Index(
+                fields=('post', '-created_at'),
+                name='postrev_post_created_idx',
+            ),
+        ]
         ordering = ['-created_at']
         verbose_name = '文章版本'
         verbose_name_plural = '文章版本'
@@ -139,6 +254,123 @@ class PostRevision(models.Model):
 
     def __str__(self):
         return f'{self.post.title} 的历史版本：{self.title}'
+
+
+def post_image_upload_path(post_image, file_name):
+    file_extension = re.sub(r'[^a-z0-9.]', '', file_name.lower().rsplit('.', 1)[-1])
+    safe_extension = file_extension if file_extension in {'jpg', 'jpeg', 'png', 'webp'} else 'jpg'
+    return f'post_images/{post_image.owner_id}/{uuid.uuid4().hex}.{safe_extension}'
+
+
+class PostImage(models.Model):
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='post_images',
+        verbose_name='上传者',
+    )
+    image = models.ImageField(
+        storage=protected_media_storage,
+        upload_to=post_image_upload_path,
+        verbose_name='图片',
+    )
+    original_name = models.CharField(max_length=255, blank=True, verbose_name='原文件名')
+    posts = models.ManyToManyField(
+        Post,
+        related_name='body_images',
+        blank=True,
+        verbose_name='关联文章',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='上传时间')
+
+    class Meta:
+        indexes = [
+            models.Index(fields=('owner', '-created_at'), name='postimage_owner_created_idx'),
+        ]
+        ordering = ['-created_at']
+        verbose_name = '文章正文图片'
+        verbose_name_plural = '文章正文图片'
+
+    def __str__(self):
+        return self.original_name or str(self.public_id)
+
+
+class RateLimitState(models.Model):
+    action = models.CharField(max_length=64, verbose_name='操作')
+    key_hash = models.CharField(max_length=64, verbose_name='匿名键')
+    window_started_at = models.DateTimeField(default=timezone.now, verbose_name='窗口开始时间')
+    request_count = models.PositiveIntegerField(default=0, verbose_name='请求次数')
+    blocked_until = models.DateTimeField(null=True, blank=True, verbose_name='阻止截止时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('action', 'key_hash'),
+                name='unique_rate_limit_action_key',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=('-updated_at',), name='ratelimit_updated_idx'),
+        ]
+        verbose_name = '请求限流状态'
+        verbose_name_plural = '请求限流状态'
+
+    def __str__(self):
+        return f'{self.action}:{self.key_hash[:10]}'
+
+
+class BackgroundTask(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_RUNNING = 'running'
+    STATUS_SUCCEEDED = 'succeeded'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = (
+        (STATUS_PENDING, '等待中'),
+        (STATUS_RUNNING, '执行中'),
+        (STATUS_SUCCEEDED, '已完成'),
+        (STATUS_FAILED, '失败'),
+    )
+    TYPE_PREPARE_MUSIC = 'prepare_music_playback'
+    TYPE_GENERATE_HOMEPAGE_COPY = 'generate_homepage_copy'
+    TYPE_CHOICES = (
+        (TYPE_PREPARE_MUSIC, '生成音乐播放版'),
+        (TYPE_GENERATE_HOMEPAGE_COPY, '生成首页文案'),
+    )
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    task_type = models.CharField(max_length=64, choices=TYPE_CHOICES, verbose_name='任务类型')
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        verbose_name='状态',
+    )
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='background_tasks',
+        verbose_name='发起人',
+    )
+    output = models.TextField(blank=True, verbose_name='输出')
+    error_message = models.TextField(blank=True, verbose_name='错误')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name='开始时间')
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name='结束时间')
+
+    class Meta:
+        indexes = [
+            models.Index(fields=('status', 'created_at'), name='bgtask_status_created_idx'),
+        ]
+        ordering = ['-created_at']
+        verbose_name = '后台任务'
+        verbose_name_plural = '后台任务'
+
+    def __str__(self):
+        return f'{self.get_task_type_display()} - {self.get_status_display()}'
 
 
 class Comment(models.Model):
@@ -517,6 +749,12 @@ class PostFavorite(models.Model):
             models.UniqueConstraint(
                 fields=('user', 'post'),
                 name='unique_post_favorite',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=('user', '-created_at'),
+                name='postfav_user_created_idx',
             ),
         ]
         ordering = ['-created_at']

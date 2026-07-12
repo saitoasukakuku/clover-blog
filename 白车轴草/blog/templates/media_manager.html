@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-
 {% block title %}媒体管理{% endblock %}
 
 {% block extra_css %}
@@ -186,7 +185,6 @@
 {% endblock %}
 
 {% block content %}
-{{ music_lyrics_by_file_name|json_script:"musicLyricsByFileName" }}
 <div class="container py-4">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
         <div>
@@ -197,6 +195,30 @@
             <i class="fas fa-arrow-left me-1"></i>返回文章
         </a>
     </div>
+
+    {% if recent_background_tasks %}
+    <section class="mb-4" aria-labelledby="backgroundTaskHeading">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0" id="backgroundTaskHeading">后台任务</h2>
+            <span class="small text-muted">页面刷新后更新状态</span>
+        </div>
+        <div class="list-group">
+            {% for background_task in recent_background_tasks %}
+            <div class="list-group-item d-flex align-items-start justify-content-between gap-3">
+                <span>
+                    <span class="d-block">{{ background_task.get_task_type_display }}</span>
+                    {% if background_task.status == 'failed' and background_task.error_message %}
+                    <span class="d-block small text-danger mt-1">{{ background_task.error_message|truncatechars:180 }}</span>
+                    {% endif %}
+                </span>
+                <span class="badge {% if background_task.status == 'succeeded' %}text-bg-success{% elif background_task.status == 'failed' %}text-bg-danger{% elif background_task.status == 'running' %}text-bg-primary{% else %}text-bg-secondary{% endif %}">
+                    {{ background_task.get_status_display }}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     <ul class="nav nav-pills media-manager-tabs mb-4" id="mediaManagerTabs" role="tablist">
         <li class="nav-item flex-fill" role="presentation">
@@ -245,7 +267,7 @@
                 {% for image_item in homepage_media_items %}
                 <article class="media-image-card">
                     <button class="media-image-thumb-button media-image-modal-trigger" type="button" data-bs-toggle="modal" data-bs-target="#homepageImageEditModal" data-file-name="{{ image_item.file_name }}" data-image-url="{{ image_item.image_url }}" data-file-size="{{ image_item.file_size|filesizeformat }}" data-updated-at="{{ image_item.updated_at|date:'Y-m-d H:i' }}" data-sort-order="{{ image_item.sort_order|default_if_none:'' }}" data-is-hidden="{% if image_item.is_hidden %}true{% else %}false{% endif %}" data-kicker="{{ image_item.copy_kicker }}" data-headline="{{ image_item.copy_headline }}" data-lead="{{ image_item.copy_lead }}" data-card-title="{{ image_item.copy_card_title }}" data-card-text="{{ image_item.copy_card_text }}" data-moods="{{ image_item.copy_moods_text }}">
-                        <img class="media-image-thumb" src="{{ image_item.image_url }}" alt="{{ image_item.file_name }}">
+                        <img class="media-image-thumb" src="{{ image_item.image_url }}" alt="{{ image_item.file_name }}" loading="lazy" decoding="async">
                     </button>
                     <div class="media-image-card-body">
                         <div class="media-image-title">{{ image_item.file_name }}</div>
@@ -331,7 +353,7 @@
                     </thead>
                     <tbody>
                         {% for music_item in music_media_items %}
-                        <tr class="music-resource-row" tabindex="0" role="button" data-music-edit-trigger data-file-name="{{ music_item.file_name }}" data-track-name="{{ music_item.file_stem }}" data-file-size="{{ music_item.file_size|filesizeformat }}" data-cover-file-name="{{ music_item.cover_file_name|default:'' }}" data-lyrics-file-name="{{ music_item.lyrics_file_name|default:'' }}" aria-label="编辑 {{ music_item.file_name }}">
+                        <tr class="music-resource-row" tabindex="0" role="button" data-music-edit-trigger data-file-name="{{ music_item.file_name }}" data-track-name="{{ music_item.file_stem }}" data-file-size="{{ music_item.file_size|filesizeformat }}" data-cover-file-name="{{ music_item.cover_file_name|default:'' }}" data-lyrics-file-name="{{ music_item.lyrics_file_name|default:'' }}" data-details-url="{% url 'media_manager_music_details' %}?file_name={{ music_item.file_name|urlencode }}" aria-label="编辑 {{ music_item.file_name }}">
                             <td>
                                 <span class="music-resource-name">{{ music_item.file_name }}</span>
                             </td>
@@ -371,7 +393,7 @@
             </div>
             <div class="music-resource-mobile-list d-grid d-md-none">
                 {% for music_item in music_media_items %}
-                <button class="music-resource-card" type="button" data-music-edit-trigger data-file-name="{{ music_item.file_name }}" data-track-name="{{ music_item.file_stem }}" data-file-size="{{ music_item.file_size|filesizeformat }}" data-cover-file-name="{{ music_item.cover_file_name|default:'' }}" data-lyrics-file-name="{{ music_item.lyrics_file_name|default:'' }}">
+                <button class="music-resource-card" type="button" data-music-edit-trigger data-file-name="{{ music_item.file_name }}" data-track-name="{{ music_item.file_stem }}" data-file-size="{{ music_item.file_size|filesizeformat }}" data-cover-file-name="{{ music_item.cover_file_name|default:'' }}" data-lyrics-file-name="{{ music_item.lyrics_file_name|default:'' }}" data-details-url="{% url 'media_manager_music_details' %}?file_name={{ music_item.file_name|urlencode }}">
                     <span class="music-resource-name">{{ music_item.file_name }}</span>
                     <span class="music-resource-card-meta">
                         <span>{{ music_item.file_size|filesizeformat }}</span>
@@ -519,7 +541,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
     (() => {
         const MAX_HOMEPAGE_UPLOAD_EDGE = 1920;
         const HOMEPAGE_UPLOAD_JPEG_QUALITY = 0.82;
@@ -786,10 +808,6 @@
         });
 
         const musicEditModal = document.getElementById('musicAssetEditModal');
-        const musicLyricsDataElement = document.getElementById('musicLyricsByFileName');
-        const musicLyricsByFileName = musicLyricsDataElement
-            ? JSON.parse(musicLyricsDataElement.textContent)
-            : {};
         const musicEditFields = {
             originalFileName: document.getElementById('musicEditOriginalFileName'),
             meta: document.getElementById('musicEditMeta'),
@@ -815,10 +833,42 @@
             musicEditFields.trackName.value = triggerElement.dataset.trackName || '';
             musicEditFields.cover.value = '';
             musicEditFields.lyricsFile.value = '';
-            musicEditFields.lyricsText.value = musicLyricsByFileName[fileName] || '';
+            musicEditFields.lyricsText.value = '';
+            musicEditFields.lyricsText.disabled = true;
+            musicEditFields.lyricsText.placeholder = '歌词加载中...';
             musicEditFields.removeCover.checked = false;
             musicEditFields.removeLyrics.checked = false;
             bootstrap.Modal.getOrCreateInstance(musicEditModal).show(triggerElement);
+
+            const detailsUrl = triggerElement.dataset.detailsUrl || '';
+            if (!detailsUrl) {
+                musicEditFields.lyricsText.disabled = false;
+                musicEditFields.lyricsText.placeholder = '[00:01.00]第一句歌词';
+                return;
+            }
+            fetch(detailsUrl, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            })
+                .then((response) => response.json().then((responseData) => {
+                    if (!response.ok) throw new Error(responseData.error || '歌词加载失败。');
+                    return responseData;
+                }))
+                .then((responseData) => {
+                    if (musicEditFields.originalFileName.value !== fileName) return;
+                    musicEditFields.lyricsText.value = responseData.lyrics_text || '';
+                    musicEditFields.lyricsText.placeholder = '[00:01.00]第一句歌词';
+                })
+                .catch((error) => {
+                    if (musicEditFields.originalFileName.value !== fileName) return;
+                    musicEditFields.lyricsText.placeholder = error.message;
+                })
+                .finally(() => {
+                    if (musicEditFields.originalFileName.value === fileName) {
+                        musicEditFields.lyricsText.disabled = false;
+                    }
+                });
         }
 
         document.querySelectorAll('[data-music-edit-trigger]').forEach((triggerElement) => {

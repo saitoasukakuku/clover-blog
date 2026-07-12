@@ -3,7 +3,9 @@
 {% block title %}创建新文章 - 白车轴草{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"
+      integrity="sha512-cyzxRvewl+FOKTtpBzYjW6x6IAYUCZy3sGP40hn+DQkqeluGRCax7qztK2ImL64SA+C7kVWdLI6wvdlStawhyw=="
+      crossorigin="anonymous" referrerpolicy="no-referrer">
 <style>
     /* ========== 创建文章页面 ========== */
     .create-page-header {
@@ -238,7 +240,7 @@
 
                             <label for="coverUpload" class="cover-upload-area d-block" id="coverPreviewArea">
                                 {% if post and post.cover %}
-                                <img src="{{ post.cover.url }}" style="max-width: 100%; border-radius: 8px;">
+                                <img src="{{ post.cover_access_url }}" style="max-width: 100%; border-radius: 8px;">
                                 <div class="mt-2 text-success"><i class="fas fa-check-circle me-1"></i>已上传封面，点击图片可重新上传裁剪
                                 </div>
                                 {% else %}
@@ -348,8 +350,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<script>
+<script nonce="{{ request.csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"
+        integrity="sha512-6lplKUSl86rUVprDIjiW8DuOniNX8UDoRATqZSds/7t6zCQZfaCe3e5zcGaQwxa8Kpn5RTM9Fvl3X2lLV4grPQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script nonce="{{ request.csp_nonce }}">
     $(document).ready(function () {
         var cropper;
         var image = document.getElementById('imageToCrop');

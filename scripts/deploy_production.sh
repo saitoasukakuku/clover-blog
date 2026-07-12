@@ -13,6 +13,8 @@ GITHUB_REMOTE_URL="github-clover-blog:saitoasukakuku/clover-blog.git"
 GIT_FETCH_ATTEMPTS=3
 GIT_FETCH_TIMEOUT_SECONDS=30
 HTTP_CHECK_ATTEMPTS=15
+WORKER_SERVICE_SOURCE="${PROJECT_DIR}/scripts/systemd/clover-blog-worker.service"
+WORKER_SERVICE_TARGET="/etc/systemd/system/clover-blog-worker.service"
 
 trap 'exit_code=$?; echo "部署失败：第 ${LINENO} 行退出，状态码 ${exit_code}。" >&2' ERR
 
@@ -28,6 +30,12 @@ if ! flock -n 9; then
 fi
 
 cd "${PROJECT_DIR}"
+
+python_version="$("${VENV_DIR}/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if ! "${VENV_DIR}/bin/python" -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
+    echo "Django 5.2 requires Python 3.10 or newer; current version: ${python_version}." >&2
+    exit 1
+fi
 
 if ! sudo -u "${APP_USER}" git diff --quiet -- ||
    ! sudo -u "${APP_USER}" git diff --cached --quiet --; then
@@ -81,36 +89,64 @@ echo "正在同步 Python 依赖..."
 sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" -m pip install \
     -r "${PROJECT_DIR}/requirements.txt"
 
+echo "正在校验依赖一致性..."
+sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" -m pip check
+
+echo "正在执行 Django 生产安全检查..."
+sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
+    check --deploy --fail-level WARNING
+
 echo "正在执行数据库迁移..."
 sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" migrate
+
+echo "正在清理过期运行状态..."
+sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
+    cleanup_site_state
+
+echo "正在迁移受保护媒体文件..."
+sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
+    migrate_private_media
 
 echo "正在收集静态资源..."
 sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
     collectstatic --noinput
 
-echo "Preparing music web playback files..."
-sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
-    prepare_music_playback --continue-on-error
+if [[ -f "${WORKER_SERVICE_SOURCE}" ]]; then
+    install -d -o "${APP_USER}" -g "${APP_USER}" -m 750 \
+        "${PROJECT_DIR}/白车轴草/media" \
+        "${PROJECT_DIR}/protected_media"
+    install -o root -g root -m 644 \
+        "${WORKER_SERVICE_SOURCE}" "${WORKER_SERVICE_TARGET}"
+    systemctl daemon-reload
+    systemctl enable clover-blog-worker.service
+fi
 
-echo "正在执行 Django 部署检查..."
-sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" check --deploy
+echo "正在加入音乐播放版生成任务..."
+sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
+    enqueue_site_task prepare_music_playback
 
 echo "正在检查 Nginx 配置..."
 nginx -t
 
 echo "正在重启应用服务..."
 systemctl restart clover-blog
+systemctl restart clover-blog-worker
 systemctl reload nginx
 
 systemctl is-active --quiet clover-blog
+systemctl is-active --quiet clover-blog-worker
 systemctl is-active --quiet nginx
 systemctl is-active --quiet mysql
-systemctl is-active --quiet cloudflared-quick-tunnel.service
+if systemctl cat cloudflared-quick-tunnel.service >/dev/null 2>&1; then
+    systemctl is-active --quiet cloudflared-quick-tunnel.service
+fi
 
 http_check_succeeded=false
 for http_check_attempt in $(seq 1 "${HTTP_CHECK_ATTEMPTS}"); do
     if curl --fail --silent --show-error --output /dev/null \
-        "http://127.0.0.1/index/"; then
+        --header "Host: 111.230.11.5" \
+        --header "X-Forwarded-Proto: https" \
+        "http://127.0.0.1/health/"; then
         http_check_succeeded=true
         break
     fi

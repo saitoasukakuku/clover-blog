@@ -9,6 +9,8 @@ from urllib.request import Request, urlopen
 from django.core.management.base import BaseCommand, CommandError
 from PIL import Image, ImageOps
 
+from blog.atomic_files import atomic_write_json
+from blog.external_io import read_limited_error_response, read_limited_text_response
 from blog.management.commands.create_startup_post import (
     DEFAULT_DEEPSEEK_MODEL,
     Command as StartupPostCommand,
@@ -211,12 +213,14 @@ class Command(BaseCommand):
 
         try:
             with urlopen(request, timeout=90) as response:
-                response_text = response.read().decode('utf-8')
+                response_text = read_limited_text_response(response)
         except HTTPError as error:
-            error_text = error.read().decode('utf-8', errors='replace')
+            error_text = read_limited_error_response(error)
             raise CommandError(f'OpenAI vision API HTTP error {error.code}: {error_text}') from error
         except URLError as error:
             raise CommandError(f'OpenAI vision API network error: {error.reason}') from error
+        except ValueError as error:
+            raise CommandError(f'OpenAI vision API response was rejected: {error}') from error
 
         try:
             return json.loads(response_text)
@@ -400,9 +404,4 @@ class Command(BaseCommand):
 
     def write_copy_file(self, copy_by_file_name):
         copy_file_path = get_homepage_image_copy_file_path()
-        copy_directory = os.path.dirname(copy_file_path)
-        if copy_directory:
-            os.makedirs(copy_directory, exist_ok=True)
-        with open(copy_file_path, 'w', encoding='utf-8') as copy_file:
-            json.dump(copy_by_file_name, copy_file, ensure_ascii=False, indent=2)
-            copy_file.write('\n')
+        atomic_write_json(copy_file_path, copy_by_file_name)

@@ -3,6 +3,7 @@ from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
 from django.db import transaction
 from blog.models import Comment, PrivateMessage, RegistrationRequest, UserProfile
+from blog.media_security import validate_uploaded_image
 
 
 class RegistrationRequestForm(forms.Form):
@@ -22,8 +23,6 @@ class RegistrationRequestForm(forms.Form):
 
     def clean_email(self):
         email = RegistrationRequest.normalize_email(self.cleaned_data.get('email'))
-        if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError('这个邮箱已经被注册。')
         return email
 
 
@@ -110,7 +109,7 @@ class CompleteRegistrationForm(UserCreationForm):
     def clean_email(self):
         email = RegistrationRequest.normalize_email(self.cleaned_data.get('email'))
         if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError('这个邮箱已经被注册。')
+            raise forms.ValidationError('这个注册码不能使用。')
         return email
 
     def clean_invite_code(self):
@@ -343,6 +342,15 @@ class UserCenterForm(forms.ModelForm):
         if email and User.objects.exclude(pk=self.user.pk).filter(email__iexact=email).exists():
             raise forms.ValidationError('这个邮箱已经绑定到其他账号。')
         return email
+
+    def clean_avatar(self):
+        uploaded_avatar = self.cleaned_data.get('avatar')
+        if uploaded_avatar:
+            try:
+                validate_uploaded_image(uploaded_avatar)
+            except ValueError as error:
+                raise forms.ValidationError(str(error)) from error
+        return uploaded_avatar
 
     def save(self, commit=True):
         profile = super().save(commit=False)

@@ -1,4 +1,4 @@
-<script>
+<script nonce="{{ request.csp_nonce }}">
     (function () {
         if (window.cloverMarkdownEditorController && typeof window.cloverMarkdownEditorController.destroy === 'function') {
             window.cloverMarkdownEditorController.destroy();
@@ -256,8 +256,10 @@
             }
             try {
                 var parsedUrl = new URL(rawUrl, window.location.origin);
-                return ['http:', 'https:', 'mailto:'].indexOf(parsedUrl.protocol) !== -1
-                    || (rawUrl.indexOf('/') === 0 && rawUrl.indexOf('//') !== 0);
+                if (/^(https?:|mailto:)/i.test(rawUrl)) {
+                    return ['http:', 'https:', 'mailto:'].indexOf(parsedUrl.protocol) !== -1;
+                }
+                return rawUrl.indexOf('/') === 0 && rawUrl.indexOf('//') !== 0;
             } catch (error) {
                 return false;
             }
@@ -269,8 +271,15 @@
             }
             try {
                 var parsedUrl = new URL(rawUrl, window.location.origin);
-                return ['http:', 'https:'].indexOf(parsedUrl.protocol) !== -1
-                    || rawUrl.indexOf('/media/') === 0;
+                if (/^https:/i.test(rawUrl)) {
+                    return parsedUrl.protocol === 'https:';
+                }
+                if (rawUrl.indexOf('/media/covers/') === 0
+                    || rawUrl.indexOf('/media/post_images/') === 0) {
+                    return false;
+                }
+                return rawUrl.indexOf('/media/') === 0
+                    || /^\/post-images\/[0-9a-f-]{36}\/$/i.test(rawUrl);
             } catch (error) {
                 return false;
             }

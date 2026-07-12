@@ -1,11 +1,15 @@
 import hashlib
 import os
 import re
+import time
 from urllib.parse import quote
 
 from django.conf import settings
 from django.db.models import Q
+from django.urls import reverse
 
+from blog.atomic_files import atomic_write_bytes
+from blog.media_security import validate_image_bytes
 from blog.models import FriendRequest, Notification, PrivateMessage
 from blog.site_owner import get_site_owner_profile
 
@@ -21,11 +25,22 @@ MUSIC_WEB_PLAYBACK_FILE_SUFFIXES = tuple(
 )
 MUSIC_COVER_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 MUSIC_LYRICS_EXTENSIONS = ('.lrc', '.txt')
+MAX_AUDIO_METADATA_BYTES = 16 * 1024 * 1024
+MAX_EMBEDDED_LYRICS_BYTES = 1024 * 1024
+MAX_MUSIC_TITLE_LENGTH = 200
 
 _SITE_MUSIC_CACHE = {
     'signature': None,
     'tracks': [],
+    'checked_at': 0.0,
 }
+MUSIC_DIRECTORY_CHECK_INTERVAL_SECONDS = 5
+
+
+def seo_defaults(request):
+    return {
+        'canonical_url': request.build_absolute_uri(request.path),
+    }
 
 
 def footer_social(request):
@@ -117,16 +132,7 @@ def split_id3_encoded_text(raw_bytes, encoding_byte):
 def extract_id3_text_frame(frame_payload):
     if not frame_payload:
         return ''
-    return decode_id3_text(frame_payload[0], frame_payload[1:])
-
-
-def get_cover_extension_from_mime_type(mime_type):
-    normalized_mime_type = mime_type.lower()
-    if 'png' in normalized_mime_type:
-        return '.png'
-    if 'webp' in normalized_mime_type:
-        return '.webp'
-    return '.jpg'
+    return decode_id3_text(frame_payload[0], frame_payload[1:])[:MAX_MUSIC_TITLE_LENGTH]
 
 
 def extract_id3_apic_frame(frame_payload):
@@ -149,8 +155,13 @@ def extract_id3_apic_frame(frame_payload):
     if not image_bytes:
         return None
 
+    try:
+        image_extension = validate_image_bytes(image_bytes)
+    except ValueError:
+        return None
+
     return {
-        'extension': get_cover_extension_from_mime_type(mime_type),
+        'extension': f'.{image_extension}',
         'bytes': image_bytes,
     }
 
@@ -162,7 +173,10 @@ def extract_id3_uslt_frame(frame_payload):
     encoding_byte = frame_payload[0]
     remaining_payload = frame_payload[4:]
     _, lyrics_bytes = split_id3_encoded_text(remaining_payload, encoding_byte)
-    return decode_id3_text(encoding_byte, lyrics_bytes)
+    return decode_id3_text(
+        encoding_byte,
+        lyrics_bytes[:MAX_EMBEDDED_LYRICS_BYTES],
+    )
 
 
 def read_binary_uint32(raw_bytes, offset):
@@ -199,13 +213,18 @@ def extract_flac_picture_block(block_payload):
     if not image_bytes:
         return None
 
+    try:
+        image_extension = validate_image_bytes(image_bytes)
+    except ValueError:
+        return None
+
     return {
-        'extension': get_cover_extension_from_mime_type(mime_type),
+        'extension': f'.{image_extension}',
         'bytes': image_bytes,
     }
 
 
-def read_mp3_id3_metadata(audio_file_path):
+def read_mp3_id3_metadata(audio_file_path, include_lyrics=True):
     metadata = {
         'title': '',
         'embedded_cover': None,
@@ -220,6 +239,8 @@ def read_mp3_id3_metadata(audio_file_path):
 
             id3_major_version = header[3]
             tag_size = decode_id3_syncsafe_size(header[6:10])
+            if tag_size > MAX_AUDIO_METADATA_BYTES:
+                return metadata
             tag_payload = audio_file.read(tag_size)
     except OSError:
         return metadata
@@ -248,7 +269,7 @@ def read_mp3_id3_metadata(audio_file_path):
             metadata['title'] = extract_id3_text_frame(frame_payload)
         elif frame_id == 'APIC' and metadata['embedded_cover'] is None:
             metadata['embedded_cover'] = extract_id3_apic_frame(frame_payload)
-        elif frame_id == 'USLT' and not metadata['embedded_lyrics']:
+        elif include_lyrics and frame_id == 'USLT' and not metadata['embedded_lyrics']:
             metadata['embedded_lyrics'] = extract_id3_uslt_frame(frame_payload)
 
         frame_offset = frame_payload_end
@@ -276,12 +297,16 @@ def read_flac_metadata(audio_file_path):
                 is_last_block = bool(block_header[0] & 0x80)
                 block_type = block_header[0] & 0x7F
                 block_size = int.from_bytes(block_header[1:4], 'big')
-                block_payload = audio_file.read(block_size)
-                if len(block_payload) != block_size:
-                    break
-
                 if block_type == 6 and metadata['embedded_cover'] is None:
-                    metadata['embedded_cover'] = extract_flac_picture_block(block_payload)
+                    if block_size > MAX_AUDIO_METADATA_BYTES:
+                        audio_file.seek(block_size, os.SEEK_CUR)
+                    else:
+                        block_payload = audio_file.read(block_size)
+                        if len(block_payload) != block_size:
+                            break
+                        metadata['embedded_cover'] = extract_flac_picture_block(block_payload)
+                else:
+                    audio_file.seek(block_size, os.SEEK_CUR)
 
                 if is_last_block:
                     break
@@ -291,10 +316,10 @@ def read_flac_metadata(audio_file_path):
     return metadata
 
 
-def read_audio_metadata(audio_file_path, audio_extension):
+def read_audio_metadata(audio_file_path, audio_extension, include_lyrics=True):
     if audio_extension.lower() == '.flac':
         return read_flac_metadata(audio_file_path)
-    return read_mp3_id3_metadata(audio_file_path)
+    return read_mp3_id3_metadata(audio_file_path, include_lyrics=include_lyrics)
 
 
 def find_same_name_file(directory_path, file_stem, extensions):
@@ -388,8 +413,7 @@ def write_embedded_cover_cache(audio_file_name, audio_file_path, embedded_cover)
     try:
         os.makedirs(cache_directory, exist_ok=True)
         if not os.path.exists(cache_file_path):
-            with open(cache_file_path, 'wb') as cache_file:
-                cache_file.write(embedded_cover['bytes'])
+            atomic_write_bytes(cache_file_path, embedded_cover['bytes'])
     except OSError:
         return ''
     return build_media_file_url(MUSIC_CACHE_DIR_NAME, cache_file_name)
@@ -399,7 +423,7 @@ def read_text_file(file_path):
     for encoding_name in ('utf-8-sig', 'utf-8', 'gb18030'):
         try:
             with open(file_path, 'r', encoding=encoding_name) as text_file:
-                return text_file.read()
+                return text_file.read(MAX_EMBEDDED_LYRICS_BYTES)
         except UnicodeDecodeError:
             continue
         except OSError:
@@ -407,10 +431,14 @@ def read_text_file(file_path):
     return ''
 
 
-def build_music_track(music_directory, audio_file_name):
+def build_music_track(music_directory, audio_file_name, include_lyrics=True):
     audio_file_path = os.path.join(music_directory, audio_file_name)
     file_stem, audio_extension, _ = split_music_file_name(audio_file_name)
-    audio_metadata = read_audio_metadata(audio_file_path, audio_extension)
+    audio_metadata = read_audio_metadata(
+        audio_file_path,
+        audio_extension,
+        include_lyrics=include_lyrics,
+    )
     playback_file_name, _ = find_same_name_file(
         music_directory,
         file_stem,
@@ -424,11 +452,14 @@ def build_music_track(music_directory, audio_file_name):
         file_stem,
         MUSIC_COVER_EXTENSIONS,
     )
-    lyrics_file_name, lyrics_file_path = find_same_name_file(
-        music_directory,
-        file_stem,
-        MUSIC_LYRICS_EXTENSIONS,
-    )
+    lyrics_file_name = ''
+    lyrics_file_path = ''
+    if include_lyrics:
+        lyrics_file_name, lyrics_file_path = find_same_name_file(
+            music_directory,
+            file_stem,
+            MUSIC_LYRICS_EXTENSIONS,
+        )
 
     cover_url = ''
     if cover_file_name:
@@ -452,6 +483,7 @@ def build_music_track(music_directory, audio_file_name):
         'is_web_playback': playback_file_name != audio_file_name,
         'cover_url': cover_url,
         'lyrics_lines': parse_lyrics_lines(raw_lyrics),
+        'lyrics_url': reverse('music_track_lyrics', args=[audio_file_name]),
     }
 
 
@@ -473,12 +505,25 @@ def build_music_directory_signature(music_directory):
 
 def get_site_music_tracks():
     music_directory = os.path.join(settings.MEDIA_ROOT, MUSIC_DIR_NAME)
-    signature = (
-        settings.MEDIA_ROOT,
+    media_location_signature = (
+        os.fspath(settings.MEDIA_ROOT),
         settings.MEDIA_URL,
+    )
+    current_time = time.monotonic()
+    if (
+        _SITE_MUSIC_CACHE['signature'] is not None
+        and _SITE_MUSIC_CACHE['signature'][:2] == media_location_signature
+        and current_time - _SITE_MUSIC_CACHE['checked_at']
+        < MUSIC_DIRECTORY_CHECK_INTERVAL_SECONDS
+    ):
+        return _SITE_MUSIC_CACHE['tracks']
+
+    signature = (
+        *media_location_signature,
         build_music_directory_signature(music_directory),
     )
     if _SITE_MUSIC_CACHE['signature'] == signature:
+        _SITE_MUSIC_CACHE['checked_at'] = current_time
         return _SITE_MUSIC_CACHE['tracks']
 
     tracks = []
@@ -507,10 +552,17 @@ def get_site_music_tracks():
             continue
         if is_web_playback_file and file_stem.casefold() in audio_file_stems:
             continue
-        tracks.append(build_music_track(music_directory, audio_file_name))
+        tracks.append(
+            build_music_track(
+                music_directory,
+                audio_file_name,
+                include_lyrics=False,
+            )
+        )
 
     _SITE_MUSIC_CACHE['signature'] = signature
     _SITE_MUSIC_CACHE['tracks'] = tracks
+    _SITE_MUSIC_CACHE['checked_at'] = current_time
     return tracks
 
 

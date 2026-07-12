@@ -6,9 +6,12 @@
 {% block og_title %}{{ post.title }} - 白车轴草{% endblock %}
 {% block og_description %}{{ post.content|striptags|cut:'**'|truncatechars:140 }}{% endblock %}
 {% block og_type %}article{% endblock %}
+{% block og_image %}{% if post_cover_absolute_url %}<meta property="og:image" content="{{ post_cover_absolute_url }}">{% endif %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"
+      integrity="sha512-cyzxRvewl+FOKTtpBzYjW6x6IAYUCZy3sGP40hn+DQkqeluGRCax7qztK2ImL64SA+C7kVWdLI6wvdlStawhyw=="
+      crossorigin="anonymous" referrerpolicy="no-referrer">
 <style>
     :root {
         --theme-primary: 46, 125, 50;
@@ -56,7 +59,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-image: url('{{ post.cover.url }}');
+        background-image: url('{{ post.cover_access_url }}');
         background-size: cover;
         background-position: center;
         filter: blur(18px) saturate(0.95);
@@ -952,7 +955,7 @@
                 </div>
                 <div class="hero-cover">
                     {% if post.cover %}
-                    <img src="{{ post.cover.url }}" alt="{{ post.title }}封面">
+                    <img src="{{ post.cover_access_url }}" alt="{{ post.title }}封面">
                     {% else %}
                     <div class="hero-cover-placeholder"><i class="fas fa-leaf"></i></div>
                     {% endif %}
@@ -1016,7 +1019,7 @@
                                 {% csrf_token %}
                                 <button type="submit"
                                         class="btn btn-outline-danger btn-sm rounded-pill"
-                                        onclick="return confirm('确定要永久删除这篇已发布的文章吗？此操作不可恢复。')">
+                                        data-confirm-message="确定要永久删除这篇已发布的文章吗？此操作不可恢复。">
                                     <i class="fas fa-trash-alt me-1"></i>删除文章
                                 </button>
                             </form>
@@ -1193,7 +1196,7 @@
                                         {% if comment.author == user or post.author == user %}
                                         <form method="post" action="{% url 'delete_comment' comment.id %}"
                                             class="comment-delete-form"
-                                            onsubmit="return confirm('确定要删除这条评论吗？');">
+                                            data-confirm-message="确定要删除这条评论吗？">
                                             {% csrf_token %}
                                             <button type="submit"
                                                 class="btn btn-outline-danger btn-sm comment-delete-button"
@@ -1294,7 +1297,7 @@
                                                 {% if reply.author == user or post.author == user %}
                                                 <form method="post" action="{% url 'delete_comment' reply.id %}"
                                                     class="comment-delete-form"
-                                                    onsubmit="return confirm('确定要删除这条回复吗？');">
+                                                    data-confirm-message="确定要删除这条回复吗？">
                                                     {% csrf_token %}
                                                     <button type="submit"
                                                         class="btn btn-outline-danger btn-sm comment-delete-button"
@@ -1419,7 +1422,7 @@
 
                             <label for="coverUpload" class="cover-upload-area d-block" id="coverPreviewArea">
                                 {% if post.cover %}
-                                <img src="{{ post.cover.url }}" style="max-width: 100%; border-radius: 8px;">
+                                <img src="{{ post.cover_access_url }}" style="max-width: 100%; border-radius: 8px;">
                                 <div class="mt-2 text-success"><i
                                         class="fas fa-check-circle me-1"></i>已上传封面，点击图片可重新上传裁剪</div>
                                 {% else %}
@@ -1549,8 +1552,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<script>
+<script nonce="{{ request.csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"
+        integrity="sha512-6lplKUSl86rUVprDIjiW8DuOniNX8UDoRATqZSds/7t6zCQZfaCe3e5zcGaQwxa8Kpn5RTM9Fvl3X2lLV4grPQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script nonce="{{ request.csp_nonce }}">
     (() => {
         function animatePostToggleButton(buttonElement) {
             buttonElement.classList.remove('is-burst');
@@ -1617,7 +1622,7 @@
         });
     })();
 </script>
-<script>
+<script nonce="{{ request.csp_nonce }}">
     (() => {
         const readingProgressBar = document.getElementById('readingProgressBar');
         const readingProgressFill = document.getElementById('readingProgressFill');
@@ -1704,7 +1709,7 @@
         });
     })();
 </script>
-<script>
+<script nonce="{{ request.csp_nonce }}">
     $(document).ready(function () {
         // === 模式切换逻辑 ===
         $('#startEditBtn').on('click', function () {

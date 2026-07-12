@@ -94,7 +94,7 @@
     <article class="favorite-row">
         <a href="{% url 'post_detail' favorite.post.id %}" class="favorite-cover">
             {% if favorite.post.cover %}
-            <img src="{{ favorite.post.cover.url }}" alt="{{ favorite.post.title }}封面">
+            <img src="{{ favorite.post.cover_access_url }}" alt="{{ favorite.post.title }}封面">
             {% else %}
             <i class="far fa-image fa-2x"></i>
             {% endif %}
