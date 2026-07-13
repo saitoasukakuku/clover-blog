@@ -5287,9 +5287,16 @@ class MusicPlaybackCommandTests(TestCase):
         project_directory = os.path.dirname(blog_directory)
         repository_directory = os.path.dirname(project_directory)
         deploy_script_path = os.path.join(repository_directory, 'scripts', 'deploy_production.sh')
+        forwarded_proto_map_path = os.path.join(
+            repository_directory,
+            'scripts',
+            'nginx_forwarded_proto_map.conf',
+        )
 
         with open(deploy_script_path, 'r', encoding='utf-8') as deploy_script:
             deploy_script_content = deploy_script.read()
+        with open(forwarded_proto_map_path, 'r', encoding='utf-8') as forwarded_proto_map:
+            forwarded_proto_map_content = forwarded_proto_map.read()
 
         prepare_index = deploy_script_content.index('prepare_music_playback')
         check_index = deploy_script_content.index('check --deploy')
@@ -5299,6 +5306,16 @@ class MusicPlaybackCommandTests(TestCase):
         self.assertIn('nginx -T', deploy_script_content)
         self.assertIn('location ^~ /media/covers/', deploy_script_content)
         self.assertIn('location ^~ /media/post_images/', deploy_script_content)
+        self.assertIn('nginx_forwarded_proto_map.conf', deploy_script_content)
+        self.assertIn(
+            'proxy_set_header X-Forwarded-Proto \\$clover_forwarded_proto;',
+            deploy_script_content,
+        )
+        self.assertIn('--write-out "%{http_code}"', deploy_script_content)
+        self.assertIn('[[ "${http_status_code}" == "200" ]]', deploy_script_content)
+        self.assertIn('default $scheme;', forwarded_proto_map_content)
+        self.assertIn('"127.0.0.1:https" https;', forwarded_proto_map_content)
+        self.assertIn('"::1:https" https;', forwarded_proto_map_content)
         self.assertLess(check_index, prepare_index)
 
 

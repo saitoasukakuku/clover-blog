@@ -15,6 +15,8 @@ GIT_FETCH_TIMEOUT_SECONDS=30
 HTTP_CHECK_ATTEMPTS=15
 WORKER_SERVICE_SOURCE="${PROJECT_DIR}/scripts/systemd/clover-blog-worker.service"
 WORKER_SERVICE_TARGET="/etc/systemd/system/clover-blog-worker.service"
+FORWARDED_PROTO_MAP_SOURCE="${PROJECT_DIR}/scripts/nginx_forwarded_proto_map.conf"
+FORWARDED_PROTO_MAP_TARGET="/etc/nginx/conf.d/clover-blog-forwarded-proto.conf"
 
 trap 'exit_code=$?; echo "部署失败：第 ${LINENO} 行退出，状态码 ${exit_code}。" >&2' ERR
 
@@ -125,12 +127,20 @@ echo "正在加入音乐播放版生成任务..."
 sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" "${MANAGE_PY}" \
     enqueue_site_task prepare_music_playback
 
+echo "正在同步 Nginx 可信代理协议映射..."
+install -o root -g root -m 644 \
+    "${FORWARDED_PROTO_MAP_SOURCE}" "${FORWARDED_PROTO_MAP_TARGET}"
+
 echo "正在检查 Nginx 配置..."
 nginx -t
 nginx_configuration="$(nginx -T 2>&1)"
 if [[ "${nginx_configuration}" != *"location ^~ /media/covers/"* ]] ||
    [[ "${nginx_configuration}" != *"location ^~ /media/post_images/"* ]]; then
     echo "Nginx 尚未加载受保护媒体规则；请在站点 server 块中 include scripts/nginx_protected_media.conf。" >&2
+    exit 1
+fi
+if [[ "${nginx_configuration}" != *"proxy_set_header X-Forwarded-Proto \$clover_forwarded_proto;"* ]]; then
+    echo "Nginx 尚未使用可信隧道协议映射；请将 X-Forwarded-Proto 设为 \$clover_forwarded_proto。" >&2
     exit 1
 fi
 
@@ -149,14 +159,20 @@ fi
 
 http_check_succeeded=false
 for http_check_attempt in $(seq 1 "${HTTP_CHECK_ATTEMPTS}"); do
-    if curl --fail --silent --show-error --output /dev/null \
+    http_status_code=""
+    if http_status_code="$(curl --silent --show-error --output /dev/null \
+        --connect-timeout 3 \
+        --max-time 10 \
+        --write-out "%{http_code}" \
         --header "Host: 111.230.11.5" \
         --header "X-Forwarded-Proto: https" \
-        "http://127.0.0.1/health/"; then
+        "http://127.0.0.1/health/")" &&
+       [[ "${http_status_code}" == "200" ]]; then
         http_check_succeeded=true
         break
     fi
 
+    echo "第 ${http_check_attempt} 次健康检查返回 HTTP ${http_status_code:-request-error}。"
     sleep 2
 done
 

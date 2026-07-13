@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-- 状态更新时间：2026-07-12
+- 状态更新时间：2026-07-13
 - 项目名：白车轴草
 - 项目类型：Django 5.2 LTS 多用户博客
 - 本地工作区：`E:\projects\django-projects\白车轴草`
@@ -18,20 +18,22 @@
   `https://salary-undergraduate-euros-ampland.trycloudflare.com/`
 
 Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变化，不能作为稳定域名。
-截至 2026-07-05，该 HTTPS 地址已验证返回 `200 OK`。
+截至 2026-07-13，该 HTTPS 地址已验证返回 `200 OK`，且不再发生重定向循环。
 
 仓库根目录用于 Git、依赖清单和协作文档，真正的 Django 工程位于
 `白车轴草/` 子目录。核心业务集中在单个 `blog` 应用中。
 
 ## 当前交接摘要
 
-截至 2026-07-12，本轮已在本地完成全项目安全审计、生产配置加固、私有媒体隔离、
-限流、后台任务、标签规范化和媒体管理性能优化；助手没有连接生产服务器，也没有执行
-线上部署。仍有两个无关未跟踪目录
+截至 2026-07-13，本轮已完成全项目安全审计、生产配置加固、私有媒体隔离、
+限流、后台任务、标签规范化和媒体管理性能优化。用户已将安全审计版本部署到生产；
+助手没有 SSH 连接或操作生产服务器。仍有两个无关未跟踪目录
 `docs/superpowers/mockups/` 和 `promo-video/`，不要在无明确指令时暂存、提交或删除。
 
 最近已推送到 GitHub `main` 且已部署到生产的关键提交为：
 
+- `7d98e13 security: enforce protected media nginx rules`
+- `9cf003e security: harden production and private media`
 - `ab4d8db fix: render markdown headings within text`
 - `9d66be6 fix: stabilize markdown toolbar insertion`
 - `97d35e7 fix: improve markdown image editing`
@@ -65,10 +67,16 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 已验证 `/register/` 只提交邮箱申请，超级用户可在 `/registration-requests/` 审核，
 通过后邮件发送一次性注册码，用户再到 `/register/complete/` 完成账号创建。
 
-生产服务器已通过 `sudo clover-blog-deploy` 部署到 `ab4d8db`。部署过程中在 Gunicorn
-重启窗口可能出现一次 `curl: (22) The requested URL returned error: 502`，但后续服务
-检查已确认 `clover-blog`、`nginx` 正常，服务器本机首页和 Cloudflare HTTPS 首页均返回
-`200 OK`。
+生产服务器已由用户通过 `sudo clover-blog-deploy` 部署到 `7d98e13`。迁移 `0020`
+至 `0023` 均已应用，`clover-blog`、`clover-blog-worker` 和 `nginx` 均已确认运行，音乐
+播放版后台任务已完成。部署过程中 Gunicorn 重启窗口可能短暂出现一次 `502`；
+最终 Cloudflare HTTPS 首页已从外部验证为 `200 OK`、`0` 次重定向。
+
+Cloudflare Quick Tunnel 到 Nginx 使用 HTTP，Nginx 必须把 Cloudflare 的原始 HTTPS 协议头
+传给 Django。生产已使用 `$clover_forwarded_proto` 解决 `ERR_TOO_MANY_REDIRECTS`；仓库中
+`scripts/nginx_forwarded_proto_map.conf` 是该映射的版本化来源。部署脚本会同步此文件、
+验证站点确实使用该变量，并且健康检查只接受 HTTP `200`，不再把 `301`
+或 `302` 误判为部署成功。
 
 2026-07-12 安全审计修复要点：
 
@@ -88,7 +96,8 @@ Cloudflare Quick Tunnel 地址是临时随机地址，服务重启后可能变�
 - 媒体管理页改为按需读取单曲歌词，不再把全部歌词嵌入页面；MP3/FLAC 元数据和内嵌封面
   设置读取上限并进行真实图片验证。
 - 文章上传文件在替换或删除后通过事务提交回调清理，避免数据库回滚时误删和长期残留。
-- 本地 SQLite 已应用到 `0023`，并已执行一次私有媒体迁移验证；生产尚未执行这些迁移。
+- 本地和生产数据库均已应用到 `0023`；生产私有媒体迁移已复制 25 个封面、
+  迁移 2 张正文图片。
 
 近期已完成的关键事项：
 
